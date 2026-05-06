@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>BearHaus Finance</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #242424; --border: #2e2e2e;
+    --accent: #c8f55a; --accent2: #5af5c8; --accent3: #f5c85a; --text: #f0f0f0; --muted: #888;
+    --danger: #f55a5a; --success: #5af55a; --radius: 14px;
+    --font: 'Sora', sans-serif; --mono: 'DM Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; flex-direction: column; max-width: 480px; margin: 0 auto; }
+
+  .header { padding: 20px 20px 0; display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-family: var(--mono); font-size: 13px; color: var(--accent); letter-spacing: 0.08em; }
+  .date-pill { font-family: var(--mono); font-size: 11px; color: var(--muted); background: var(--surface); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
+
+  .mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 20px 20px 0; }
+  .tab-btn { padding: 14px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; text-align: center; }
+  .tab-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(200,245,90,0.08); }
+  .tab-btn .tab-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+  .form-area { flex: 1; padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .section-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-top: 4px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field-label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.08em; }
+
+  .input, .select, textarea { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 15px; padding: 14px 16px; width: 100%; outline: none; transition: border-color 0.2s; appearance: none; -webkit-appearance: none; }
+  .input:focus, .select:focus, textarea:focus { border-color: var(--accent); }
+  .input::placeholder { color: var(--muted); }
+  textarea { resize: none; height: 72px; font-size: 14px; }
+  .select-wrap { position: relative; }
+  .select-wrap::after { content: '▾'; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; font-size: 14px; }
+  .select { padding-right: 36px; cursor: pointer; }
+  .select option { background: #1a1a1a; }
+
+  .cat-suggestion { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(200,245,90,0.06); border: 1px solid rgba(200,245,90,0.2); border-radius: var(--radius); cursor: pointer; }
+  .cat-suggestion-text { font-size: 12px; color: var(--muted); }
+  .cat-suggestion-value { font-size: 13px; color: var(--accent); font-weight: 500; }
+
+  .amount-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  .currency-toggle { display: flex; border-radius: var(--radius); overflow: hidden; border: 1.5px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .curr-btn { padding: 0 14px; font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--muted); background: transparent; border: none; cursor: pointer; transition: all 0.15s; }
+  .curr-btn.active { background: var(--accent); color: #000; }
+
+  .payer-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .payer-btn { padding: 12px 6px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); color: var(--muted); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; text-align: center; transition: all 0.15s; line-height: 1.3; }
+  .payer-btn.active-aizat { border-color: var(--accent); color: var(--accent); background: rgba(200,245,90,0.08); }
+  .payer-btn.active-joint { border-color: var(--accent3); color: var(--accent3); background: rgba(245,200,90,0.08); }
+  .payer-btn.active-paige { border-color: var(--accent2); color: var(--accent2); background: rgba(90,245,200,0.08); }
+
+  .account-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 8px 14px; border-radius: 40px; border: 1.5px solid var(--border); background: var(--surface); color: var(--muted); font-family: var(--mono); font-size: 11px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .chip.active-aizat { border-color: var(--accent); color: var(--accent); background: rgba(200,245,90,0.08); }
+  .chip.active-joint { border-color: var(--accent3); color: var(--accent3); background: rgba(245,200,90,0.08); }
+  .chip.active-paige { border-color: var(--accent2); color: var(--accent2); background: rgba(90,245,200,0.08); }
+  .chip.active-other { border-color: var(--muted); color: var(--text); background: rgba(255,255,255,0.06); }
+  .account-group { display: flex; flex-direction: column; gap: 6px; }
+  .account-group-label { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+  .share-preview { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .share-row { display: flex; justify-content: space-between; align-items: center; }
+  .share-name { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .share-value { font-family: var(--mono); font-size: 13px; font-weight: 500; }
+  .share-value.negative { color: var(--danger); }
+  .share-value.positive { color: var(--success); }
+  .share-value.zero { color: var(--muted); }
+  .share-divider { height: 1px; background: var(--border); }
+  .share-preview-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-bottom: 2px; }
+
+  .country-toggle, .type-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .country-btn, .type-btn { padding: 12px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; text-align: center; transition: all 0.15s; }
+  .country-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(90,245,200,0.08); }
+  .type-btn.income.active { border-color: var(--success); color: var(--success); background: rgba(90,245,90,0.08); }
+  .type-btn.expense.active { border-color: var(--danger); color: var(--danger); background: rgba(245,90,90,0.08); }
+
+  .advanced-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 0 0; }
+  .advanced-toggle span { font-size: 12px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.06em; }
+  .toggle-line { flex: 1; height: 1px; background: var(--border); }
+  .toggle-arrow { color: var(--muted); font-size: 11px; transition: transform 0.2s; }
+  .toggle-arrow.open { transform: rotate(180deg); }
+  .advanced-fields { display: flex; flex-direction: column; gap: 12px; }
+  .advanced-fields.hidden { display: none; }
+  .split-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .split-input-wrap { display: flex; flex-direction: column; gap: 4px; }
+  .split-label { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.06em; }
+
+  .submit-btn { width: 100%; padding: 18px; border-radius: var(--radius); border: none; background: var(--accent); color: #000; font-family: var(--font); font-size: 15px; font-weight: 600; cursor: pointer; letter-spacing: 0.02em; transition: all 0.2s; margin-top: 4px; position: relative; overflow: hidden; }
+  .submit-btn:active { transform: scale(0.98); }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .submit-btn.loading::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shimmer 1s infinite; }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface2); border: 1.5px solid var(--border); border-radius: 40px; padding: 12px 24px; font-size: 14px; font-weight: 500; white-space: nowrap; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 100; pointer-events: none; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--success); color: var(--success); }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+
+  .setup-screen { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .setup-title { font-size: 20px; font-weight: 600; line-height: 1.3; }
+  .setup-title span { color: var(--accent); }
+  .setup-steps { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .step { display: flex; gap: 12px; align-items: flex-start; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #000; font-family: var(--mono); font-size: 11px; font-weight: 500; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-text { font-size: 13px; line-height: 1.5; color: var(--muted); }
+  .step-text strong { color: var(--text); }
+  .url-save-btn { background: var(--accent); color: #000; border: none; border-radius: var(--radius); padding: 14px; font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; }
+  .url-clear-btn { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; font-family: var(--mono); font-size: 11px; cursor: pointer; width: 100%; margin-top: 4px; }
+  .info-note { font-size: 11px; color: var(--muted); font-family: var(--mono); line-height: 1.5; padding: 10px 12px; background: var(--surface2); border-radius: 8px; border-left: 2px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">🐻 BEARHAUS</div>
+  <div class="date-pill" id="dateDisplay"></div>
+</div>
+
+<!-- SETUP SCREEN -->
+<div class="setup-screen" id="setupScreen" style="display:none">
+  <div>
+    <div class="setup-title">Connect to your <span>Google Sheet</span></div>
+    <p style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.6">Paste your Apps Script Web App URL. You only need to do this once.</p>
+  </div>
+  <div class="setup-steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text">Open your Google Sheet → <strong>Extensions → Apps Script</strong></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Paste the script from <strong>"Finance Tracker - Apps Script v3"</strong> in your Drive, click Save</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Deploy → New deployment → Web App</strong>. Access = <strong>Anyone</strong>. Copy the URL.</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-text">Paste URL below and tap Save.</div></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <label style="font-size:12px;color:var(--muted);font-family:var(--mono)">Apps Script Web App URL</label>
+    <input class="input" id="scriptUrlInput" type="url" placeholder="https://script.google.com/macros/s/..." />
+    <button class="url-save-btn" onclick="saveScriptUrl()">Save & Start Tracking</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="mainApp" style="display:none;flex-direction:column;flex:1">
+
+  <div class="mode-tabs">
+    <button class="tab-btn active" id="tabDaily" onclick="setMode('daily')">
+      <span class="tab-icon">🛒</span>Daily Expense
+    </button>
+    <button class="tab-btn" id="tabFund" onclick="setMode('fund')">
+      <span class="tab-icon">💰</span>Fund Transaction
+    </button>
+  </div>
+
+  <!-- DAILY EXPENSE FORM -->
+  <div class="form-area" id="dailyForm">
+    <div class="section-label">Daily Expense</div>
+
+    <div class="field">
+      <input class="input" type="date" id="d_date" />
+    </div>
+
+    <div class="field">
+      <input class="input" type="text" id="d_desc" placeholder="Description (e.g. Woolworths)" oninput="onDescInput()" />
+      <div class="cat-suggestion" id="catSuggestion" style="display:none" onclick="acceptSuggestion()">
+        <span style="font-size:16px">✨</span>
+        <div>
+          <div class="cat-suggestion-text">Last time this was:</div>
+          <div class="cat-suggestion-value" id="catSuggestionVal"></div>
+        </div>
+        <span style="margin-left:auto;font-size:11px;color:var(--accent);font-family:var(--mono)">tap to apply</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="select-wrap">
+        <select class="select" id="d_cat">
+          <option value="">Select category…</option>
+          <option>Dining out</option>
+          <option>Groceries</option>
+          <option>Transport</option>
+          <option>Utilities</option>
+          <option>Childcare</option>
+          <option>Household supplies</option>
+          <option>Personal care</option>
+          <option>Health</option>
+          <option>Entertainment</option>
+          <option>Rent</option>
+          <option>Insurance</option>
+          <option>TV/Phone/Internet</option>
+          <option>Parking</option>
+          <option>Gas/fuel</option>
+          <option>Bus/train</option>
+          <option>Clothing</option>
+          <option>Electronics</option>
+          <option>Furniture</option>
+          <option>Home - Other</option>
+          <option>Liquor</option>
+          <option>Car</option>
+          <option>Hotel</option>
+          <option>Life - Other</option>
+          <option>Payment</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="amount-row">
+        <input class="input" type="number" id="d_amount" placeholder="0.00" step="0.01" min="0" oninput="updateSharePreview()" />
+        <div class="currency-toggle">
+          <button class="curr-btn active" id="d_aud" onclick="setDailyCurrency('AUD')">AUD</button>
+          <button class="curr-btn" id="d_sgd" onclick="setDailyCurrency('SGD')">SGD</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">WHO PAID? (determines split)</div>
+      <div class="payer-grid">
+        <button class="payer-btn" id="payer_aizat" onclick="setPayer('Aizat')">👤<br>Aizat</button>
+        <button class="payer-btn" id="payer_joint" onclick="setPayer('Aizat&Paige')">👥<br>Aizat&Paige</button>
+        <button class="payer-btn" id="payer_paige" onclick="setPayer('Paige')">👤<br>Paige</button>
+      </div>
+    </div>
+
+    <div class="field" id="usingSection" style="display:none">
+      <div class="field-label">USING (for bank reconciliation)</div>
+      <div class="info-note">Which account/card will this show in your bank statement?</div>
+      <div class="account-group" id="aizatAccounts" style="display:none">
+        <div class="account-group-label">Aizat's Accounts</div>
+        <div class="account-chips">
+          <button class="chip" onclick="setUsing('YouTrip - Aizat', this, 'aizat')">YouTrip - Aizat</button>
+          <button class="chip" onclick="setUsing('ComBank - Aizat', this, 'aizat')">ComBank - Aizat</button>
+          <button class="chip" onclick="setUsing('Bank - Aizat', this, 'aizat')">Bank - Aizat</button>
+        </div>
+      </div>
+      <div class="account-group" id="jointAccounts" style="display:none">
+        <div class="account-group-label">Joint Accounts</div>
+        <div class="account-chips">
+          <button class="chip" onclick="setUsing('Bank - Joint', this, 'joint')">Bank - Joint</button>
+          <button class="chip" onclick="setUsing('YouTrip - Joint', this, 'joint')">YouTrip - Joint</button>
+        </div>
+      </div>
+      <div class="account-group" id="paigeAccounts" style="display:none">
+        <div class="account-group-label">Paige's Accounts</div>
+        <div class="account-chips">
+          <button class="chip" onclick="setUsing('YouTrip - Paige', this, 'paige')">YouTrip - Paige</button>
+          <button class="chip" onclick="setUsing('Bank - Paige', this, 'paige')">Bank - Paige</button>
+        </div>
+      </div>
+      <div class="account-group">
+        <div class="account-group-label">Other</div>
+        <div class="account-chips">
+          <button class="chip" onclick="setUsing('Cash', this, 'other')">Cash</button>
+          <button class="chip" onclick="setUsing('Singapore', this, 'other')">Singapore</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="share-preview" id="sharePreview" style="display:none">
+      <div class="share-preview-label">Split Preview</div>
+      <div class="share-row"><span class="share-name">AIZAT</span><span class="share-value" id="prev_aizat">—</span></div>
+      <div class="share-divider"></div>
+      <div class="share-row"><span class="share-name">AIZAT &amp; PAIGE (joint)</span><span class="share-value" id="prev_joint">—</span></div>
+      <div class="share-divider"></div>
+      <div class="share-row"><span class="share-name">PAIGE</span><span class="share-value" id="prev_paige">—</span></div>
+    </div>
+
+    <div class="advanced-toggle" onclick="toggleAdvanced()">
+      <div class="toggle-line"></div>
+      <span>OVERRIDE SPLITS</span>
+      <span class="toggle-arrow" id="dailyArrow">▾</span>
+      <div class="toggle-line"></div>
+    </div>
+    <div class="advanced-fields hidden" id="dailyAdvanced">
+      <div class="split-row">
+        <div class="split-input-wrap"><div class="split-label">AIZAT</div><input class="input" type="number" id="d_aizat" placeholder="0" step="0.01" oninput="manualOverride()" /></div>
+        <div class="split-input-wrap"><div class="split-label">A&amp;P JOINT</div><input class="input" type="number" id="d_joint" placeholder="0" step="0.01" oninput="manualOverride()" /></div>
+        <div class="split-input-wrap"><div class="split-label">PAIGE</div><input class="input" type="number" id="d_paige" placeholder="0" step="0.01" oninput="manualOverride()" /></div>
+      </div>
+      <div class="field"><textarea id="d_comments" placeholder="Comments (optional)…"></textarea></div>
+    </div>
+
+    <button class="submit-btn" id="dailySubmit" onclick="submitDaily()">Add Expense</button>
+    <button class="url-clear-btn" onclick="clearUrl()">⚙ Change script URL</button>
+  </div>
+
+  <!-- FUND TRANSACTION FORM -->
+  <div class="form-area" id="fundForm" style="display:none">
+    <div class="section-label">Fund Transaction</div>
+    <div class="field">
+      <div class="country-toggle">
+        <button class="country-btn active" id="f_au" onclick="setCountry('AU')">🇦🇺 AU</button>
+        <button class="country-btn" id="f_sg" onclick="setCountry('SG')">🇸🇬 SG</button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="type-toggle">
+        <button class="type-btn expense active" id="f_expense" onclick="setTxType('Expense')">↑ Expense</button>
+        <button class="type-btn income" id="f_income" onclick="setTxType('Income')">↓ Income</button>
+      </div>
+    </div>
+    <div class="field"><input class="input" type="date" id="f_date" /></div>
+    <div class="field">
+      <div class="select-wrap">
+        <select class="select" id="f_fund">
+          <option value="">Select fund…</option>
+          <optgroup label="🇦🇺 AU Funds">
+            <option>Others</option><option>Float</option>
+            <option>Rainy Day Fund AU (Aizat)</option><option>Emergency Fund AU (Paige)</option>
+            <option>Edu Fund (Claire)</option><option>Edu Fund (Anne)</option>
+            <option>Car Fund</option><option>BearHaus Rainy Day AU</option>
+            <option>Travel Fund AU</option><option>Monthly Expenses (Aizat)</option>
+            <option>Monthly Expenses (Paige)</option><option>Investment Fund AU (Aizat)</option>
+            <option>Dry Powder AU (Paige)</option>
+          </optgroup>
+          <optgroup label="🇸🇬 SG Funds">
+            <option>MediShield (Aizat)</option><option>Life Multiprotect (Aizat)</option>
+            <option>FWD Future First</option><option>MediShield (Paige)</option>
+            <option>Life Multiprotect (Paige)</option><option>AXA Term Protector</option>
+            <option>Pruwealth (May 2025)</option><option>HSBC FlexiProtector (Anne)</option>
+            <option>AIA ProtectPlus 2 (Anne)</option><option>Early Saver 5-Pay (Anne)</option>
+            <option>MediShield (Anne)</option><option>MediShield (Claire)</option>
+            <option>Life Treasure (Claire)</option><option>Anne's Savings SG</option>
+            <option>Claire's Savings SG</option><option>Taxes Fund SG (Aizat)</option>
+            <option>Investment Fund SG (Aizat)</option><option>Dry Powder SG (Paige)</option>
+            <option>Emergency Fund SG (Paige)</option><option>Stashaway</option>
+            <option>BOC</option><option>Property Tax</option>
+            <option>Google Drive</option><option>Future DreamHouse SG</option>
+          </optgroup>
+        </select>
+      </div>
+    </div>
+    <div class="field"><input class="input" type="number" id="f_amount" placeholder="0.00" step="0.01" min="0" /></div>
+    <div class="field"><textarea id="f_remarks" placeholder="Remarks (optional)…"></textarea></div>
+    <button class="submit-btn" id="fundSubmit" onclick="submitFund()">Add Transaction</button>
+    <button class="url-clear-btn" onclick="clearUrl()">⚙ Change script URL</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const CATEGORY_MAP = {
+    'airbnb':'Hotel','ampol':'Gas/fuel','skybus':'Bus/train','hertz':'Car',
+    'fishbowl':'Dining out','myki':'Bus/train','vic roads':'Transport',
+    'telstra':'TV/Phone/Internet','samsam chicken':'Dining out',
+    'woolworths':'Groceries','woolies':'Groceries','coles':'Groceries',
+    'kmart':'Home - Other','kokoro':'Dining out','chemist warehouse':'Household supplies',
+    'the wokkers':'Dining out','the wokker':'Dining out','food republik':'Dining out',
+    'soul origin':'Dining out','meet fresh':'Dining out','kebab':'Dining out',
+    'genki sushi':'Dining out','chi chi house cafe':'Dining out','paradai thai':'Dining out',
+    'dominos':'Dining out',"domino's":'Dining out','wonton house':'Dining out',
+    'asian mart':'Groceries','leaf lane cafe':'Dining out','rising embers':'Dining out',
+    '7ate9':'Dining out','grandpas chicken':'Dining out','the flockhart deli':'Dining out',
+    'flockhart deli':'Dining out','umami deli':'Dining out','ikea':'Furniture',
+    'fuel':'Gas/fuel','nqr':'Groceries','ilza':'Dining out','bowltiful':'Dining out',
+    'downtown grocer':'Groceries','budget':'Car','layers':'Dining out',
+    'hot star chicken':'Dining out','daiso':'Household supplies','don don':'Dining out',
+    'maccas':'Dining out','taro yuan':'Dining out','guardian childcare bond':'Childcare',
+    'rentalcars.com':'Car','rent':'Rent','security deposit':'Rent',
+    'pancake parlour':'Dining out','godfreys':'Electronics','the good guys':'Electronics',
+    'malay kitchen':'Dining out','two peck':'Dining out','xpressomondo':'Dining out',
+    'amart':'Furniture','dumpling chef':'Dining out','365 coffee':'Dining out',
+    'nice guys':'Dining out','umami black':'Dining out','sushi sushi':'Dining out',
+    'park st':'Dining out','beku':'Dining out','whitehorse city council':'Car',
+    'local hero singapore':'Dining out','liquorland':'Liquor','sushi jiro':'Dining out',
+    'lao yuan wai':'Dining out','charm mart':'Groceries','thuan hung':'Groceries',
+    'lily loves coffee':'Dining out','bunnings':'Household supplies','jinda thai':'Dining out',
+    'kfc':'Dining out','amie bakery':'Dining out','mile end bagel':'Dining out',
+    'coffee supreme':'Dining out','oriental hut':'Dining out','parking':'Parking',
+    'misc':'Life - Other','donation':'Life - Other','boost':'Dining out',
+    'coffee':'Dining out','pie':'Dining out','bahn mi':'Dining out',
+    'fruits':'Groceries','hectors':'Dining out','apple':'Electronics',
+    'zara':'Clothing','cotton on':'Clothing','polo ralph lauren':'Clothing',
+    'uniqlo':'Clothing','florsheim':'Clothing','specsavers':'Health',
+    'airpods':'Electronics','best & less':'Clothing','big w':'Home - Other',
+    'iga':'Groceries','fruitlife':'Groceries',
+  };
+
+  let scriptUrl = localStorage.getItem('financeScriptUrl') || '';
+  let dailyCurrency = 'AUD', fundCountry = 'AU', fundTxType = 'Expense';
+  let advancedOpen = false, selectedPayer = null, selectedUsing = null;
+  let isManualOverride = false, suggestedCategory = null;
+
+  window.onload = () => {
+    const today = getTodayLocal();
+    document.getElementById('d_date').value = today;
+    document.getElementById('f_date').value = today;
+    document.getElementById('dateDisplay').textContent =
+      new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    loadCategoryHistory();
+    scriptUrl ? showMain() : showSetup();
+  };
+
+  function getTodayLocal() {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+  }
+
+  function showSetup() { document.getElementById('setupScreen').style.display='flex'; document.getElementById('mainApp').style.display='none'; }
+  function showMain()  { document.getElementById('setupScreen').style.display='none'; document.getElementById('mainApp').style.display='flex'; }
+
+  function saveScriptUrl() {
+    const url = document.getElementById('scriptUrlInput').value.trim();
+    if (!url.startsWith('https://script.google.com')) { showToast('Please enter a valid Apps Script URL','error'); return; }
+    scriptUrl = url;
+    localStorage.setItem('financeScriptUrl', url);
+    showMain();
+    showToast('Connected! Ready to track.','success');
+  }
+  function clearUrl() { localStorage.removeItem('financeScriptUrl'); scriptUrl=''; document.getElementById('scriptUrlInput').value=''; showSetup(); }
+
+  function setMode(mode) {
+    document.getElementById('tabDaily').classList.toggle('active', mode==='daily');
+    document.getElementById('tabFund').classList.toggle('active', mode==='fund');
+    document.getElementById('dailyForm').style.display = mode==='daily' ? 'flex' : 'none';
+    document.getElementById('fundForm').style.display  = mode==='fund'  ? 'flex' : 'none';
+  }
+
+  function setDailyCurrency(c) {
+    dailyCurrency = c;
+    document.getElementById('d_aud').classList.toggle('active', c==='AUD');
+    document.getElementById('d_sgd').classList.toggle('active', c==='SGD');
+  }
+
+  function onDescInput() {
+    const desc = document.getElementById('d_desc').value.trim().toLowerCase();
+    const sug  = document.getElementById('catSuggestion');
+    suggestedCategory = null;
+    if (desc.length < 2) { sug.style.display='none'; return; }
+    let found = CATEGORY_MAP[desc];
+    if (!found) { for (const [k,v] of Object.entries(CATEGORY_MAP)) { if (desc.includes(k)||k.includes(desc)) { found=v; break; } } }
+    if (found) {
+      suggestedCategory = found;
+      document.getElementById('catSuggestionVal').textContent = found;
+      sug.style.display = 'flex';
+      if (!document.getElementById('d_cat').value) document.getElementById('d_cat').value = found;
+    } else { sug.style.display='none'; }
+  }
+  function acceptSuggestion() { if (suggestedCategory) { document.getElementById('d_cat').value=suggestedCategory; document.getElementById('catSuggestion').style.display='none'; } }
+
+  function setPayer(payer) {
+    selectedPayer = payer; selectedUsing = null; isManualOverride = false;
+    document.getElementById('payer_aizat').className = 'payer-btn' + (payer==='Aizat'       ? ' active-aizat' : '');
+    document.getElementById('payer_joint').className = 'payer-btn' + (payer==='Aizat&Paige' ? ' active-joint' : '');
+    document.getElementById('payer_paige').className = 'payer-btn' + (payer==='Paige'        ? ' active-paige' : '');
+    document.getElementById('usingSection').style.display = 'flex';
+    document.getElementById('aizatAccounts').style.display = payer==='Aizat'       ? 'flex' : 'none';
+    document.getElementById('jointAccounts').style.display = payer==='Aizat&Paige' ? 'flex' : 'none';
+    document.getElementById('paigeAccounts').style.display = payer==='Paige'        ? 'flex' : 'none';
+    document.querySelectorAll('.chip').forEach(c => c.className='chip');
+    updateSharePreview();
+  }
+
+  function setUsing(value, btn, type) {
+    selectedUsing = value;
+    document.querySelectorAll('.chip').forEach(c => c.className='chip');
+    btn.classList.add('active-'+type);
+  }
+
+  function computeShares(cost, payer) {
+    if (!cost||cost<=0) return {aizat:0,joint:0,paige:0};
+    if (payer==='Aizat')       return {aizat:cost, joint:-cost, paige:0};
+    if (payer==='Aizat&Paige') return {aizat:0,    joint:-cost, paige:0};
+    if (payer==='Paige')       return {aizat:0,    joint:-cost, paige:cost};
+    return {aizat:0,joint:0,paige:0};
+  }
+
+  function updateSharePreview() {
+    if (isManualOverride) return;
+    const cost = parseFloat(document.getElementById('d_amount').value)||0;
+    const s = computeShares(cost, selectedPayer);
+    const preview = document.getElementById('sharePreview');
+    if (!selectedPayer||cost===0) { preview.style.display='none'; return; }
+    preview.style.display='flex';
+    renderShare('prev_aizat', s.aizat);
+    renderShare('prev_joint', s.joint);
+    renderShare('prev_paige', s.paige);
+    if (advancedOpen) { document.getElementById('d_aizat').value=s.aizat; document.getElementById('d_joint').value=s.joint; document.getElementById('d_paige').value=s.paige; }
+  }
+
+  function renderShare(id, val) {
+    const el = document.getElementById(id);
+    if (val>0)      { el.textContent='+'+val.toFixed(2); el.className='share-value positive'; }
+    else if (val<0) { el.textContent=val.toFixed(2);     el.className='share-value negative'; }
+    else            { el.textContent='0.00';              el.className='share-value zero'; }
+  }
+
+  function manualOverride() {
+    isManualOverride = true;
+    const a=parseFloat(document.getElementById('d_aizat').value)||0;
+    const j=parseFloat(document.getElementById('d_joint').value)||0;
+    const p=parseFloat(document.getElementById('d_paige').value)||0;
+    document.getElementById('sharePreview').style.display='flex';
+    renderShare('prev_aizat',a); renderShare('prev_joint',j); renderShare('prev_paige',p);
+  }
+
+  function toggleAdvanced() {
+    advancedOpen = !advancedOpen;
+    document.getElementById('dailyAdvanced').classList.toggle('hidden', !advancedOpen);
+    document.getElementById('dailyArrow').classList.toggle('open', advancedOpen);
+    if (advancedOpen && !isManualOverride) {
+      const cost=parseFloat(document.getElementById('d_amount').value)||0;
+      const s=computeShares(cost,selectedPayer);
+      document.getElementById('d_aizat').value=s.aizat||'';
+      document.getElementById('d_joint').value=s.joint||'';
+      document.getElementById('d_paige').value=s.paige||'';
+    }
+    if (!advancedOpen) isManualOverride=false;
+  }
+
+  function setCountry(c) { fundCountry=c; document.getElementById('f_au').classList.toggle('active',c==='AU'); document.getElementById('f_sg').classList.toggle('active',c==='SG'); }
+  function setTxType(t)  { fundTxType=t;  document.getElementById('f_expense').classList.toggle('active',t==='Expense'); document.getElementById('f_income').classList.toggle('active',t==='Income'); }
+
+  async function submitDaily() {
+    const date=document.getElementById('d_date').value, desc=document.getElementById('d_desc').value.trim();
+    const cat=document.getElementById('d_cat').value, amount=document.getElementById('d_amount').value;
+    if (!date||!desc||!cat||!amount) { showToast('Fill in date, description, category & amount','error'); return; }
+    if (!selectedPayer) { showToast('Please select who paid','error'); return; }
+    const cost=parseFloat(amount);
+    const s = isManualOverride
+      ? {aizat:parseFloat(document.getElementById('d_aizat').value)||0, joint:parseFloat(document.getElementById('d_joint').value)||0, paige:parseFloat(document.getElementById('d_paige').value)||0}
+      : computeShares(cost, selectedPayer);
+    saveCategoryHistory(desc, cat);
+    await submit('dailySubmit','Add Expense',{type:'daily',date,description:desc,category:cat,amount:cost,currency:dailyCurrency,aizatShare:s.aizat,jointShare:s.joint,paigeShare:s.paige,paidBy:selectedPayer,using:selectedUsing||'',comments:document.getElementById('d_comments').value.trim()}, resetDaily);
+  }
+
+  function resetDaily() {
+    ['d_desc','d_cat','d_amount','d_comments'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('catSuggestion').style.display='none';
+    selectedPayer=null; selectedUsing=null; isManualOverride=false; suggestedCategory=null;
+    ['payer_aizat','payer_joint','payer_paige'].forEach(id=>document.getElementById(id).className='payer-btn');
+    document.getElementById('usingSection').style.display='none';
+    document.getElementById('sharePreview').style.display='none';
+    document.querySelectorAll('.chip').forEach(c=>c.className='chip');
+    if (advancedOpen) { document.getElementById('d_aizat').value=''; document.getElementById('d_joint').value=''; document.getElementById('d_paige').value=''; }
+    document.getElementById('d_date').value=getTodayLocal();
+  }
+
+  async function submitFund() {
+    const date=document.getElementById('f_date').value, fund=document.getElementById('f_fund').value, amount=document.getElementById('f_amount').value;
+    if (!date||!fund||!amount) { showToast('Please fill in all required fields','error'); return; }
+    await submit('fundSubmit','Add Transaction',{type:'fund',country:fundCountry,txType:fundTxType,date,fundName:fund,amount:parseFloat(amount),remarks:document.getElementById('f_remarks').value.trim()},()=>{
+      ['f_fund','f_amount','f_remarks'].forEach(id=>document.getElementById(id).value='');
+      document.getElementById('f_date').value=getTodayLocal();
+    });
+  }
+
+  async function submit(btnId, origLabel, payload, onSuccess) {
+    const btn=document.getElementById(btnId);
+    btn.disabled=true; btn.classList.add('loading'); btn.textContent='Saving…';
+    try {
+      const res=await fetch(scriptUrl,{method:'POST',body:JSON.stringify(payload)});
+      const data=await res.json();
+      if (data.success) { showToast('✓ Saved to Google Sheet','success'); onSuccess(); }
+      else showToast('Error: '+(data.message||'Unknown'),'error');
+    } catch { showToast('Could not reach script — check URL','error'); }
+    finally { btn.disabled=false; btn.classList.remove('loading'); btn.textContent=origLabel; }
+  }
+
+  function saveCategoryHistory(desc, cat) {
+    try { const h=JSON.parse(localStorage.getItem('catHistory')||'{}'); h[desc.toLowerCase().trim()]=cat; localStorage.setItem('catHistory',JSON.stringify(h)); CATEGORY_MAP[desc.toLowerCase().trim()]=cat; } catch(e) {}
+  }
+  function loadCategoryHistory() {
+    try { const h=JSON.parse(localStorage.getItem('catHistory')||'{}'); Object.assign(CATEGORY_MAP,h); } catch(e) {}
+  }
+
+  function showToast(msg, type='success') {
+    const t=document.getElementById('toast');
+    t.textContent=msg; t.className='toast '+type; t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),3000);
+  }
+</script>
+</body>
+</html>
