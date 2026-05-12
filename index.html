@@ -497,13 +497,20 @@ function fmtDate(raw){
 function fmtDateShort(raw){
   if(!raw)return'';
   const s=raw.toString().trim();
+  // ISO: 2026-05-06
   if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
     const[y,mo,d]=s.split('-');
     return parseInt(d)+' '+MONTHS[parseInt(mo)-1]+' '+y.slice(2);
   }
+  // Already D MMM YYYY → shorten year
   if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s)){
     const parts=s.split(' ');
     return parts[0]+' '+parts[1]+' '+parts[2].slice(2);
+  }
+  // Google Sheets may return a full Date string — parse it
+  const d=new Date(s);
+  if(!isNaN(d.getTime())){
+    return d.getDate()+' '+MONTHS[d.getMonth()]+' '+String(d.getFullYear()).slice(2);
   }
   return s;
 }
@@ -725,8 +732,8 @@ function renderTripCards(){
     const balanceText=Math.abs(net)<0.01?'Settled ✓':net>0?`Paige owes Aizat $${Math.abs(net).toFixed(2)}`:`Aizat owes Paige $${Math.abs(net).toFixed(2)}`;
     const balanceClass=Math.abs(net)<0.01?'settled':'owes';
     const sentPct=parseFloat(trip.totalSpent)>0?Math.round((parseFloat(trip.sentToFund)/parseFloat(trip.totalSpent))*100):0;
-    const startStr=trip.startDate?fmtDateShort(trip.startDate):'';
-    const endStr=trip.endDate?fmtDateShort(trip.endDate):'';
+    const startStr=trip.startDate?fmtDateShort(trip.startDate.toString()):'';
+    const endStr=trip.endDate?fmtDateShort(trip.endDate.toString()):'';
     const dateRange=startStr&&endStr?startStr+' – '+endStr:startStr||endStr||'';
     html+=`<div class="trip-card" onclick="openTrip(${i})">
       <div class="trip-card-header">
@@ -1031,32 +1038,110 @@ function openDrill(category,month){
   const rows=getRowsForMonth(month).filter(r=>r.category===category);
   if(!rows.length){showToast('No data for this category','error');return;}
   const merchants={};
-  rows.forEach(r=>{const key=r.description||'Unknown';if(!merchants[key])merchants[key]={total:0,entries:[]};merchants[key].total+=parseFloat(r.cost||0);merchants[key].entries.push({date:r.date,amount:parseFloat(r.cost||0)});});
+  rows.forEach(r=>{
+    const key=r.description||'Unknown';
+    if(!merchants[key])merchants[key]={total:0,entries:[]};
+    merchants[key].total+=parseFloat(r.cost||0);
+    merchants[key].entries.push({date:fmtDateWithDay(r.date),amount:parseFloat(r.cost||0)});
+  });
   const sorted=Object.entries(merchants).sort((a,b)=>b[1].total-a[1].total);
-  document.getElementById('drillTitle').textContent=category+' — '+month;
-  let html='';
+
+  // Find the clicked category row and toggle an inline accordion below it
+  const allCatRows=document.querySelectorAll('.summary-cat-row');
+  let targetRow=null;
+  allCatRows.forEach(row=>{
+    if(row.querySelector('.summary-cat-name')&&row.querySelector('.summary-cat-name').textContent===category){
+      targetRow=row;
+    }
+  });
+  if(!targetRow)return;
+
+  // Remove any existing drill panel
+  const existing=document.getElementById('drillPanel_'+category.replace(/\s/g,'_'));
+  if(existing){existing.remove();return;}
+
+  let html=`<div id="drillPanel_${category.replace(/\s/g,'_')}" style="background:var(--surface2);border-top:1px solid var(--border)">`;
   sorted.forEach(([name,data])=>{
     const count=data.entries.length;
-    const entriesHtml=data.entries.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e=>`<div class="drill-line-row"><span class="drill-line-date">${e.date}</span><span class="drill-line-amount">$${e.amount.toFixed(2)}</span></div>`).join('');
-    html+=`<div><div class="drill-merchant-row" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><div><div class="drill-merchant-name">${name}</div><div class="drill-merchant-count">${count} transaction${count>1?'s':''}</div></div><span class="drill-merchant-total">$${data.total.toFixed(2)}</span></div><div style="display:none">${entriesHtml}</div></div>`;
+    const id='dp_'+Math.random().toString(36).slice(2);
+    html+=`<div style="border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;cursor:pointer" onclick="const b=document.getElementById('${id}');b.style.display=b.style.display==='block'?'none':'block'">
+        <div>
+          <div style="font-size:12px;font-weight:500">${name}</div>
+          <div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${count} transaction${count>1?'s':''}</div>
+        </div>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">$${data.total.toFixed(2)}</span>
+      </div>
+      <div id="${id}" style="display:none;background:var(--bg)">
+        ${data.entries.map(e=>`<div style="display:flex;justify-content:space-between;padding:8px 16px 8px 24px;border-top:1px solid var(--border)"><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${e.date}</span><span style="font-family:var(--mono);font-size:11px">$${e.amount.toFixed(2)}</span></div>`).join('')}
+      </div>
+    </div>`;
   });
-  document.getElementById('drillBody').innerHTML=html;
-  document.getElementById('drillOverlay').style.display='flex';
+  html+='</div>';
+
+  targetRow.insertAdjacentHTML('afterend',html);
 }
+  
 function closeDrill(e){if(e.target===document.getElementById('drillOverlay'))closeDrillBtn();}
 function closeDrillBtn(){document.getElementById('drillOverlay').style.display='none';}
+
+const CAT_EMOJI={
+  'Rent':'🏠','Dining out':'🍽️','Groceries':'🛒','Furniture':'🛋️',
+  'Home - Other':'🏠','Household supplies':'🧹','Sports':'⚽','Clothing':'👗',
+  'Gifts':'🎁','Life - Other':'💳','Medical Expenses':'💊','Liquor':'🍷',
+  'Entertainment - Other':'🎬','Electronics':'📱','Movies':'🎬','Games':'🎮',
+  'Childcare':'👶','Education':'📚','Bus/train':'🚌','Gas/fuel':'⛽',
+  'Car':'🚗','Parking':'🅿️','Taxi':'🚕','Bicycle':'🚲',
+  'Water':'💧','Electricity':'⚡','Gas':'🔥','Insurance':'🛡️',
+  'TV/Phone/Internet':'📡','Other':'💰'
+};
 
 function renderTxnList(){
   const container=document.getElementById('txnList');
   if(!summaryData){container.innerHTML='';return;}
-  const rows=getRowsForMonth(selectedMonth).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const rows=getRowsForMonth(selectedMonth).slice().sort((a,b)=>{
+    const da=new Date(a.date),db=new Date(b.date);
+    return isNaN(db)||isNaN(da)?0:db-da;
+  });
   if(!rows.length){container.innerHTML='<div class="loading-spinner">No transactions this month</div>';return;}
   let html='<div class="txn-list">';
-  rows.forEach(r=>{html+=`<div class="txn-row"><div class="txn-left"><span class="txn-desc">${r.description||'—'}</span><span class="txn-meta">${fmtDate(r.date)} · ${r.category||'—'}</span></div><span class="txn-amount">$${parseFloat(r.cost||0).toFixed(2)}</span></div>`;});
+  rows.forEach(r=>{
+    const emoji=CAT_EMOJI[r.category]||'💰';
+    const dateStr=fmtDateWithDay(r.date);
+    html+=`<div class="txn-row">
+      <div style="font-size:22px;margin-right:10px;flex-shrink:0">${emoji}</div>
+      <div class="txn-left" style="flex:1">
+        <span class="txn-desc">${r.description||'—'}</span>
+        <span class="txn-meta">${dateStr} · ${r.category||'—'}</span>
+      </div>
+      <span class="txn-amount">$${parseFloat(r.cost||0).toFixed(2)}</span>
+    </div>`;
+  });
   html+='</div>';
   container.innerHTML=html;
 }
-
+  function fmtDateWithDay(raw){
+  if(!raw)return'—';
+  const s=raw.toString().trim();
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let d;
+  // ISO: 2026-05-06
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
+    const[y,mo,dy]=s.split('-');
+    d=new Date(parseInt(y),parseInt(mo)-1,parseInt(dy));
+  }
+  // D MMM YYYY: 6 May 2026
+  else if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s)){
+    const parts=s.split(' ');
+    d=new Date(parseInt(parts[2]),MONTH_IDX[parts[1]],parseInt(parts[0]));
+  }
+  else{
+    d=new Date(s);
+  }
+  if(!d||isNaN(d.getTime()))return fmtDate(raw);
+  return days[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear();
+}
+  
 function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+type;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
 </script>
 </body>
