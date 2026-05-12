@@ -725,17 +725,15 @@ function renderTripCards(){
     const balanceText=Math.abs(net)<0.01?'Settled ✓':net>0?`Paige owes Aizat $${Math.abs(net).toFixed(2)}`:`Aizat owes Paige $${Math.abs(net).toFixed(2)}`;
     const balanceClass=Math.abs(net)<0.01?'settled':'owes';
     const sentPct=parseFloat(trip.totalSpent)>0?Math.round((parseFloat(trip.sentToFund)/parseFloat(trip.totalSpent))*100):0;
-    html+=${dateRange?`<div class="trip-meta">${dateRange}</div>`:''}
+    const startStr=trip.startDate?fmtDateShort(trip.startDate):'';
+    const endStr=trip.endDate?fmtDateShort(trip.endDate):'';
+    const dateRange=startStr&&endStr?startStr+' – '+endStr:startStr||endStr||'';
+    html+=`<div class="trip-card" onclick="openTrip(${i})">
       <div class="trip-card-header">
-        <div><div class="trip-name">${trip.name}</div> const startStr=trip.startDate?fmtDateShort(trip.startDate):'';
-  const endStr=trip.endDate?fmtDateShort(trip.endDate):'';
-  const dateRange=startStr&&endStr?startStr+' – '+endStr:startStr||endStr||'';</div>
+        <div><div class="trip-name">${trip.name}</div>${dateRange?`<div class="trip-meta">${dateRange}</div>`:''}</div>
         <div style="text-align:right"><div class="trip-total">$${parseFloat(trip.totalSpent||0).toFixed(2)}</div><div class="trip-meta">AUD total</div></div>
       </div>
-      <div class="trip-balance">
-        <span class="trip-balance-label">BALANCE</span>
-        <span class="trip-balance-amount ${balanceClass}">${balanceText}</span>
-      </div>
+      <div class="trip-balance"><span class="trip-balance-label">BALANCE</span><span class="trip-balance-amount ${balanceClass}">${balanceText}</span></div>
       ${parseFloat(trip.sentToFund)>0?`<div style="margin-top:8px"><span class="trip-fund-pill">✓ $${parseFloat(trip.sentToFund).toFixed(2)} sent to Travel Fund (${sentPct}%)</span></div>`:''}
     </div>`;
   });
