@@ -456,6 +456,58 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// ── DATES (shared) ─────────────────────────────────
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTH_IDX={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+ 
+// Parse "Apr 2026" → {y:2026, m:3} — never uses new Date()
+function parseMonthLabel(label){
+  if(!label)return null;
+  const parts=label.trim().split(' ');
+  if(parts.length<2)return null;
+  const m=MONTH_IDX[parts[0]];
+  const y=parseInt(parts[1]);
+  if(isNaN(m)||isNaN(y))return null;
+  return{y,m};
+}
+ 
+// {y:2026, m:3} → "Apr 2026"
+function fmtMonthLabel(obj){return MONTHS[obj.m]+' '+obj.y;}
+ 
+// Subtract n months from a {y,m}
+function prevMonth(obj,n){
+  let m=obj.m-n,y=obj.y;
+  while(m<0){m+=12;y--;}
+  return{y,m};
+}
+ 
+// Format any date → D MMM YYYY
+function fmtDate(raw){
+  if(!raw)return'—';
+  const s=raw.toString().trim();
+  if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s))return s;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
+    const[y,mo,d]=s.split('-');
+    return parseInt(d)+' '+MONTHS[parseInt(mo)-1]+' '+parseInt(y);
+  }
+  return s;
+}
+ 
+// Format any date → D MMM YY (for trip card)
+function fmtDateShort(raw){
+  if(!raw)return'';
+  const s=raw.toString().trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
+    const[y,mo,d]=s.split('-');
+    return parseInt(d)+' '+MONTHS[parseInt(mo)-1]+' '+y.slice(2);
+  }
+  if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s)){
+    const parts=s.split(' ');
+    return parts[0]+' '+parts[1]+' '+parts[2].slice(2);
+  }
+  return s;
+}
+  
 // ── CATEGORY OPTIONS (shared) ─────────────────────────────────
 const CAT_OPTIONS = `<option value="">Select category…</option>
 <optgroup label="🏠 Rent"><option>Rent</option></optgroup>
@@ -673,9 +725,11 @@ function renderTripCards(){
     const balanceText=Math.abs(net)<0.01?'Settled ✓':net>0?`Paige owes Aizat $${Math.abs(net).toFixed(2)}`:`Aizat owes Paige $${Math.abs(net).toFixed(2)}`;
     const balanceClass=Math.abs(net)<0.01?'settled':'owes';
     const sentPct=parseFloat(trip.totalSpent)>0?Math.round((parseFloat(trip.sentToFund)/parseFloat(trip.totalSpent))*100):0;
-    html+=`<div class="trip-card" onclick="openTrip(${i})">
+    html+=${dateRange?`<div class="trip-meta">${dateRange}</div>`:''}
       <div class="trip-card-header">
-        <div><div class="trip-name">${trip.name}</div><div class="trip-meta">${trip.startDate||''} ${trip.endDate?'→ '+trip.endDate:''}</div></div>
+        <div><div class="trip-name">${trip.name}</div> const startStr=trip.startDate?fmtDateShort(trip.startDate):'';
+  const endStr=trip.endDate?fmtDateShort(trip.endDate):'';
+  const dateRange=startStr&&endStr?startStr+' – '+endStr:startStr||endStr||'';</div>
         <div style="text-align:right"><div class="trip-total">$${parseFloat(trip.totalSpent||0).toFixed(2)}</div><div class="trip-meta">AUD total</div></div>
       </div>
       <div class="trip-balance">
@@ -722,7 +776,36 @@ function renderTripDetail(){
 
   // Settle up button
   html+=`<button class="settle-btn" onclick="showSettle()">💳 Settle Up</button>`;
-
+  
+  // Trip spending summary by category
+  if(tripExpenses.length>0){
+    const byCat={};
+    tripExpenses.forEach(r=>{const c=r.category||'Other';byCat[c]=(byCat[c]||0)+parseFloat(r.amount||0);});
+    let summaryHtml='',grandTotal=0;
+    CATEGORY_GROUPS.forEach(group=>{
+      let groupTotal=0,catsHtml='';
+      group.cats.forEach(cat=>{
+        const amt=byCat[cat]||0;if(amt===0)return;
+        groupTotal+=amt;
+        catsHtml+=`<div style="display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px"><span style="color:var(--muted)">${cat}</span><span style="font-family:var(--mono)">$${amt.toFixed(2)}</span></div>`;
+      });
+      if(groupTotal===0)return;
+      grandTotal+=groupTotal;
+      summaryHtml+=`<div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer" onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='block'?'none':'block'">
+          <span style="font-size:12px;font-weight:600">${group.name}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">$${groupTotal.toFixed(2)}</span>
+        </div>
+        <div style="border-top:1px solid var(--border);display:none">${catsHtml}</div>
+      </div>`;
+    });
+    if(summaryHtml){
+      html+=`<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;white-space:nowrap">Spending by Category</span><div style="flex:1;height:1px;background:var(--border)"></div></div>`;
+      html+=summaryHtml;
+      html+=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--mono);font-size:11px;color:var(--muted)">TRIP TOTAL</span><span style="font-family:var(--mono);font-size:16px;font-weight:500;color:var(--accent)">$${grandTotal.toFixed(2)}</span></div>`;
+    }
+  }
+  
   // Mark as Sent to Fund (Option A)
   const unsent=tripExpenses.filter(r=>!r.sentToFund);
   if(unsent.length>0){
@@ -902,10 +985,20 @@ async function loadSummary(){
 
 function buildMonthSelector(){
   const now=new Date();
-  const months=[formatMonthLabel(now),formatMonthLabel(new Date(now.getFullYear(),now.getMonth()-1,1)),formatMonthLabel(new Date(now.getFullYear(),now.getMonth()-2,1))];
+  const months=[
+    fmtMonthLabel({y:now.getFullYear(),m:now.getMonth()}),
+    fmtMonthLabel(prevMonth({y:now.getFullYear(),m:now.getMonth()},1)),
+    fmtMonthLabel(prevMonth({y:now.getFullYear(),m:now.getMonth()},2)),
+  ];
   const sel=document.getElementById('monthSelector');sel.innerHTML='';
   if(!selectedMonth)selectedMonth=months[0];
-  months.forEach((m,i)=>{const btn=document.createElement('button');btn.className='month-pill'+(m===selectedMonth?' active':'');btn.textContent=m;btn.onclick=()=>{selectedMonth=m;document.querySelectorAll('.month-pill').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderSummary();renderTxnList();};sel.appendChild(btn);});
+  months.forEach((m,i)=>{
+    const btn=document.createElement('button');
+    btn.className='month-pill'+(m===selectedMonth?' active':'');
+    btn.textContent=m;
+    btn.onclick=()=>{selectedMonth=m;document.querySelectorAll('.month-pill').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderSummary();renderTxnList();};
+    sel.appendChild(btn);
+  });
 }
 
 function getRowsForMonth(month){return(summaryData||[]).filter(r=>{const m=normaliseMonth(r.month);return m===month&&parseFloat(r.cost||0)>0;});}
@@ -914,9 +1007,10 @@ function renderSummary(){
   const content=document.getElementById('summaryContent');
   if(!summaryData||!selectedMonth){content.innerHTML='<div class="loading-spinner">No data</div>';return;}
   const now=new Date();
-  const selDate=new Date(selectedMonth+' 1');
-  const prev1Month=formatMonthLabel(new Date(selDate.getFullYear(),selDate.getMonth()-1,1));
-  const prev2Month=formatMonthLabel(new Date(selDate.getFullYear(),selDate.getMonth()-2,1));
+  const selParsed=parseMonthLabel(selectedMonth);
+  if(!selParsed){content.innerHTML='<div class="loading-spinner">Could not parse month</div>';return;}
+  const prev1Month=fmtMonthLabel(prevMonth(selParsed,1));
+  const prev2Month=fmtMonthLabel(prevMonth(selParsed,2));
   const cur=getRowsForMonth(selectedMonth),p1=getRowsForMonth(prev1Month),p2=getRowsForMonth(prev2Month);
   const sumByCat=(rows)=>{const m={};rows.forEach(r=>{const c=r.category||'Other';m[c]=(m[c]||0)+parseFloat(r.cost||0);});return m;};
   const curC=sumByCat(cur),p1C=sumByCat(p1),p2C=sumByCat(p2);
@@ -960,7 +1054,7 @@ function renderTxnList(){
   const rows=getRowsForMonth(selectedMonth).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
   if(!rows.length){container.innerHTML='<div class="loading-spinner">No transactions this month</div>';return;}
   let html='<div class="txn-list">';
-  rows.forEach(r=>{html+=`<div class="txn-row"><div class="txn-left"><span class="txn-desc">${r.description||'—'}</span><span class="txn-meta">${r.date} &nbsp;·&nbsp; ${r.category||'—'}</span></div><span class="txn-amount">$${parseFloat(r.cost||0).toFixed(2)}</span></div>`;});
+  rows.forEach(r=>{html+=`<div class="txn-row"><div class="txn-left"><span class="txn-desc">${r.description||'—'}</span><span class="txn-meta">${fmtDate(r.date)} · ${r.category||'—'}</span></div><span class="txn-amount">$${parseFloat(r.cost||0).toFixed(2)}</span></div>`;});
   html+='</div>';
   container.innerHTML=html;
 }
