@@ -1022,11 +1022,23 @@ function buildMonthSelector(){
     const btn=document.createElement('button');
     btn.className='month-pill'+(m===selectedMonth?' active':'');
     btn.textContent=m;
-    btn.onclick=()=>{selectedMonth=m;document.querySelectorAll('.month-pill').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderSummary();renderTxnList();};
+    btn.onclick=()=>{
+      selectedMonth=m;
+      summaryData=null;
+      budgetData=null;
+      document.querySelectorAll('.month-pill').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      // Stay in whatever view is currently active
+      if(summaryView==='funds'){
+        renderFundSummary();
+      } else {
+        loadSummary();
+      }
+    };
     sel.appendChild(btn);
   });
 }
-
+  
 function getRowsForMonth(month){return(summaryData||[]).filter(r=>{const m=normaliseMonth(r.month);return m===month&&parseFloat(r.cost||0)>0;});}
 
 function renderSummary(){
