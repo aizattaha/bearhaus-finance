@@ -307,7 +307,7 @@
         <span style="margin-left:auto;font-size:11px;color:var(--accent);font-family:var(--mono)">tap to apply</span>
       </div>
     </div>
-    <div class="field"><div class="select-wrap"><select class="select" id="d_cat">CATEGORY_OPTIONS</select></div></div>
+    <div class="field"><div class="select-wrap"><select class="select" id="d_cat"></select></div></div>
     <div class="field"><div class="amount-row"><input class="input" type="number" id="d_amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="updateSharePreview('d')"/><div class="currency-toggle"><button class="curr-btn active" id="d_aud" onclick="setCurrency('d','AUD')">AUD</button><button class="curr-btn" id="d_sgd" onclick="setCurrency('d','SGD')">SGD</button></div></div></div>
     <div class="field"><div class="recurring-row"><button class="recurring-toggle-btn" id="d_recurringBtn" onclick="toggleRecurring('d')">🔁 Recurring</button><div class="recurring-period" id="d_recurringPeriod" style="display:none"><button class="period-btn" id="d_periodWeekly" onclick="setPeriod('d','weekly')">Weekly</button><button class="period-btn" id="d_periodMonthly" onclick="setPeriod('d','monthly')">Monthly</button></div></div></div>
     <div class="field"><div class="field-label">WHO PAID?</div><div class="payer-grid"><button class="payer-btn" id="d_payer_aizat" onclick="setPayer('d','Aizat')">👤<br>Aizat</button><button class="payer-btn" id="d_payer_joint" onclick="setPayer('d','Aizat&Paige')">👥<br>Aizat&Paige</button><button class="payer-btn" id="d_payer_paige" onclick="setPayer('d','Paige')">👤<br>Paige</button></div></div>
@@ -315,7 +315,7 @@
       <div class="field-label">USING</div>
       <div class="account-group" id="d_aizatAccounts" style="display:none"><div class="account-group-label">Aizat</div><div class="account-chips"><button class="chip" onclick="setUsing('d','Macquarie - Aizat',this,'aizat')">Macquarie - Aizat</button><button class="chip" onclick="setUsing('d','YouTrip - Aizat',this,'aizat')">YouTrip - Aizat</button><button class="chip" onclick="setUsing('d','ComBank - Aizat',this,'aizat')">ComBank - Aizat</button><button class="chip" onclick="setUsing('d','Bank - Aizat',this,'aizat')">Bank - Aizat</button></div></div>
       <div class="account-group" id="d_jointAccounts" style="display:none"><div class="account-group-label">Joint</div><div class="account-chips"><button class="chip" onclick="setUsing('d','Bank - Joint',this,'joint')">Bank - Joint</button><button class="chip" onclick="setUsing('d','YouTrip - Joint',this,'joint')">YouTrip - Joint</button></div></div>
-      <div class="account-group" id="d_paigeAccounts" style="display:none"><div class="account-group-label">Paige</div><div class="account-chips"><button class="chip" onclick="setUsing('d','YouTrip - Paige',this,'paige')">YouTrip - Paige</button><button class="chip" onclick="setUsing('d','Bank - Paige',this,'paige')">Bank - Paige</button><button class="chip" onclick="setUsing('d','Macquarie - Paige',this,'paige')">Macquarie - Paige</button><button class="chip" onclick="setUsing('d','Paige - HSBC Star Alliance',this,'paige')">HSBC Star Alliance</button></div></div>
+      <div class="account-group" id="d_paigeAccounts" style="display:none"><div class="account-group-label">Paige</div><div class="account-chips"><button class="chip" onclick="setUsing('d','YouTrip - Paige',this,'paige')">YouTrip - Paige</button><button class="chip" onclick="setUsing('d','Bank - Paige',this,'paige')">Bank - Paige</button><button class="chip" onclick="setUsing('d','Macquarie - Paige',this,'paige')">Macquarie - Paige</button><button class="chip" onclick="setUsing('d','HSBC Star Alliance - Paige',this,'paige')">HSBC Star Alliance</button></div></div>
       <div class="account-group"><div class="account-group-label">Other</div><div class="account-chips"><button class="chip" onclick="setUsing('d','Cash',this,'other')">Cash</button></div></div>
     </div>
     <div class="share-preview" id="d_sharePreview" style="display:none"><div class="share-preview-label">Split Preview</div><div class="share-row"><span class="share-name">AIZAT</span><span class="share-value" id="d_prev_aizat">—</span></div><div class="share-divider"></div><div class="share-row"><span class="share-name">AIZAT &amp; PAIGE</span><span class="share-value" id="d_prev_joint">—</span></div><div class="share-divider"></div><div class="share-row"><span class="share-name">PAIGE</span><span class="share-value" id="d_prev_paige">—</span></div></div>
@@ -374,14 +374,14 @@
         <span style="margin-left:auto;font-size:11px;color:var(--accent);font-family:var(--mono)">tap to apply</span>
       </div>
     </div>
-    <div class="field"><div class="select-wrap"><select class="select" id="t_cat">CATEGORY_OPTIONS</select></div></div>
-    <div class="field"><div class="amount-row"><input class="input" type="number" id="t_amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="updateSharePreview('t')"/><div class="currency-toggle"><button class="curr-btn active" id="t_aud" onclick="setCurrency('t','AUD')">AUD</button><button class="curr-btn" id="t_sgd" onclick="setCurrency('t','SGD')">SGD</button></div></div></div>
+    <div class="field"><div class="select-wrap"><select class="select" id="t_cat"></select></div></div>
+    <div class="field"><div class="amount-row"><input class="input" type="number" id="t_amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="updateSharePreview('t')"/><div class="currency-toggle" id="t_currencyToggle"><button class="curr-btn active" id="t_aud" onclick="setCurrency('t','AUD')">AUD</button><button class="curr-btn" id="t_sgd" onclick="setCurrency('t','SGD')">SGD</button><button class="curr-btn" id="t_trip_curr" onclick="setCurrency('t', currentTripCurrency)" style="display:none"></button></div></div></div>
     <div class="field"><div class="field-label">WHO PAID?</div><div class="payer-grid"><button class="payer-btn" id="t_payer_aizat" onclick="setPayer('t','Aizat')">👤<br>Aizat</button><button class="payer-btn" id="t_payer_joint" onclick="setPayer('t','Aizat&Paige')">👥<br>Aizat&Paige</button><button class="payer-btn" id="t_payer_paige" onclick="setPayer('t','Paige')">👤<br>Paige</button></div></div>
     <div class="field" id="t_usingSection" style="display:none">
       <div class="field-label">USING</div>
-      <div class="account-group" id="t_aizatAccounts" style="display:none"><div class="account-group-label">Aizat</div><div class="account-chips"><button class="chip" onclick="setUsing('t','Macquarie - Aizat',this,'aizat')">Macquarie - Aizat</button><button class="chip" onclick="setUsing('t','YouTrip - Aizat',this,'aizat')">YouTrip - Aizat</button><button class="chip" onclick="setUsing('t','ComBank - Aizat',this,'aizat')">ComBank - Aizat</button><button class="chip" onclick="setUsing('t','Bank - Aizat',this,'aizat')">Bank - Aizat</button></div></div>
-      <div class="account-group" id="t_jointAccounts" style="display:none"><div class="account-group-label">Joint</div><div class="account-chips"><button class="chip" onclick="setUsing('t','Bank - Joint',this,'joint')">Bank - Joint</button><button class="chip" onclick="setUsing('t','YouTrip - Joint',this,'joint')">YouTrip - Joint</button></div></div>
-      <div class="account-group" id="t_paigeAccounts" style="display:none"><div class="account-group-label">Paige</div><div class="account-chips"><button class="chip" onclick="setUsing('t','YouTrip - Paige',this,'paige')">YouTrip - Paige</button><button class="chip" onclick="setUsing('t','Bank - Paige',this,'paige')">Bank - Paige</button><button class="chip" onclick="setUsing('t','Macquarie - Paige',this,'paige')">Macquarie - Paige</button><button class="chip" onclick="setUsing('t','Paige - HSBC Star Alliance',this,'paige')">HSBC Star Alliance</button></div></div>
+      <div class="account-group" id="t_aizatAccounts" style="display:none"><div class="account-group-label">Aizat</div><div class="account-chips"><button class="chip" onclick="setUsing('t','Macquarie - Aizat',this,'aizat')">Macquarie - Aizat</button><button class="chip" onclick="setUsing('t','UOB PPV - Aizat',this,'aizat')">UOB PPV - Aizat</button><button class="chip" onclick="setUsing('t','UOB Visa Signature - Aizat',this,'aizat')">UOB Visa Sig - Aizat</button><button class="chip" onclick="setUsing('t','YouTrip - Aizat',this,'aizat')">YouTrip - Aizat</button><button class="chip" onclick="setUsing('t','ComBank - Aizat',this,'aizat')">ComBank - Aizat</button><button class="chip" onclick="setUsing('t','Bank - Aizat',this,'aizat')">Bank - Aizat</button></div></div>
+      <div class="account-group" id="t_jointAccounts" style="display:none"><div class="account-group-label">Joint</div><div class="account-chips"><button class="chip" onclick="setUsing('t','UOB PPV - Aizat',this,'aizat')">UOB PPV - Aizat</button><button class="chip" onclick="setUsing('t','Bank - Joint',this,'joint')">Bank - Joint</button><button class="chip" onclick="setUsing('t','YouTrip - Joint',this,'joint')">YouTrip - Joint</button></div></div>
+      <div class="account-group" id="t_paigeAccounts" style="display:none"><div class="account-group-label">Paige</div><div class="account-chips"><button class="chip" onclick="setUsing('t','HSBC Star Alliance - Paige',this,'paige')">HSBC Star Alliance</button><button class="chip" onclick="setUsing('t','DBS Altitude - Paige',this,'paige')">DBS Altitude - Paige</button><button class="chip" onclick="setUsing('t','YouTrip - Paige',this,'paige')">YouTrip - Paige</button><button class="chip" onclick="setUsing('t','Bank - Paige',this,'paige')">Bank - Paige</button><button class="chip" onclick="setUsing('t','Macquarie - Paige',this,'paige')">Macquarie - Paige</button></div></div>
       <div class="account-group"><div class="account-group-label">Other</div><div class="account-chips"><button class="chip" onclick="setUsing('t','Cash',this,'other')">Cash</button></div></div>
     </div>
     <div class="share-preview" id="t_sharePreview" style="display:none"><div class="share-preview-label">Split Preview</div><div class="share-row"><span class="share-name">AIZAT</span><span class="share-value" id="t_prev_aizat">—</span></div><div class="share-divider"></div><div class="share-row"><span class="share-name">AIZAT &amp; PAIGE</span><span class="share-value" id="t_prev_joint">—</span></div><div class="share-divider"></div><div class="share-row"><span class="share-name">PAIGE</span><span class="share-value" id="t_prev_paige">—</span></div></div>
@@ -406,7 +406,7 @@
   </div>
 
   <!-- SUMMARY TAB -->
-<div class="summary-area" id="summaryArea" style="display:none">
+  <div class="summary-area" id="summaryArea" style="display:none">
     <div style="display:flex;gap:8px">
       <button class="month-pill active" id="pillSpending" onclick="setSummaryView('spending')" style="flex:1;font-size:12px">📊 Spending</button>
       <button class="month-pill" id="pillFunds" onclick="setSummaryView('funds')" style="flex:1;font-size:12px">💰 Funds</button>
@@ -432,8 +432,7 @@
 <div class="settle-modal" id="settleModal" style="display:none">
   <div class="settle-card">
     <div class="settle-card-title">💳 Settle Up</div>
-    <div class="settle-amount-big" id="settleAmount"></div>
-    <div class="settle-desc" id="settleDesc"></div>
+    <div id="settleContent"></div>
     <div class="settle-actions">
       <button class="settle-cancel" onclick="closeSettle()">Close</button>
       <button class="settle-ok" onclick="closeSettle()">Got it!</button>
@@ -450,6 +449,13 @@
       <div class="field"><label class="field-label">START DATE (optional)</label><input class="input" type="date" id="newTripStart"/></div>
       <div class="field"><label class="field-label">END DATE (optional)</label><input class="input" type="date" id="newTripEnd"/></div>
     </div>
+    <div class="field">
+      <label class="field-label">TRIP CURRENCY (optional)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="input" id="newTripCurrency" placeholder="e.g. CNY, JPY, THB" maxlength="3" style="text-transform:uppercase;flex:1"/>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">3-letter code</span>
+      </div>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <button class="settle-cancel" onclick="closeAddTripModal()">Cancel</button>
       <button class="submit-btn" id="addTripSubmitBtn" onclick="submitNewTrip()" style="margin-top:0">Create Trip</button>
@@ -457,70 +463,59 @@
   </div>
 </div>
 
+<!-- CONFIRM DELETE MODAL -->
+<div class="settle-modal" id="confirmDeleteModal" style="display:none">
+  <div class="settle-card">
+    <div class="settle-card-title">🗑️ Delete Transaction?</div>
+    <div class="settle-desc">This cannot be undone.</div>
+    <div class="settle-actions">
+      <button class="settle-cancel" onclick="closeConfirmDelete()">Cancel</button>
+      <button style="padding:14px;border-radius:var(--radius);border:none;background:var(--danger);color:#fff;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;" id="confirmDeleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-// ── DATES (shared) ─────────────────────────────────
+// ── DATES ──────────────────────────────────────────
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTH_IDX={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
- 
-// Parse "Apr 2026" → {y:2026, m:3} — never uses new Date()
+
 function parseMonthLabel(label){
   if(!label)return null;
   const parts=label.trim().split(' ');
   if(parts.length<2)return null;
-  const m=MONTH_IDX[parts[0]];
-  const y=parseInt(parts[1]);
+  const m=MONTH_IDX[parts[0]];const y=parseInt(parts[1]);
   if(isNaN(m)||isNaN(y))return null;
   return{y,m};
 }
- 
-// {y:2026, m:3} → "Apr 2026"
 function fmtMonthLabel(obj){return MONTHS[obj.m]+' '+obj.y;}
- 
-// Subtract n months from a {y,m}
-function prevMonth(obj,n){
-  let m=obj.m-n,y=obj.y;
-  while(m<0){m+=12;y--;}
-  return{y,m};
-}
- 
-// Format any date → D MMM YYYY
+function prevMonth(obj,n){let m=obj.m-n,y=obj.y;while(m<0){m+=12;y--;}return{y,m};}
 function fmtDate(raw){
-  if(!raw)return'—';
-  const s=raw.toString().trim();
+  if(!raw)return'—';const s=raw.toString().trim();
   if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s))return s;
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
-    const[y,mo,d]=s.split('-');
-    return parseInt(d)+' '+MONTHS[parseInt(mo)-1]+' '+parseInt(y);
-  }
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){const[y,mo,d]=s.split('-');return parseInt(d)+' '+MONTHS[parseInt(mo)-1]+' '+parseInt(y);}
   return s;
 }
- 
-// Format any date → D MMM YY (for trip card)
 function fmtDateShort(raw){
-  if(!raw)return'';
-  const s=raw.toString().trim();
-  // ISO: 2026-05-06
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
-    const[y,mo,d]=s.split('-');
-    return parseInt(d)+' '+MONTHS[parseInt(mo)-1]+' '+y.slice(2);
-  }
-  // Already D MMM YYYY → shorten year
-  if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s)){
-    const parts=s.split(' ');
-    return parts[0]+' '+parts[1]+' '+parts[2].slice(2);
-  }
-  // Google Sheets may return a full Date string — parse it
-  const d=new Date(s);
-  if(!isNaN(d.getTime())){
-    return d.getDate()+' '+MONTHS[d.getMonth()]+' '+String(d.getFullYear()).slice(2);
-  }
+  if(!raw)return'';const s=raw.toString().trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){const[y,mo,d]=s.split('-');return parseInt(d)+' '+MONTHS[parseInt(mo)-1]+' '+y.slice(2);}
+  if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s)){const parts=s.split(' ');return parts[0]+' '+parts[1]+' '+parts[2].slice(2);}
+  const d=new Date(s);if(!isNaN(d.getTime())){return d.getDate()+' '+MONTHS[d.getMonth()]+' '+String(d.getFullYear()).slice(2);}
   return s;
 }
-  
-// ── CATEGORY OPTIONS (shared) ─────────────────────────────────
-const CAT_OPTIONS = `<option value="">Select category…</option>
+function fmtDateWithDay(raw){
+  if(!raw)return'—';const s=raw.toString().trim();const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];let d;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){const[y,mo,dy]=s.split('-');d=new Date(parseInt(y),parseInt(mo)-1,parseInt(dy));}
+  else if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s)){const parts=s.split(' ');d=new Date(parseInt(parts[2]),MONTH_IDX[parts[1]],parseInt(parts[0]));}
+  else{d=new Date(s);}
+  if(!d||isNaN(d.getTime()))return fmtDate(raw);
+  return days[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear();
+}
+
+// ── CATEGORY OPTIONS ────────────────────────────────
+const DAILY_CAT_OPTIONS=`<option value="">Select category…</option>
 <optgroup label="🏠 Rent"><option>Rent</option></optgroup>
 <optgroup label="🛍️ Daily Expenses"><option>Dining out</option><option>Groceries</option><option>Furniture</option><option>Home - Other</option><option>Household supplies</option><option>Sports</option><option>Clothing</option><option>Gifts</option><option>Life - Other</option><option>Medical Expenses</option><option>Liquor</option><option>Entertainment - Other</option><option>Electronics</option><option>Movies</option><option>Games</option></optgroup>
 <optgroup label="👶 Education"><option>Childcare</option><option>Education</option></optgroup>
@@ -529,14 +524,34 @@ const CAT_OPTIONS = `<option value="">Select category…</option>
 <optgroup label="🛡️ Insurance"><option>Insurance</option></optgroup>
 <optgroup label="📱 TV/Phone/Internet"><option>TV/Phone/Internet</option></optgroup>`;
 
-// Inject category options
-document.querySelectorAll('#d_cat,#t_cat').forEach(el => el.innerHTML = CAT_OPTIONS);
+const TRAVEL_CAT_OPTIONS=`<option value="">Select category…</option>
+<optgroup label="✈️ Flights &amp; Transport"><option>Flights</option><option>Airport Transfer</option><option>Taxi/Grab</option><option>Public Transport</option><option>Car Rental</option><option>Ferry/Train</option></optgroup>
+<optgroup label="🏨 Accommodation"><option>Hotel</option><option>Airbnb/Hostel</option></optgroup>
+<optgroup label="🍜 Food &amp; Drinks"><option>Dining out</option><option>Street Food</option><option>Groceries</option><option>Drinks</option></optgroup>
+<optgroup label="🎡 Activities"><option>Tours &amp; Experiences</option><option>Attraction Entry</option></optgroup>
+<optgroup label="🛍️ Shopping"><option>Shopping</option><option>Souvenirs</option></optgroup>
+<optgroup label="💊 Health &amp; Comms"><option>Travel Insurance</option><option>Medical</option><option>SIM Card/Data</option></optgroup>
+<optgroup label="🗂️ Other"><option>Other</option></optgroup>`;
 
-// ── FUNDS ─────────────────────────────────────────────────────
+document.getElementById('d_cat').innerHTML=DAILY_CAT_OPTIONS;
+document.getElementById('t_cat').innerHTML=TRAVEL_CAT_OPTIONS;
+
+// ── TRAVEL CATEGORY GROUPS ──────────────────────────
+const TRAVEL_CATEGORY_GROUPS=[
+  {name:'✈️ Flights & Transport',cats:['Flights','Airport Transfer','Taxi/Grab','Public Transport','Car Rental','Ferry/Train']},
+  {name:'🏨 Accommodation',cats:['Hotel','Airbnb/Hostel']},
+  {name:'🍜 Food & Drinks',cats:['Dining out','Street Food','Groceries','Drinks']},
+  {name:'🎡 Activities',cats:['Tours & Experiences','Attraction Entry']},
+  {name:'🛍️ Shopping',cats:['Shopping','Souvenirs']},
+  {name:'💊 Health & Comms',cats:['Travel Insurance','Medical','SIM Card/Data']},
+  {name:'🗂️ Other',cats:['Other']},
+];
+
+// ── FUNDS ───────────────────────────────────────────
 const AU_FUNDS=['Others','Float','Rainy Day Fund AU (Aizat)','Emergency Fund AU (Paige)','Edu Fund (Claire)','Edu Fund (Anne)','Car Fund','BearHaus Rainy Day AU','Travel Fund AU','Monthly Expenses (Aizat)','Monthly Expenses (Paige)','Investment Fund AU (Aizat)','Dry Powder AU (Paige)'];
 const SG_FUNDS=['MediShield (Aizat)','Life Multiprotect (Aizat)','FWD Future First','MediShield (Paige)','Life Multiprotect (Paige)','AXA Term Protector','Pruwealth (May 2025)','HSBC FlexiProtector (Anne)','AIA ProtectPlus 2 (Anne)','Early Saver 5-Pay (Anne)','MediShield (Anne)','MediShield (Claire)','Life Treasure (Claire)',"Anne's Savings SG","Claire's Savings SG",'Taxes Fund SG (Aizat)','Investment Fund SG (Aizat)','Dry Powder SG (Paige)','Emergency Fund SG (Paige)','Stashaway','BOC','Property Tax','Google Drive','Future DreamHouse SG'];
 
-const CATEGORY_MAP={'woolworths':'Groceries','woolies':'Groceries','coles':'Groceries','iga':'Groceries','fruitlife':'Groceries','nqr':'Groceries','asian mart':'Groceries','downtown grocer':'Groceries','charm mart':'Groceries','thuan hung':'Groceries','fruits':'Groceries','myki':'Bus/train','skybus':'Bus/train','uber':'Taxi','taxi':'Taxi','grab':'Taxi','ampol':'Gas/fuel','fuel':'Gas/fuel','petrol':'Gas/fuel','parking':'Parking','whitehorse':'Car','hertz':'Car','budget':'Car','rentalcars':'Car','ikea':'Furniture','amart':'Furniture','bunnings':'Household supplies','chemist warehouse':'Household supplies','daiso':'Household supplies','kmart':'Home - Other','big w':'Home - Other','maccas':'Dining out','kfc':'Dining out','dominos':'Dining out',"domino's":'Dining out','kokoro':'Dining out','fishbowl':'Dining out','sushi':'Dining out','kebab':'Dining out','genki':'Dining out','paradai':'Dining out','wonton':'Dining out','dumpling':'Dining out','oriental hut':'Dining out','malay kitchen':'Dining out','jinda thai':'Dining out','soul origin':'Dining out','meet fresh':'Dining out','pancake parlour':'Dining out','coffee':'Dining out','cafe':'Dining out','bakery':'Dining out','boost':'Dining out','liquorland':'Liquor','telstra':'TV/Phone/Internet','zara':'Clothing','cotton on':'Clothing','uniqlo':'Clothing','florsheim':'Clothing','polo ralph':'Clothing','specsavers':'Health','airpods':'Electronics','apple':'Electronics','good guys':'Electronics','guardian childcare':'Childcare','childcare':'Childcare','school':'Education','tuition':'Education','kindy':'Education','airbnb':'Hotel','rent':'Rent','insurance':'Insurance','medica':'Medical Expenses','hospital':'Medical Expenses','vic roads':'Car'};
+const CATEGORY_MAP={'woolworths':'Groceries','woolies':'Groceries','coles':'Groceries','iga':'Groceries','fruitlife':'Groceries','nqr':'Groceries','asian mart':'Groceries','downtown grocer':'Groceries','charm mart':'Groceries','thuan hung':'Groceries','fruits':'Groceries','myki':'Bus/train','skybus':'Bus/train','uber':'Taxi/Grab','taxi':'Taxi/Grab','grab':'Taxi/Grab','ampol':'Gas/fuel','fuel':'Gas/fuel','petrol':'Gas/fuel','parking':'Parking','whitehorse':'Car','hertz':'Car Rental','budget':'Car Rental','rentalcars':'Car Rental','ikea':'Furniture','amart':'Furniture','bunnings':'Household supplies','chemist warehouse':'Household supplies','daiso':'Household supplies','kmart':'Home - Other','big w':'Home - Other','maccas':'Dining out','kfc':'Dining out','dominos':'Dining out',"domino's":'Dining out','kokoro':'Dining out','fishbowl':'Dining out','sushi':'Dining out','kebab':'Dining out','genki':'Dining out','paradai':'Dining out','wonton':'Dining out','dumpling':'Dining out','oriental hut':'Dining out','malay kitchen':'Dining out','jinda thai':'Dining out','soul origin':'Dining out','meet fresh':'Dining out','pancake parlour':'Dining out','coffee':'Dining out','cafe':'Dining out','bakery':'Dining out','boost':'Dining out','liquorland':'Liquor','telstra':'TV/Phone/Internet','zara':'Clothing','cotton on':'Clothing','uniqlo':'Clothing','florsheim':'Clothing','polo ralph':'Clothing','specsavers':'Medical Expenses','airpods':'Electronics','apple':'Electronics','good guys':'Electronics','guardian childcare':'Childcare','childcare':'Childcare','school':'Education','tuition':'Education','kindy':'Education','airbnb':'Airbnb/Hostel','hotel':'Hotel','flight':'Flights','airline':'Flights','rent':'Rent','insurance':'Insurance','medica':'Medical Expenses','hospital':'Medical Expenses','vic roads':'Car'};
 
 const CATEGORY_GROUPS=[
   {name:'🏠 Rent',cats:['Rent']},
@@ -548,25 +563,29 @@ const CATEGORY_GROUPS=[
   {name:'📱 TV/Phone/Internet',cats:['TV/Phone/Internet']},
 ];
 
-// ── STATE ─────────────────────────────────────────────────────
+const CAT_EMOJI={
+  'Rent':'🏠','Dining out':'🍽️','Groceries':'🛒','Furniture':'🛋️','Home - Other':'🏠','Household supplies':'🧹','Sports':'⚽','Clothing':'👗','Gifts':'🎁','Life - Other':'💳','Medical Expenses':'💊','Liquor':'🍷','Entertainment - Other':'🎬','Electronics':'📱','Movies':'🎬','Games':'🎮','Childcare':'👶','Education':'📚','Bus/train':'🚌','Gas/fuel':'⛽','Car':'🚗','Parking':'🅿️','Taxi':'🚕','Bicycle':'🚲','Water':'💧','Electricity':'⚡','Gas':'🔥','Insurance':'🛡️','TV/Phone/Internet':'📡',
+  'Flights':'✈️','Airport Transfer':'🚖','Taxi/Grab':'🚕','Public Transport':'🚌','Car Rental':'🚙','Ferry/Train':'🚢','Hotel':'🏨','Airbnb/Hostel':'🏠','Street Food':'🍜','Drinks':'🍻','Tours & Experiences':'🎡','Attraction Entry':'🎫','Shopping':'🛍️','Souvenirs':'🪆','Travel Insurance':'🛡️','Medical':'💊','SIM Card/Data':'📶','Other':'💰'
+};
+
+// ── STATE ───────────────────────────────────────────
 let scriptUrl=localStorage.getItem('financeScriptUrl')||'';
 let fundCountry='AU',fundTxType='Expense';
 let summaryUnlocked=false,pinEntry='';
 const PIN='1478';
 let summaryData=null,selectedMonth=null;
 let trips=[],currentTrip=null,tripExpenses=[];
-let currentView='daily'; // daily|fund|travel|tripDetail|travelExpense|summary|lock
-let budgetData=null;
-let fundBalances=null;
-let summaryView='spending'; // 'spending' | 'funds'
-  
-// Per-form state
+let currentTripCurrency='';
+let currentView='daily';
+let budgetData=null,fundBalances=null,summaryView='spending';
+let pendingDeleteCallback=null;
+
 const formState={
   d:{currency:'AUD',payer:null,using:null,manualOverride:false,advOpen:false,recurring:false,recurringPeriod:null,suggestedCat:null},
   t:{currency:'AUD',payer:null,using:null,manualOverride:false,advOpen:false,recurring:false,recurringPeriod:null,suggestedCat:null},
 };
 
-// ── INIT ──────────────────────────────────────────────────────
+// ── INIT ────────────────────────────────────────────
 window.onload=()=>{
   const today=getTodayLocal();
   document.getElementById('d_date').value=today;
@@ -584,7 +603,7 @@ function showMain(){document.getElementById('setupScreen').style.display='none';
 function saveScriptUrl(){const url=document.getElementById('scriptUrlInput').value.trim();if(!url.startsWith('https://script.google.com')){showToast('Please enter a valid Apps Script URL','error');return;}scriptUrl=url;localStorage.setItem('financeScriptUrl',url);showMain();showToast('Connected!','success');}
 function clearUrl(){localStorage.removeItem('financeScriptUrl');scriptUrl='';document.getElementById('scriptUrlInput').value='';showSetup();}
 
-// ── MODE SWITCHING ────────────────────────────────────────────
+// ── MODE SWITCHING ──────────────────────────────────
 function setMode(mode){
   currentView=mode;
   ['daily','fund','travel','summary'].forEach(m=>document.getElementById('tab'+m.charAt(0).toUpperCase()+m.slice(1)).classList.toggle('active',m===mode));
@@ -600,20 +619,38 @@ function setMode(mode){
   if(mode==='summary'&&!summaryUnlocked){pinEntry='';updatePinDots();}
 }
 
-// ── PIN ───────────────────────────────────────────────────────
+// ── PIN ─────────────────────────────────────────────
 function pinInput(d){if(pinEntry.length>=4)return;pinEntry+=d;updatePinDots();if(pinEntry.length===4){if(pinEntry===PIN){summaryUnlocked=true;document.getElementById('lockScreen').style.display='none';document.getElementById('summaryArea').style.display='flex';loadSummary();}else{document.querySelectorAll('.pin-dot').forEach(x=>{x.classList.add('error');x.classList.remove('filled');});setTimeout(()=>{pinEntry='';updatePinDots();},600);}}}
 function pinDelete(){if(pinEntry.length>0){pinEntry=pinEntry.slice(0,-1);updatePinDots();}}
 function updatePinDots(){for(let i=0;i<4;i++){const d=document.getElementById('dot'+i);d.classList.remove('filled','error');if(i<pinEntry.length)d.classList.add('filled');}}
 function lockSummary(){summaryUnlocked=false;pinEntry='';document.getElementById('summaryArea').style.display='none';document.getElementById('lockScreen').style.display='flex';updatePinDots();}
 
-// ── FUNDS ─────────────────────────────────────────────────────
+// ── FUNDS ───────────────────────────────────────────
 function populateFundDropdown(country){const sel=document.getElementById('f_fund');const funds=country==='AU'?AU_FUNDS:SG_FUNDS;sel.innerHTML='<option value="">Select fund…</option>';funds.forEach(f=>{const o=document.createElement('option');o.value=o.textContent=f;sel.appendChild(o);});}
 function setCountry(c){fundCountry=c;document.getElementById('f_au').classList.toggle('active',c==='AU');document.getElementById('f_sg').classList.toggle('active',c==='SG');populateFundDropdown(c);}
 function setTxType(t){fundTxType=t;document.getElementById('f_expense').classList.toggle('active',t==='Expense');document.getElementById('f_income').classList.toggle('active',t==='Income');}
 
-// ── SHARED FORM HELPERS ───────────────────────────────────────
-function setCurrency(prefix,c){formState[prefix].currency=c;document.getElementById(prefix+'_aud').classList.toggle('active',c==='AUD');document.getElementById(prefix+'_sgd').classList.toggle('active',c==='SGD');}
+// ── CURRENCY ─────────────────────────────────────────
+function setCurrency(prefix,c){
+  formState[prefix].currency=c;
+  document.getElementById(prefix+'_aud').classList.toggle('active',c==='AUD');
+  document.getElementById(prefix+'_sgd').classList.toggle('active',c==='SGD');
+  const tripBtn=document.getElementById(prefix+'_trip_curr');
+  if(tripBtn)tripBtn.classList.toggle('active',c===currentTripCurrency&&c!=='AUD'&&c!=='SGD');
+}
 
+function updateTripCurrencyBtn(){
+  const btn=document.getElementById('t_trip_curr');
+  if(!btn)return;
+  if(currentTripCurrency&&currentTripCurrency!=='AUD'&&currentTripCurrency!=='SGD'){
+    btn.style.display='';
+    btn.textContent=currentTripCurrency;
+  }else{
+    btn.style.display='none';
+  }
+}
+
+// ── SHARED FORM HELPERS ─────────────────────────────
 function onDescInput(p){
   const desc=document.getElementById(p+'_desc').value.trim().toLowerCase();
   const sug=document.getElementById(p+'_catSuggestion');
@@ -629,15 +666,13 @@ function acceptSuggestion(p){if(formState[p].suggestedCat){document.getElementBy
 function toggleRecurring(p){
   const s=formState[p];s.recurring=!s.recurring;
   document.getElementById(p+'_recurringBtn').classList.toggle('active',s.recurring);
-  if(p==='f'){document.getElementById('f_recurringPeriod').style.display=s.recurring?'flex':'none';}
-  else{document.getElementById(p+'_recurringPeriod').style.display=s.recurring?'flex':'none';}
-  if(!s.recurring){s.recurringPeriod=null;}
+  document.getElementById(p+'_recurringPeriod').style.display=s.recurring?'flex':'none';
+  if(!s.recurring)s.recurringPeriod=null;
 }
 function setPeriod(p,period){
   formState[p].recurringPeriod=period;
-  const prefix=p==='f'?'f':p;
-  document.getElementById(prefix+'_periodWeekly').classList.toggle('active',period==='weekly');
-  document.getElementById(prefix+'_periodMonthly').classList.toggle('active',period==='monthly');
+  document.getElementById(p+'_periodWeekly').classList.toggle('active',period==='weekly');
+  document.getElementById(p+'_periodMonthly').classList.toggle('active',period==='monthly');
 }
 
 function setPayer(p,payer){
@@ -651,7 +686,14 @@ function setPayer(p,payer){
   document.querySelectorAll('#'+p+'_usingSection .chip').forEach(c=>c.className='chip');
   if(payer==='Aizat'){const b=document.querySelector('#'+p+'_aizatAccounts .chip');if(b){s.using='Macquarie - Aizat';b.classList.add('active-aizat');}}
   else if(payer==='Aizat&Paige'){const b=document.querySelector('#'+p+'_usingSection .chip[onclick*="Cash"]');if(b){s.using='Cash';b.classList.add('active-other');}}
-  else if(payer==='Paige'){const b=document.querySelector('#'+p+'_paigeAccounts .chip[onclick*="HSBC"]');if(b){s.using='Paige - HSBC Star Alliance';b.classList.add('active-paige');}}
+  else if(payer==='Paige'){
+    // Default: first Paige chip (HSBC Star Alliance for daily, same for travel)
+    const b=document.querySelector('#'+p+'_paigeAccounts .chip');
+    if(b){
+      const m=b.getAttribute('onclick').match(/setUsing\('[^']+','([^']+)'/);
+      if(m){s.using=m[1];b.classList.add('active-paige');}
+    }
+  }
   updateSharePreview(p);
 }
 
@@ -664,7 +706,6 @@ function computeShares(cost,payer){
   if(payer==='Paige')return{aizat:0,joint:-cost,paige:cost};
   return{aizat:0,joint:0,paige:0};
 }
-
 function updateSharePreview(p){
   if(formState[p].manualOverride)return;
   const cost=parseFloat(document.getElementById(p+'_amount').value)||0;
@@ -678,12 +719,7 @@ function updateSharePreview(p){
 function renderShare(id,val){const el=document.getElementById(id);if(val>0){el.textContent='+'+val.toFixed(2);el.className='share-value positive';}else if(val<0){el.textContent=val.toFixed(2);el.className='share-value negative';}else{el.textContent='0.00';el.className='share-value zero';}}
 function manualOverride(p){formState[p].manualOverride=true;const a=parseFloat(document.getElementById(p+'_aizat').value)||0,j=parseFloat(document.getElementById(p+'_joint').value)||0,pg=parseFloat(document.getElementById(p+'_paige').value)||0;document.getElementById(p+'_sharePreview').style.display='flex';renderShare(p+'_prev_aizat',a);renderShare(p+'_prev_joint',j);renderShare(p+'_prev_paige',pg);}
 function toggleAdvanced(p){formState[p].advOpen=!formState[p].advOpen;document.getElementById(p+'_advanced').classList.toggle('hidden',!formState[p].advOpen);document.getElementById(p+'_advArrow').classList.toggle('open',formState[p].advOpen);if(formState[p].advOpen&&!formState[p].manualOverride){const cost=parseFloat(document.getElementById(p+'_amount').value)||0;const s=computeShares(cost,formState[p].payer);document.getElementById(p+'_aizat').value=s.aizat||'';document.getElementById(p+'_joint').value=s.joint||'';document.getElementById(p+'_paige').value=s.paige||'';}if(!formState[p].advOpen)formState[p].manualOverride=false;}
-
-function getShares(p){
-  const cost=parseFloat(document.getElementById(p+'_amount').value)||0;
-  if(formState[p].manualOverride)return{aizat:parseFloat(document.getElementById(p+'_aizat').value)||0,joint:parseFloat(document.getElementById(p+'_joint').value)||0,paige:parseFloat(document.getElementById(p+'_paige').value)||0};
-  return computeShares(cost,formState[p].payer);
-}
+function getShares(p){const cost=parseFloat(document.getElementById(p+'_amount').value)||0;if(formState[p].manualOverride)return{aizat:parseFloat(document.getElementById(p+'_aizat').value)||0,joint:parseFloat(document.getElementById(p+'_joint').value)||0,paige:parseFloat(document.getElementById(p+'_paige').value)||0};return computeShares(cost,formState[p].payer);}
 
 function resetForm(p){
   ['desc','cat','amount'].forEach(f=>{const el=document.getElementById(p+'_'+f);if(el)el.value='';});
@@ -701,9 +737,11 @@ function resetForm(p){
   const rb=document.getElementById(p+'_recurringBtn');if(rb)rb.classList.remove('active');
   const rp=document.getElementById(p+'_recurringPeriod');if(rp)rp.style.display='none';
   document.getElementById(p+'_date').value=getTodayLocal();
+  // Reset currency to AUD
+  setCurrency(p,'AUD');
 }
 
-// ── SUBMIT DAILY ──────────────────────────────────────────────
+// ── SUBMIT DAILY ────────────────────────────────────
 async function submitDaily(){
   const date=document.getElementById('d_date').value,desc=document.getElementById('d_desc').value.trim(),cat=document.getElementById('d_cat').value,amount=document.getElementById('d_amount').value;
   if(!date||!desc||!cat||!amount){showToast('Fill in all required fields','error');return;}
@@ -713,14 +751,14 @@ async function submitDaily(){
   await submit('d_submitBtn','Add Expense',{type:'daily',date,description:desc,category:cat,amount:cost,currency:formState.d.currency,aizatShare:s.aizat,jointShare:s.joint,paigeShare:s.paige,paidBy:formState.d.payer,using:formState.d.using||'',comments:document.getElementById('d_comments').value.trim()},()=>resetForm('d'));
 }
 
-// ── SUBMIT FUND ───────────────────────────────────────────────
+// ── SUBMIT FUND ─────────────────────────────────────
 async function submitFund(){
   const date=document.getElementById('f_date').value,fund=document.getElementById('f_fund').value,amount=document.getElementById('f_amount').value;
   if(!date||!fund||!amount){showToast('Please fill in all required fields','error');return;}
-  await submit('f_submitBtn','Add Transaction',{type:'fund',country:fundCountry,txType:fundTxType,date,fundName:fund,amount:parseFloat(amount),remarks:document.getElementById('f_remarks').value.trim()},()=>{['f_fund','f_amount','f_remarks'].forEach(id=>document.getElementById(id).value='');document.getElementById('f_date').value=getTodayLocal();formState.d.recurring=false;});
+  await submit('f_submitBtn','Add Transaction',{type:'fund',country:fundCountry,txType:fundTxType,date,fundName:fund,amount:parseFloat(amount),remarks:document.getElementById('f_remarks').value.trim()},()=>{['f_fund','f_amount','f_remarks'].forEach(id=>document.getElementById(id).value='');document.getElementById('f_date').value=getTodayLocal();});
 }
 
-// ── TRAVEL ────────────────────────────────────────────────────
+// ── TRAVEL ──────────────────────────────────────────
 async function loadTrips(){
   document.getElementById('tripList').innerHTML='<div class="loading-spinner">Loading trips…</div>';
   try{
@@ -746,7 +784,7 @@ function renderTripCards(){
     html+=`<div class="trip-card" onclick="openTrip(${i})">
       <div class="trip-card-header">
         <div><div class="trip-name">${trip.name}</div>${dateRange?`<div class="trip-meta">${dateRange}</div>`:''}</div>
-        <div style="text-align:right"><div class="trip-total">$${parseFloat(trip.totalSpent||0).toFixed(2)}</div><div class="trip-meta">AUD total</div></div>
+        <div style="text-align:right"><div class="trip-total">$${parseFloat(trip.totalSpent||0).toFixed(2)}</div><div class="trip-meta">${trip.currency||'mixed'} total</div></div>
       </div>
       <div class="trip-balance"><span class="trip-balance-label">BALANCE</span><span class="trip-balance-amount ${balanceClass}">${balanceText}</span></div>
       ${parseFloat(trip.sentToFund)>0?`<div style="margin-top:8px"><span class="trip-fund-pill">✓ $${parseFloat(trip.sentToFund).toFixed(2)} sent to Travel Fund (${sentPct}%)</span></div>`:''}
@@ -758,13 +796,13 @@ function renderTripCards(){
 
 async function openTrip(idx){
   currentTrip=trips[idx];
+  currentTripCurrency=currentTrip.currency||'';
+  updateTripCurrencyBtn();
   document.getElementById('tripDetailName').textContent=currentTrip.name;
-  // Switch view
   document.getElementById('travelArea').style.display='none';
   document.getElementById('tripDetailArea').style.display='flex';
   document.getElementById('tripDetailBody').innerHTML='<div class="loading-spinner">Loading expenses…</div>';
   currentView='tripDetail';
-  // Load expenses
   try{
     const res=await fetch(scriptUrl+'?action=tripExpenses&trip='+encodeURIComponent(currentTrip.name));
     const data=await res.json();
@@ -779,7 +817,6 @@ function renderTripDetail(){
   const balanceText=Math.abs(net)<0.01?'All settled!':net>0?`Paige owes Aizat $${Math.abs(net).toFixed(2)}`:`Aizat owes Paige $${Math.abs(net).toFixed(2)}`;
   const balanceClass=Math.abs(net)<0.01?'success':'danger';
 
-  // Stats
   let html=`<div class="trip-stats">
     <div class="trip-stat-card"><div class="trip-stat-label">TOTAL SPENT</div><div class="trip-stat-value">$${parseFloat(currentTrip.totalSpent||0).toFixed(2)}</div></div>
     <div class="trip-stat-card"><div class="trip-stat-label">BALANCE</div><div class="trip-stat-value ${balanceClass}" style="font-size:12px">${balanceText}</div></div>
@@ -787,39 +824,85 @@ function renderTripDetail(){
     <div class="trip-stat-card"><div class="trip-stat-label">PAIGE PAID</div><div class="trip-stat-value">$${parseFloat(currentTrip.paigePaid||0).toFixed(2)}</div></div>
   </div>`;
 
-  // Settle up button
   html+=`<button class="settle-btn" onclick="showSettle()">💳 Settle Up</button>`;
-  
-  // Trip spending summary by category
+
+  // Spending by category (3-level accordion: group → category → transactions)
   if(tripExpenses.length>0){
     const byCat={};
-    tripExpenses.forEach(r=>{const c=r.category||'Other';byCat[c]=(byCat[c]||0)+parseFloat(r.amount||0);});
-    let summaryHtml='',grandTotal=0;
-    CATEGORY_GROUPS.forEach(group=>{
-      let groupTotal=0,catsHtml='';
+    tripExpenses.forEach(r=>{
+      const c=r.category||'Other';
+      if(!byCat[c])byCat[c]=[];
+      byCat[c].push(r);
+    });
+
+    let summaryHtml='',grandTotalByCurrency={};
+    TRAVEL_CATEGORY_GROUPS.forEach(group=>{
+      let groupTotalByCurrency={},catsHtml='';
       group.cats.forEach(cat=>{
-        const amt=byCat[cat]||0;if(amt===0)return;
-        groupTotal+=amt;
-        catsHtml+=`<div style="display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px"><span style="color:var(--muted)">${cat}</span><span style="font-family:var(--mono)">$${amt.toFixed(2)}</span></div>`;
+        const rows=byCat[cat];if(!rows||!rows.length)return;
+        const catTotalByCurrency={};
+        rows.forEach(r=>{const cur=r.currency||'AUD';catTotalByCurrency[cur]=(catTotalByCurrency[cur]||0)+parseFloat(r.amount||0);});
+
+        // Per-currency total display
+        const catTotalStr=Object.entries(catTotalByCurrency).map(([c,a])=>`${c} ${a.toFixed(2)}`).join(' · ');
+
+        // Individual transaction rows with Edit/Delete
+        const txnRows=rows.map(r=>{
+          const whoStr=r.aizat>0?'Aizat':r.paige>0?'Paige':'Joint';
+          const pendingBadge=r.pendingReconciliation?'<span style="background:rgba(245,200,90,0.15);border:1px solid rgba(245,200,90,0.4);border-radius:20px;padding:1px 6px;font-family:var(--mono);font-size:8px;color:var(--accent3);margin-left:4px">PENDING</span>':'';
+          const localDetail=r.localAmount&&r.localCurrency&&r.localCurrency!==r.currency?`<span style="font-family:var(--mono);font-size:9px;color:var(--muted)"> (${r.localCurrency} ${parseFloat(r.localAmount).toFixed(2)})</span>`:'';
+          return`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:9px 14px 9px 20px;border-top:1px solid var(--border);background:var(--bg)">
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:500">${r.description}${pendingBadge}</div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${fmtDate(r.date)} · ${whoStr}${r.using?' · '+r.using:''}</div>
+              ${r.localAmount&&r.localCurrency&&r.localCurrency!==r.currency?`<div style="font-family:var(--mono);font-size:9px;color:var(--muted)">Local: ${r.localCurrency} ${parseFloat(r.localAmount).toFixed(2)}</div>`:''}
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;margin-left:10px">
+              <span style="font-family:var(--mono);font-size:12px;font-weight:500">${r.currency} ${parseFloat(r.amount).toFixed(2)}</span>
+              <div style="display:flex;gap:4px">
+                <button onclick="editTravelExpense(${r.rowIndex})" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--mono);font-size:9px;cursor:pointer">Edit</button>
+                <button onclick="deleteTravelExpense(${r.rowIndex})" style="padding:3px 8px;border-radius:6px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-family:var(--mono);font-size:9px;cursor:pointer">Del</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+
+        // Accumulate group totals
+        Object.entries(catTotalByCurrency).forEach(([c,a])=>{groupTotalByCurrency[c]=(groupTotalByCurrency[c]||0)+a;});
+
+        const catId='cat_'+Math.random().toString(36).slice(2);
+        catsHtml+=`<div style="border-top:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;cursor:pointer;background:var(--surface2)" onclick="const b=document.getElementById('${catId}');b.style.display=b.style.display==='block'?'none':'block'">
+            <span style="font-size:11px;color:var(--text)">${cat}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--accent)">${catTotalStr}</span>
+          </div>
+          <div id="${catId}" style="display:none">${txnRows}</div>
+        </div>`;
       });
-      if(groupTotal===0)return;
-      grandTotal+=groupTotal;
+
+      if(!Object.keys(groupTotalByCurrency).length)return;
+      Object.entries(groupTotalByCurrency).forEach(([c,a])=>{grandTotalByCurrency[c]=(grandTotalByCurrency[c]||0)+a;});
+      const groupTotalStr=Object.entries(groupTotalByCurrency).map(([c,a])=>`${c} ${a.toFixed(2)}`).join(' · ');
+
+      const groupId='grp_'+Math.random().toString(36).slice(2);
       summaryHtml+=`<div style="background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;margin-bottom:6px">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer" onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='block'?'none':'block'">
-          <span style="font-size:12px;font-weight:600">${group.name}</span>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">$${groupTotal.toFixed(2)}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer" onclick="const b=document.getElementById('${groupId}');b.style.display=b.style.display==='block'?'none':'block'">
+          <span style="font-size:13px;font-weight:600">${group.name}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${groupTotalStr}</span>
         </div>
-        <div style="border-top:1px solid var(--border);display:none">${catsHtml}</div>
+        <div id="${groupId}" style="display:none">${catsHtml}</div>
       </div>`;
     });
+
     if(summaryHtml){
-      html+=`<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;white-space:nowrap">Spending by Category</span><div style="flex:1;height:1px;background:var(--border)"></div></div>`;
+      html+=`<div class="section-divider"><span>Spending by Category</span></div>`;
       html+=summaryHtml;
-      html+=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--mono);font-size:11px;color:var(--muted)">TRIP TOTAL</span><span style="font-family:var(--mono);font-size:16px;font-weight:500;color:var(--accent)">$${grandTotal.toFixed(2)}</span></div>`;
+      const grandStr=Object.entries(grandTotalByCurrency).map(([c,a])=>`${c} ${a.toFixed(2)}`).join(' · ');
+      html+=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--mono);font-size:11px;color:var(--muted)">TRIP TOTAL</span><span style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--accent)">${grandStr}</span></div>`;
     }
   }
-  
-  // Mark as Sent to Fund (Option A)
+
+  // Mark as Sent to Fund
   const unsent=tripExpenses.filter(r=>!r.sentToFund);
   if(unsent.length>0){
     html+=`<div class="mark-spent-section">
@@ -832,109 +915,147 @@ function renderTripDetail(){
           <input type="checkbox" id="check_${r.rowIndex}" onchange="updateMarkTotal()"/>
           <div class="expense-check-info">
             <div class="expense-check-desc">${r.description}</div>
-            <div class="expense-check-meta">${r.date} · ${r.category}</div>
+            <div class="expense-check-meta">${fmtDate(r.date)} · ${r.category} · ${r.currency} ${r.amount.toFixed(2)}</div>
           </div>
-          <span class="expense-check-amount">$${r.amount.toFixed(2)}</span>
+          <span class="expense-check-amount">${r.currency} ${r.amount.toFixed(2)}</span>
         </div>`).join('')}
-        <div class="mark-total"><span class="mark-total-label">SELECTED TOTAL</span><span class="mark-total-amount" id="markTotal">$0.00</span></div>
+        <div class="mark-total"><span class="mark-total-label">SELECTED TOTAL</span><span class="mark-total-amount" id="markTotal">—</span></div>
         <input class="input" type="date" id="markFundDate" value="${getTodayLocal()}" style="margin-top:4px"/>
         <button class="mark-fund-btn" id="markFundBtn" onclick="submitMarkAsSent()" disabled>Send to Travel Fund AU</button>
       </div>
     </div>`;
   }
 
-  // Expense list
-  html+=`<div class="section-divider"><span>Expenses (${tripExpenses.length})</span></div>`;
-  html+='<div>';
-  tripExpenses.forEach(r=>{
-    const whoStr=r.aizat>0?'Aizat paid':r.paige>0?'Paige paid':'Joint';
-    html+=`<div class="trip-expense-row">
-      <div class="trip-expense-left">
-        <span class="trip-expense-desc">${r.description}</span>
-        <span class="trip-expense-meta">${r.date} · ${r.category} · ${whoStr}</span>
-      </div>
-      <div class="trip-expense-right">
-        <span class="trip-expense-amount">$${r.amount.toFixed(2)} ${r.currency}</span>
-        ${r.sentToFund?'<span class="sent-badge">✓ Sent</span>':''}
-      </div>
-    </div>`;
-  });
-  html+='</div>';
   body.innerHTML=html;
 }
 
-function toggleMarkSpent(header){
-  const body=document.getElementById('markSpentBody');
-  body.style.display=body.style.display==='flex'?'none':'flex';
-  body.style.flexDirection='column';
-}
+function toggleMarkSpent(header){const body=document.getElementById('markSpentBody');body.style.display=body.style.display==='flex'?'none':'flex';body.style.flexDirection='column';}
 
 function updateMarkTotal(){
   const checks=document.querySelectorAll('[id^="check_"]:checked');
-  let total=0;
+  const byCurrency={};
   checks.forEach(cb=>{
     const rowIdx=parseInt(cb.id.replace('check_',''));
     const row=tripExpenses.find(r=>r.rowIndex===rowIdx);
-    if(row)total+=row.amount;
+    if(row){const c=row.currency||'AUD';byCurrency[c]=(byCurrency[c]||0)+row.amount;}
   });
-  document.getElementById('markTotal').textContent='$'+total.toFixed(2);
+  const total=Object.values(byCurrency).reduce((a,b)=>a+b,0);
+  const str=Object.entries(byCurrency).map(([c,a])=>`${c} ${a.toFixed(2)}`).join(' · ')||'—';
+  document.getElementById('markTotal').textContent=str;
   document.getElementById('markFundBtn').disabled=total===0;
 }
 
 async function submitMarkAsSent(){
   const checks=document.querySelectorAll('[id^="check_"]:checked');
   const rowIndexes=[],amounts=[];
-  checks.forEach(cb=>{
-    const rowIdx=parseInt(cb.id.replace('check_',''));
-    const row=tripExpenses.find(r=>r.rowIndex===rowIdx);
-    if(row){rowIndexes.push(rowIdx);amounts.push(row.amount);}
-  });
+  checks.forEach(cb=>{const rowIdx=parseInt(cb.id.replace('check_',''));const row=tripExpenses.find(r=>r.rowIndex===rowIdx);if(row){rowIndexes.push(rowIdx);amounts.push(row.amount);}});
   if(!rowIndexes.length)return;
   const total=amounts.reduce((a,b)=>a+b,0);
   const date=document.getElementById('markFundDate').value;
-  const btn=document.getElementById('markFundBtn');
-  btn.disabled=true;btn.textContent='Sending…';
+  const btn=document.getElementById('markFundBtn');btn.disabled=true;btn.textContent='Sending…';
   try{
     const res=await fetch(scriptUrl,{method:'POST',body:JSON.stringify({type:'fundFromTravel',rowIndexes,totalAmount:total,date,tripName:currentTrip.name})});
     const data=await res.json();
-    if(data.success){
-      showToast('✓ Sent to Travel Fund AU','success');
-      // Refresh
-      rowIndexes.forEach(idx=>{const r=tripExpenses.find(x=>x.rowIndex===idx);if(r)r.sentToFund=true;});
-      currentTrip.sentToFund=(parseFloat(currentTrip.sentToFund||0)+total).toFixed(2);
-      renderTripDetail();
-    }else showToast('Error: '+(data.message||'Unknown'),'error');
+    if(data.success){showToast('✓ Sent to Travel Fund AU','success');rowIndexes.forEach(idx=>{const r=tripExpenses.find(x=>x.rowIndex===idx);if(r)r.sentToFund=true;});currentTrip.sentToFund=(parseFloat(currentTrip.sentToFund||0)+total).toFixed(2);renderTripDetail();}
+    else showToast('Error: '+(data.message||'Unknown'),'error');
   }catch{showToast('Could not reach script','error');}
   finally{if(btn){btn.disabled=false;btn.textContent='Send to Travel Fund AU';}}
 }
 
+// ── SETTLE UP (multi-currency) ──────────────────────
 function showSettle(){
-  const net=parseFloat(currentTrip.net||0);
   const modal=document.getElementById('settleModal');
-  if(Math.abs(net)<0.01){document.getElementById('settleAmount').textContent='$0.00';document.getElementById('settleDesc').textContent='All settled! No money owed between Aizat and Paige for this trip.';}
-  else if(net>0){document.getElementById('settleAmount').textContent='$'+Math.abs(net).toFixed(2);document.getElementById('settleDesc').textContent='Paige owes Aizat $'+Math.abs(net).toFixed(2)+' to settle this trip.';}
-  else{document.getElementById('settleAmount').textContent='$'+Math.abs(net).toFixed(2);document.getElementById('settleDesc').textContent='Aizat owes Paige $'+Math.abs(net).toFixed(2)+' to settle this trip.';}
+  // Group by currency
+  const aizatByCur={},paigeByCur={};
+  tripExpenses.forEach(r=>{
+    const cur=r.currency||'AUD';
+    if(r.aizat>0)aizatByCur[cur]=(aizatByCur[cur]||0)+r.aizat;
+    if(r.paige>0)paigeByCur[cur]=(paigeByCur[cur]||0)+r.paige;
+  });
+  const allCurrencies=[...new Set([...Object.keys(aizatByCur),...Object.keys(paigeByCur)])];
+  if(!allCurrencies.length){
+    document.getElementById('settleContent').innerHTML='<div class="settle-amount-big" style="font-size:20px">No expenses yet</div>';
+    modal.style.display='flex';return;
+  }
+  let html='';
+  allCurrencies.forEach(cur=>{
+    const aizat=aizatByCur[cur]||0,paige=paigeByCur[cur]||0,net=aizat-paige;
+    const absNet=Math.abs(net);
+    if(absNet<0.01){html+=`<div style="text-align:center;padding:8px 0"><div style="font-family:var(--mono);font-size:11px;color:var(--muted)">${cur}</div><div style="font-family:var(--mono);font-size:22px;font-weight:500;color:var(--success)">Settled ✓</div></div>`;}
+    else if(net>0){html+=`<div style="text-align:center;padding:8px 0"><div style="font-family:var(--mono);font-size:11px;color:var(--muted)">${cur}</div><div class="settle-amount-big">${cur} ${absNet.toFixed(2)}</div><div class="settle-desc">Paige owes Aizat</div></div>`;}
+    else{html+=`<div style="text-align:center;padding:8px 0"><div style="font-family:var(--mono);font-size:11px;color:var(--muted)">${cur}</div><div class="settle-amount-big">${cur} ${absNet.toFixed(2)}</div><div class="settle-desc">Aizat owes Paige</div></div>`;}
+  });
+  document.getElementById('settleContent').innerHTML=html;
   modal.style.display='flex';
 }
 function closeSettle(){document.getElementById('settleModal').style.display='none';}
 
-function backToTrips(){
-  document.getElementById('tripDetailArea').style.display='none';
-  document.getElementById('travelArea').style.display='flex';
-  currentTrip=null;currentView='travel';
-  loadTrips();
+// ── EDIT / DELETE TRAVEL ────────────────────────────
+function editTravelExpense(rowIndex){
+  const r=tripExpenses.find(x=>x.rowIndex===rowIndex);
+  if(!r)return;
+  showAddTravelExpense();
+  // Pre-fill form
+  document.getElementById('t_date').value=r.date&&r.date.match(/\d{4}-\d{2}-\d{2}/)?r.date:getTodayLocal();
+  document.getElementById('t_desc').value=r.description||'';
+  document.getElementById('t_cat').value=r.category||'';
+  document.getElementById('t_amount').value=r.amount||'';
+  setCurrency('t',r.currency||'AUD');
+  if(r.paidBy||r.aizat>0||r.paige>0){
+    const payer=r.aizat>0?'Aizat':r.paige>0?'Paige':'Aizat&Paige';
+    setPayer('t',payer);
+  }
+  document.getElementById('t_comments').value=r.comments||'';
+  // Switch submit button to update mode
+  const btn=document.getElementById('t_submitBtn');
+  btn.textContent='Update Expense';
+  btn.onclick=()=>updateTravelExpense(rowIndex);
 }
 
+async function updateTravelExpense(rowIndex){
+  const date=document.getElementById('t_date').value,desc=document.getElementById('t_desc').value.trim(),cat=document.getElementById('t_cat').value,amount=document.getElementById('t_amount').value;
+  if(!date||!desc||!cat||!amount){showToast('Fill in all required fields','error');return;}
+  if(!formState.t.payer){showToast('Please select who paid','error');return;}
+  const cost=parseFloat(amount),s=getShares('t');
+  await submit('t_submitBtn','Update Expense',{type:'editTravel',rowIndex,date,description:desc,category:cat,amount:cost,currency:formState.t.currency,aizatShare:s.aizat,jointShare:s.joint,paigeShare:s.paige,paidBy:formState.t.payer,using:formState.t.using||'',comments:document.getElementById('t_comments').value.trim()},()=>{
+    // Reset button
+    document.getElementById('t_submitBtn').textContent='Add to Trip';
+    document.getElementById('t_submitBtn').onclick=submitTravelExpense;
+    resetForm('t');
+    backToTripDetail();
+    openTrip(trips.findIndex(tr=>tr.name===currentTrip.name));
+  });
+}
+
+function deleteTravelExpense(rowIndex){
+  pendingDeleteCallback=async()=>{
+    const btn=document.getElementById('confirmDeleteBtn');btn.disabled=true;btn.textContent='Deleting…';
+    try{
+      const res=await fetch(scriptUrl,{method:'POST',body:JSON.stringify({type:'deleteRow',sheet:'travel',rowIndex})});
+      const data=await res.json();
+      if(data.success){showToast('✓ Deleted','success');closeConfirmDelete();openTrip(trips.findIndex(tr=>tr.name===currentTrip.name));}
+      else showToast('Error: '+(data.message||'Unknown'),'error');
+    }catch{showToast('Could not reach script','error');}
+    finally{btn.disabled=false;btn.textContent='Delete';}
+  };
+  document.getElementById('confirmDeleteBtn').onclick=pendingDeleteCallback;
+  document.getElementById('confirmDeleteModal').style.display='flex';
+}
+function closeConfirmDelete(){document.getElementById('confirmDeleteModal').style.display='none';pendingDeleteCallback=null;}
+
+// ── NAVIGATION ──────────────────────────────────────
+function backToTrips(){document.getElementById('tripDetailArea').style.display='none';document.getElementById('travelArea').style.display='flex';currentTrip=null;currentView='travel';loadTrips();}
 function showAddTravelExpense(){
   document.getElementById('tripDetailArea').style.display='none';
   document.getElementById('travelExpenseForm').style.display='flex';
+  // Reset submit button in case it was in edit mode
+  const btn=document.getElementById('t_submitBtn');
+  btn.textContent='Add to Trip';btn.onclick=submitTravelExpense;
+  // Set trip currency pill
+  updateTripCurrencyBtn();
   currentView='travelExpense';
 }
-function backToTripDetail(){
-  document.getElementById('travelExpenseForm').style.display='none';
-  document.getElementById('tripDetailArea').style.display='flex';
-  currentView='tripDetail';
-}
+function backToTripDetail(){document.getElementById('travelExpenseForm').style.display='none';document.getElementById('tripDetailArea').style.display='flex';currentView='tripDetail';}
 
 async function submitTravelExpense(){
   const date=document.getElementById('t_date').value,desc=document.getElementById('t_desc').value.trim(),cat=document.getElementById('t_cat').value,amount=document.getElementById('t_amount').value;
@@ -944,22 +1065,22 @@ async function submitTravelExpense(){
   const cost=parseFloat(amount),s=getShares('t');
   saveCategoryHistory(desc,cat);
   await submit('t_submitBtn','Add to Trip',{type:'travel',date,description:desc,category:cat,amount:cost,currency:formState.t.currency,aizatShare:s.aizat,jointShare:s.joint,paigeShare:s.paige,paidBy:formState.t.payer,using:formState.t.using||'',comments:document.getElementById('t_comments').value.trim(),tripName:currentTrip.name},()=>{
-    resetForm('t');
+    resetForm('t');updateTripCurrencyBtn();
     backToTripDetail();
     openTrip(trips.findIndex(tr=>tr.name===currentTrip.name));
   });
 }
 
-// Add trip modal
-function showAddTripModal(){document.getElementById('newTripName').value='';document.getElementById('newTripStart').value=getTodayLocal();document.getElementById('newTripEnd').value='';document.getElementById('addTripModal').style.display='flex';}
+// ── ADD TRIP MODAL ──────────────────────────────────
+function showAddTripModal(){document.getElementById('newTripName').value='';document.getElementById('newTripStart').value=getTodayLocal();document.getElementById('newTripEnd').value='';document.getElementById('newTripCurrency').value='';document.getElementById('addTripModal').style.display='flex';}
 function closeAddTripModal(){document.getElementById('addTripModal').style.display='none';}
 async function submitNewTrip(){
   const name=document.getElementById('newTripName').value.trim();
   if(!name){showToast('Please enter a trip name','error');return;}
-  const btn=document.getElementById('addTripSubmitBtn');
-  btn.disabled=true;btn.textContent='Creating…';
+  const currency=document.getElementById('newTripCurrency').value.trim().toUpperCase();
+  const btn=document.getElementById('addTripSubmitBtn');btn.disabled=true;btn.textContent='Creating…';
   try{
-    const res=await fetch(scriptUrl,{method:'POST',body:JSON.stringify({type:'addTrip',tripName:name,startDate:document.getElementById('newTripStart').value,endDate:document.getElementById('newTripEnd').value})});
+    const res=await fetch(scriptUrl,{method:'POST',body:JSON.stringify({type:'addTrip',tripName:name,startDate:document.getElementById('newTripStart').value,endDate:document.getElementById('newTripEnd').value,currency})});
     const data=await res.json();
     if(data.success){showToast('✓ Trip created','success');closeAddTripModal();loadTrips();}
     else showToast('Error: '+(data.message||'Unknown'),'error');
@@ -967,22 +1088,20 @@ async function submitNewTrip(){
   finally{btn.disabled=false;btn.textContent='Create Trip';}
 }
 
-// ── SUBMIT HELPER ─────────────────────────────────────────────
+// ── SUBMIT HELPER ───────────────────────────────────
 async function submit(btnId,origLabel,payload,onSuccess){
-  const btn=document.getElementById(btnId);
-  btn.disabled=true;btn.classList.add('loading');btn.textContent='Saving…';
+  const btn=document.getElementById(btnId);btn.disabled=true;btn.classList.add('loading');btn.textContent='Saving…';
   try{const res=await fetch(scriptUrl,{method:'POST',body:JSON.stringify(payload)});const data=await res.json();if(data.success){showToast('✓ Saved','success');onSuccess();}else showToast('Error: '+(data.message||'Unknown'),'error');}
   catch{showToast('Could not reach script','error');}
   finally{btn.disabled=false;btn.classList.remove('loading');btn.textContent=origLabel;}
 }
 
-// ── CATEGORY HISTORY ──────────────────────────────────────────
+// ── CATEGORY HISTORY ────────────────────────────────
 function saveCategoryHistory(desc,cat){try{const h=JSON.parse(localStorage.getItem('catHistory')||'{}');h[desc.toLowerCase().trim()]=cat;localStorage.setItem('catHistory',JSON.stringify(h));CATEGORY_MAP[desc.toLowerCase().trim()]=cat;}catch(e){}}
 function loadCategoryHistory(){try{const h=JSON.parse(localStorage.getItem('catHistory')||'{}');Object.assign(CATEGORY_MAP,h);}catch(e){}}
 
-// ── SUMMARY ───────────────────────────────────────────────────
-function formatMonthLabel(date){return date.toLocaleDateString('en-AU',{month:'short',year:'numeric'});}
-function normaliseMonth(raw){if(!raw)return null;if(/^[A-Z][a-z]{2}\s\d{4}$/.test(raw.toString().trim()))return raw.toString().trim();const d=new Date(raw);if(!isNaN(d.getTime()))return formatMonthLabel(d);return null;}
+// ── SUMMARY ─────────────────────────────────────────
+function normaliseMonth(raw){if(!raw)return null;if(/^[A-Z][a-z]{2}\s\d{4}$/.test(raw.toString().trim()))return raw.toString().trim();const d=new Date(raw);if(!isNaN(d.getTime()))return d.toLocaleDateString('en-AU',{month:'short',year:'numeric'});return null;}
 
 async function loadSummary(){
   if(!scriptUrl)return;
@@ -992,62 +1111,33 @@ async function loadSummary(){
   content.innerHTML='<div class="loading-spinner">Loading…</div>';
   txnList.innerHTML='<div class="loading-spinner">Loading…</div>';
   try{
-    const [summaryRes,budgetRes]=await Promise.all([
-      fetch(scriptUrl+'?action=summary'),
-      fetch(scriptUrl+'?action=budget&month='+encodeURIComponent(selectedMonth||fmtMonthLabel({y:new Date().getFullYear(),m:new Date().getMonth()})))
-    ]);
-    const summaryJson=await summaryRes.json();
-    const budgetJson=await budgetRes.json();
-    if(summaryJson.success&&summaryJson.rows){summaryData=summaryJson.rows;}
-    if(budgetJson.success){budgetData=budgetJson.budgets;}
-    buildMonthSelector();
-    renderSummaryView();
-    renderTxnList();
-  }catch(e){
-    content.innerHTML='<div class="loading-spinner">Could not reach script.</div>';
-    txnList.innerHTML='';
-  }
+    const[summaryRes,budgetRes]=await Promise.all([fetch(scriptUrl+'?action=summary'),fetch(scriptUrl+'?action=budget&month='+encodeURIComponent(selectedMonth||fmtMonthLabel({y:new Date().getFullYear(),m:new Date().getMonth()})))]);
+    const summaryJson=await summaryRes.json();const budgetJson=await budgetRes.json();
+    if(summaryJson.success&&summaryJson.rows)summaryData=summaryJson.rows;
+    if(budgetJson.success)budgetData=budgetJson.budgets;
+    buildMonthSelector();renderSummaryView();renderTxnList();
+  }catch(e){content.innerHTML='<div class="loading-spinner">Could not reach script.</div>';txnList.innerHTML='';}
 }
 
 function buildMonthSelector(){
   const now=new Date();
-  const months=[
-    fmtMonthLabel({y:now.getFullYear(),m:now.getMonth()}),
-    fmtMonthLabel(prevMonth({y:now.getFullYear(),m:now.getMonth()},1)),
-    fmtMonthLabel(prevMonth({y:now.getFullYear(),m:now.getMonth()},2)),
-  ];
+  const months=[fmtMonthLabel({y:now.getFullYear(),m:now.getMonth()}),fmtMonthLabel(prevMonth({y:now.getFullYear(),m:now.getMonth()},1)),fmtMonthLabel(prevMonth({y:now.getFullYear(),m:now.getMonth()},2))];
   const sel=document.getElementById('monthSelector');sel.innerHTML='';
   if(!selectedMonth)selectedMonth=months[0];
-  months.forEach((m,i)=>{
-    const btn=document.createElement('button');
-    btn.className='month-pill'+(m===selectedMonth?' active':'');
-    btn.textContent=m;
-    btn.onclick=()=>{
-      selectedMonth=m;
-      summaryData=null;
-      budgetData=null;
-      document.querySelectorAll('.month-pill').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      // Stay in whatever view is currently active
-      if(summaryView==='funds'){
-        renderFundSummary();
-      } else {
-        loadSummary();
-      }
-    };
+  months.forEach(m=>{
+    const btn=document.createElement('button');btn.className='month-pill'+(m===selectedMonth?' active':'');btn.textContent=m;
+    btn.onclick=()=>{selectedMonth=m;summaryData=null;budgetData=null;document.querySelectorAll('.month-pill').forEach(b=>b.classList.remove('active'));btn.classList.add('active');if(summaryView==='funds')renderFundSummary();else loadSummary();};
     sel.appendChild(btn);
   });
 }
-  
+
 function getRowsForMonth(month){return(summaryData||[]).filter(r=>{const m=normaliseMonth(r.month);return m===month&&parseFloat(r.cost||0)>0;});}
 
 function renderSummary(){
   const content=document.getElementById('summaryContent');
   if(!summaryData||!selectedMonth){content.innerHTML='<div class="loading-spinner">No data</div>';return;}
-  const selParsed=parseMonthLabel(selectedMonth);
-  if(!selParsed){content.innerHTML='<div class="loading-spinner">Could not parse month</div>';return;}
-  const prev1Month=fmtMonthLabel(prevMonth(selParsed,1));
-  const prev2Month=fmtMonthLabel(prevMonth(selParsed,2));
+  const selParsed=parseMonthLabel(selectedMonth);if(!selParsed){content.innerHTML='<div class="loading-spinner">Could not parse month</div>';return;}
+  const prev1Month=fmtMonthLabel(prevMonth(selParsed,1));const prev2Month=fmtMonthLabel(prevMonth(selParsed,2));
   const cur=getRowsForMonth(selectedMonth),p1=getRowsForMonth(prev1Month),p2=getRowsForMonth(prev2Month);
   const sumByCat=(rows)=>{const m={};rows.forEach(r=>{const c=r.category||'Other';m[c]=(m[c]||0)+parseFloat(r.cost||0);});return m;};
   const curC=sumByCat(cur),p1C=sumByCat(p1),p2C=sumByCat(p2);
@@ -1056,8 +1146,7 @@ function renderSummary(){
   CATEGORY_GROUPS.forEach(group=>{
     let gCur=0,gP1=0,gP2=0,catsHtml='';
     group.cats.forEach(cat=>{
-      const c=curC[cat]||0,p1v=p1C[cat]||0,p2v=p2C[cat]||0;
-      if(c===0&&p1v===0&&p2v===0)return;
+      const c=curC[cat]||0,p1v=p1C[cat]||0,p2v=p2C[cat]||0;if(c===0&&p1v===0&&p2v===0)return;
       gCur+=c;gP1+=p1v;gP2+=p2v;
       catsHtml+=`<div class="summary-cat-row" onclick="openDrill('${cat.replace(/'/g,"\\'")}','${selectedMonth}')"><div class="summary-cat-left"><span class="summary-cat-name">${cat}</span><span class="summary-cat-prev">${prev1Month}: ${p1v>0?'$'+p1v.toFixed(0):'—'} | ${prev2Month}: ${p2v>0?'$'+p2v.toFixed(0):'—'}</span></div><div style="display:flex;align-items:center"><span class="summary-cat-amount">${c>0?'$'+c.toFixed(2):'—'}</span><span class="summary-cat-chevron">›</span></div></div>`;
     });
@@ -1065,32 +1154,20 @@ function renderSummary(){
     grandCur+=gCur;grandP1+=gP1;grandP2+=gP2;
     const budget=budgetData?budgetData[group.name]||0:0;
     let budgetBadge='';
-    if(budget>0){
-      const diff=budget-gCur;
-      const color=diff>=0?'var(--success)':'var(--danger)';
-      const sign=diff>=0?'+':'';
-      budgetBadge=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:54px;padding:3px 6px;border-radius:8px;background:${diff>=0?'rgba(90,245,90,0.1)':'rgba(245,90,90,0.1)'};border:1px solid ${color};margin-left:6px">
-        <span style="font-family:var(--mono);font-size:10px;font-weight:600;color:${color}">${sign}$${Math.abs(diff).toFixed(0)}</span>
-        <span style="font-family:var(--mono);font-size:8px;color:var(--muted)">$${budget.toFixed(0)}</span>
-      </div>`;
-    }
+    if(budget>0){const diff=budget-gCur;const color=diff>=0?'var(--success)':'var(--danger)';const sign=diff>=0?'+':'';budgetBadge=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:54px;padding:3px 6px;border-radius:8px;background:${diff>=0?'rgba(90,245,90,0.1)':'rgba(245,90,90,0.1)'};border:1px solid ${color};margin-left:6px"><span style="font-family:var(--mono);font-size:10px;font-weight:600;color:${color}">${sign}$${Math.abs(diff).toFixed(0)}</span><span style="font-family:var(--mono);font-size:8px;color:var(--muted)">$${budget.toFixed(0)}</span></div>`;}
     html+=`<div class="summary-group"><div class="summary-group-header" onclick="toggleGroup(this)"><span class="summary-group-name">${group.name}</span><div style="display:flex;align-items:center;gap:6px"><span class="summary-group-prev">${prev1Month}: ${gP1>0?'$'+gP1.toFixed(0):'—'}</span><span class="summary-group-total">$${gCur.toFixed(2)}</span>${budgetBadge}<span class="summary-group-arrow">▾</span></div></div><div class="summary-group-body">${catsHtml}</div></div>`;
   });
   html+=`<div class="summary-total-bar"><span class="summary-total-label">TOTAL SPENT</span><div class="summary-total-right"><span class="summary-grand">$${grandCur.toFixed(2)}</span><span class="summary-grand-prev">${prev1Month}: $${grandP1.toFixed(0)} &nbsp;|&nbsp; ${prev2Month}: $${grandP2.toFixed(0)}</span></div></div>`;
   content.innerHTML=html;
 }
-  function renderSummaryView(){
-  if(summaryView==='funds')renderFundSummary();
-  else{renderSummary();renderTxnList();}
-}
 
+function renderSummaryView(){if(summaryView==='funds')renderFundSummary();else{renderSummary();renderTxnList();}}
 function setSummaryView(view){
   summaryView=view;
   document.getElementById('pillSpending').classList.toggle('active',view==='spending');
   document.getElementById('pillFunds').classList.toggle('active',view==='funds');
   document.getElementById('summaryTitle').textContent=view==='spending'?'Spending Summary':'Fund Summary';
-  const divider=document.querySelector('#summaryArea .section-divider');
-  if(divider)divider.style.display=view==='spending'?'flex':'none';
+  const divider=document.querySelector('#summaryArea .section-divider');if(divider)divider.style.display=view==='spending'?'flex':'none';
   document.getElementById('txnList').style.display=view==='spending'?'block':'none';
   renderSummaryView();
 }
@@ -1103,51 +1180,21 @@ async function renderFundSummary(){
     const data=await res.json();
     if(!data.success){content.innerHTML='<div class="loading-spinner">'+data.message+'</div>';return;}
     const balances=data.balances||{};
-
-    // Also fetch transactions for drill-down
-    const txnRes=await fetch(scriptUrl+'?action=summary');
-    const txnData=await txnRes.json();
-    // We'll use Fund Transactions sheet data — for now use what we have
-    // Build fund transaction lookup from Fund Transactions (already loaded via summary)
-
     const FLOAT_FUND=['Float'];
-    const AU_FUNDS_LIST=['Rainy Day Fund AU (Aizat)','Emergency Fund AU (Paige)','Edu Fund (Claire)',
-      'Edu Fund (Anne)','Car Fund','BearHaus Rainy Day AU','Travel Fund AU',
-      'Monthly Expenses (Aizat)','Monthly Expenses (Paige)','Investment Fund AU (Aizat)','Dry Powder AU (Paige)'];
-    const SG_FUNDS_LIST=['MediShield (Aizat)','Life Multiprotect (Aizat)','FWD Future First',
-      'MediShield (Paige)','Life Multiprotect (Paige)','AXA Term Protector','Pruwealth (May 2025)',
-      'HSBC FlexiProtector (Anne)','AIA ProtectPlus 2 (Anne)','Early Saver 5-Pay (Anne)',
-      'MediShield (Anne)','MediShield (Claire)','Life Treasure (Claire)',
-      "Anne's Savings SG","Claire's Savings SG",'Taxes Fund SG (Aizat)',
-      'Investment Fund SG (Aizat)','Dry Powder SG (Paige)','Emergency Fund SG (Paige)',
-      'Stashaway','BOC','Property Tax','Google Drive','Future DreamHouse SG'];
-
-    function renderFundGroup(title, flag, funds){
+    const AU_FUNDS_LIST=['Rainy Day Fund AU (Aizat)','Emergency Fund AU (Paige)','Edu Fund (Claire)','Edu Fund (Anne)','Car Fund','BearHaus Rainy Day AU','Travel Fund AU','Monthly Expenses (Aizat)','Monthly Expenses (Paige)','Investment Fund AU (Aizat)','Dry Powder AU (Paige)'];
+    const SG_FUNDS_LIST=['MediShield (Aizat)','Life Multiprotect (Aizat)','FWD Future First','MediShield (Paige)','Life Multiprotect (Paige)','AXA Term Protector','Pruwealth (May 2025)','HSBC FlexiProtector (Anne)','AIA ProtectPlus 2 (Anne)','Early Saver 5-Pay (Anne)','MediShield (Anne)','MediShield (Claire)','Life Treasure (Claire)',"Anne's Savings SG","Claire's Savings SG",'Taxes Fund SG (Aizat)','Investment Fund SG (Aizat)','Dry Powder SG (Paige)','Emergency Fund SG (Paige)','Stashaway','BOC','Property Tax','Google Drive','Future DreamHouse SG'];
+    function renderFundGroup(title,flag,funds){
       let html=`<div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;padding:4px 0 8px">${flag} ${title}</div>`;
       funds.forEach(name=>{
-        const b=balances[name];
-        const val=b?b.balance:null;
-        const cur=b?b.currency:(title==='SG Funds'?'SGD':'AUD');
+        const b=balances[name];const val=b?b.balance:null;const cur=b?b.currency:(title==='SG Funds'?'SGD':'AUD');
         const hasVal=val!==null&&val!==undefined;
         const valDisplay=hasVal?(cur+' '+Math.abs(val).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})):'—';
         const valColor=hasVal&&val>0?'var(--accent)':(title==='SG Funds'?'var(--accent2)':'var(--accent)');
         const panelId='fund_'+name.replace(/[^a-zA-Z0-9]/g,'_');
-        html+=`<div class="summary-group" style="margin-bottom:6px">
-          <div class="summary-group-header" onclick="toggleFundPanel('${panelId}','${name}',this)">
-            <span class="summary-group-name" style="font-size:12px">💰 ${name}</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-family:var(--mono);font-size:13px;font-weight:500;color:${valColor}">${valDisplay}</span>
-              <span class="summary-group-arrow">▾</span>
-            </div>
-          </div>
-          <div class="summary-group-body" id="${panelId}">
-            <div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--muted)">Loading…</div>
-          </div>
-        </div>`;
+        html+=`<div class="summary-group" style="margin-bottom:6px"><div class="summary-group-header" onclick="toggleFundPanel('${panelId}','${name}',this)"><span class="summary-group-name" style="font-size:12px">💰 ${name}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);font-size:13px;font-weight:500;color:${valColor}">${valDisplay}</span><span class="summary-group-arrow">▾</span></div></div><div class="summary-group-body" id="${panelId}"><div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--muted)">Loading…</div></div></div>`;
       });
       return html;
     }
-
     let html='';
     html+=renderFundGroup('Float','🇦🇺',FLOAT_FUND);
     html+=renderFundGroup('AU Funds','🇦🇺',AU_FUNDS_LIST);
@@ -1156,42 +1203,26 @@ async function renderFundSummary(){
   }catch(e){content.innerHTML='<div class="loading-spinner">Could not reach script: '+e.message+'</div>';}
 }
 
-async function toggleFundPanel(panelId, fundName, header){
-  const body=document.getElementById(panelId);
-  const arrow=header.querySelector('.summary-group-arrow');
-  const isOpen=body.style.display==='block';
+async function toggleFundPanel(panelId,fundName,header){
+  const body=document.getElementById(panelId);const arrow=header.querySelector('.summary-group-arrow');const isOpen=body.style.display==='block';
   if(isOpen){body.style.display='none';if(arrow)arrow.classList.remove('open');return;}
-  body.style.display='block';
-  if(arrow)arrow.classList.add('open');
-  // Load transactions for this fund
-  if(body.dataset.loaded==='1')return;
-  body.dataset.loaded='1';
+  body.style.display='block';if(arrow)arrow.classList.add('open');
+  if(body.dataset.loaded==='1')return;body.dataset.loaded='1';
   body.innerHTML='<div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--muted)">Loading transactions…</div>';
   try{
     const res=await fetch(scriptUrl+'?action=fundTransactions&fund='+encodeURIComponent(fundName));
     const data=await res.json();
-    if(!data.success||!data.rows||!data.rows.length){
-      body.innerHTML='<div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--muted)">No transactions found</div>';
-      return;
-    }
+    if(!data.success||!data.rows||!data.rows.length){body.innerHTML='<div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--muted)">No transactions found</div>';return;}
     let html='';
     data.rows.forEach(r=>{
-      const amt=parseFloat(r.amount||0);
-      const isIncome=r.type==='Income';
-      const color=isIncome?'var(--success)':'var(--danger)';
-      const sign=isIncome?'+':'-';
+      const amt=parseFloat(r.amount||0);const isIncome=r.type==='Income';const color=isIncome?'var(--success)':'var(--danger)';const sign=isIncome?'+':'-';
       html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border)">
-        <div>
-          <div style="font-size:12px;font-weight:500">${r.remarks||r.type}</div>
-          <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${fmtDate(r.date)}</div>
-        </div>
+        <div><div style="font-size:12px;font-weight:500">${r.remarks||r.type}</div><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${fmtDate(r.date)}</div></div>
         <span style="font-family:var(--mono);font-size:12px;color:${color}">${sign}${r.currency} $${Math.abs(amt).toFixed(2)}</span>
       </div>`;
     });
     body.innerHTML=html;
-  }catch(e){
-    body.innerHTML='<div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--danger)">Could not load</div>';
-  }
+  }catch(e){body.innerHTML='<div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--danger)">Could not load</div>';}
 }
 
 function toggleGroup(header){const body=header.nextElementSibling;const arrow=header.querySelector('.summary-group-arrow');const isOpen=body.style.display==='block';body.style.display=isOpen?'none':'block';if(arrow)arrow.classList.toggle('open',!isOpen);}
@@ -1200,110 +1231,39 @@ function openDrill(category,month){
   const rows=getRowsForMonth(month).filter(r=>r.category===category);
   if(!rows.length){showToast('No data for this category','error');return;}
   const merchants={};
-  rows.forEach(r=>{
-    const key=r.description||'Unknown';
-    if(!merchants[key])merchants[key]={total:0,entries:[]};
-    merchants[key].total+=parseFloat(r.cost||0);
-    merchants[key].entries.push({date:fmtDateWithDay(r.date),amount:parseFloat(r.cost||0)});
-  });
+  rows.forEach(r=>{const key=r.description||'Unknown';if(!merchants[key])merchants[key]={total:0,entries:[]};merchants[key].total+=parseFloat(r.cost||0);merchants[key].entries.push({date:fmtDateWithDay(r.date),amount:parseFloat(r.cost||0)});});
   const sorted=Object.entries(merchants).sort((a,b)=>b[1].total-a[1].total);
-
-  // Find the clicked category row and toggle an inline accordion below it
   const allCatRows=document.querySelectorAll('.summary-cat-row');
   let targetRow=null;
-  allCatRows.forEach(row=>{
-    if(row.querySelector('.summary-cat-name')&&row.querySelector('.summary-cat-name').textContent===category){
-      targetRow=row;
-    }
-  });
+  allCatRows.forEach(row=>{if(row.querySelector('.summary-cat-name')&&row.querySelector('.summary-cat-name').textContent===category)targetRow=row;});
   if(!targetRow)return;
-
-  // Remove any existing drill panel
   const existing=document.getElementById('drillPanel_'+category.replace(/\s/g,'_'));
   if(existing){existing.remove();return;}
-
   let html=`<div id="drillPanel_${category.replace(/\s/g,'_')}" style="background:var(--surface2);border-top:1px solid var(--border)">`;
   sorted.forEach(([name,data])=>{
-    const count=data.entries.length;
-    const id='dp_'+Math.random().toString(36).slice(2);
-    html+=`<div style="border-bottom:1px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;cursor:pointer" onclick="const b=document.getElementById('${id}');b.style.display=b.style.display==='block'?'none':'block'">
-        <div>
-          <div style="font-size:12px;font-weight:500">${name}</div>
-          <div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${count} transaction${count>1?'s':''}</div>
-        </div>
-        <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">$${data.total.toFixed(2)}</span>
-      </div>
-      <div id="${id}" style="display:none;background:var(--bg)">
-        ${data.entries.map(e=>`<div style="display:flex;justify-content:space-between;padding:8px 16px 8px 24px;border-top:1px solid var(--border)"><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${e.date}</span><span style="font-family:var(--mono);font-size:11px">$${e.amount.toFixed(2)}</span></div>`).join('')}
-      </div>
-    </div>`;
+    const count=data.entries.length;const id='dp_'+Math.random().toString(36).slice(2);
+    html+=`<div style="border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;cursor:pointer" onclick="const b=document.getElementById('${id}');b.style.display=b.style.display==='block'?'none':'block'"><div><div style="font-size:12px;font-weight:500">${name}</div><div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${count} transaction${count>1?'s':''}</div></div><span style="font-family:var(--mono);font-size:12px;color:var(--accent)">$${data.total.toFixed(2)}</span></div><div id="${id}" style="display:none;background:var(--bg)">${data.entries.map(e=>`<div style="display:flex;justify-content:space-between;padding:8px 16px 8px 24px;border-top:1px solid var(--border)"><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${e.date}</span><span style="font-family:var(--mono);font-size:11px">$${e.amount.toFixed(2)}</span></div>`).join('')}</div></div>`;
   });
   html+='</div>';
-
   targetRow.insertAdjacentHTML('afterend',html);
 }
-  
+
 function closeDrill(e){if(e.target===document.getElementById('drillOverlay'))closeDrillBtn();}
 function closeDrillBtn(){document.getElementById('drillOverlay').style.display='none';}
-
-const CAT_EMOJI={
-  'Rent':'🏠','Dining out':'🍽️','Groceries':'🛒','Furniture':'🛋️',
-  'Home - Other':'🏠','Household supplies':'🧹','Sports':'⚽','Clothing':'👗',
-  'Gifts':'🎁','Life - Other':'💳','Medical Expenses':'💊','Liquor':'🍷',
-  'Entertainment - Other':'🎬','Electronics':'📱','Movies':'🎬','Games':'🎮',
-  'Childcare':'👶','Education':'📚','Bus/train':'🚌','Gas/fuel':'⛽',
-  'Car':'🚗','Parking':'🅿️','Taxi':'🚕','Bicycle':'🚲',
-  'Water':'💧','Electricity':'⚡','Gas':'🔥','Insurance':'🛡️',
-  'TV/Phone/Internet':'📡','Other':'💰'
-};
 
 function renderTxnList(){
   const container=document.getElementById('txnList');
   if(!summaryData){container.innerHTML='';return;}
-  const rows=getRowsForMonth(selectedMonth).slice().sort((a,b)=>{
-    const da=new Date(a.date),db=new Date(b.date);
-    return isNaN(db)||isNaN(da)?0:db-da;
-  });
+  const rows=getRowsForMonth(selectedMonth).slice().sort((a,b)=>{const da=new Date(a.date),db=new Date(b.date);return isNaN(db)||isNaN(da)?0:db-da;});
   if(!rows.length){container.innerHTML='<div class="loading-spinner">No transactions this month</div>';return;}
   let html='<div class="txn-list">';
   rows.forEach(r=>{
-    const emoji=CAT_EMOJI[r.category]||'💰';
-    const dateStr=fmtDateWithDay(r.date);
-    html+=`<div class="txn-row">
-      <div style="font-size:22px;margin-right:10px;flex-shrink:0">${emoji}</div>
-      <div class="txn-left" style="flex:1">
-        <span class="txn-desc">${r.description||'—'}</span>
-        <span class="txn-meta">${dateStr} · ${r.category||'—'}</span>
-      </div>
-      <span class="txn-amount">$${parseFloat(r.cost||0).toFixed(2)}</span>
-    </div>`;
+    const emoji=CAT_EMOJI[r.category]||'💰';const dateStr=fmtDateWithDay(r.date);
+    html+=`<div class="txn-row"><div style="font-size:22px;margin-right:10px;flex-shrink:0">${emoji}</div><div class="txn-left" style="flex:1"><span class="txn-desc">${r.description||'—'}</span><span class="txn-meta">${dateStr} · ${r.category||'—'}</span></div><span class="txn-amount">$${parseFloat(r.cost||0).toFixed(2)}</span></div>`;
   });
-  html+='</div>';
-  container.innerHTML=html;
+  html+='</div>';container.innerHTML=html;
 }
-  function fmtDateWithDay(raw){
-  if(!raw)return'—';
-  const s=raw.toString().trim();
-  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  let d;
-  // ISO: 2026-05-06
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
-    const[y,mo,dy]=s.split('-');
-    d=new Date(parseInt(y),parseInt(mo)-1,parseInt(dy));
-  }
-  // D MMM YYYY: 6 May 2026
-  else if(/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s)){
-    const parts=s.split(' ');
-    d=new Date(parseInt(parts[2]),MONTH_IDX[parts[1]],parseInt(parts[0]));
-  }
-  else{
-    d=new Date(s);
-  }
-  if(!d||isNaN(d.getTime()))return fmtDate(raw);
-  return days[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear();
-}
-  
+
 function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+type;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
 </script>
 </body>
