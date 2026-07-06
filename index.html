@@ -411,7 +411,7 @@
       <button class="month-pill active" id="pillSpending" onclick="setSummaryView('spending')" style="flex:1;font-size:12px">📊 Spending</button>
       <button class="month-pill" id="pillFunds" onclick="setSummaryView('funds')" style="flex:1;font-size:12px">💰 Funds</button>
     </div>
-    <div class="summary-header"><div class="summary-title" id="summaryTitle">Spending Summary</div><button class="lock-btn" onclick="lockSummary()">🔒 Lock</button></div>
+    <div class="summary-header"><div class="summary-title" id="summaryTitle">Spending Summary</div><div style="display:flex;gap:6px"><button class="lock-btn" onclick="window.open('dashboard.html','_blank')" style="border-color:var(--accent3);color:var(--accent3)">📊 Dashboard</button><button class="lock-btn" onclick="lockSummary()">🔒 Lock</button></div></div>
     <div class="month-selector" id="monthSelector"></div>
     <div id="summaryContent"><div class="loading-spinner">Loading…</div></div>
     <div class="section-divider"><span>Recent Transactions</span></div>
