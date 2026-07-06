@@ -10,7 +10,7 @@
 :root{
   --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--border:#2e2e2e;
   --accent:#c8f55a;--accent2:#5af5c8;--accent3:#f5c85a;--accent4:#f55ac8;
-  --text:#f0f0f0;--muted:#888;--danger:#f55a5a;--success:#5af55a;
+  --text:#f0f0f0;--muted:#969696;--danger:#f55a5a;--success:#5af55a;
   --radius:14px;--font:'Sora',sans-serif;--mono:'DM Mono',monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -47,7 +47,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 /* Month selector */
 .month-bar{padding:14px 24px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;}
 .month-bar::-webkit-scrollbar{display:none;}
-.mpill{padding:7px 14px;border-radius:40px;border:1.5px solid var(--border);background:var(--surface);
+.mpill{padding:7px 16px;border-radius:40px;border:1.5px solid var(--border);background:var(--surface);
   color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;white-space:nowrap;transition:all 0.15s;flex-shrink:0;}
 .mpill.active{border-color:var(--accent);color:var(--accent);background:rgba(200,245,90,0.08);font-weight:500;}
 
@@ -68,7 +68,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .kpi-row{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:16px 24px 0;}
 @media(min-width:768px){.kpi-row{grid-template-columns:repeat(4,1fr);}}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;}
-.kpi-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;}
+.kpi-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;}
 .kpi-value{font-family:var(--mono);font-size:20px;font-weight:500;color:var(--accent);}
 .kpi-value.warn{color:var(--danger);}
 .kpi-sub{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px;}
@@ -94,7 +94,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .fund-budget-line{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px;}
 .fund-balance{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent);}
 .fund-balance.sg{color:var(--accent2);}
-.fund-unmatched{font-family:var(--mono);font-size:9px;color:var(--accent3);margin-top:2px;}
+.fund-unmatched{font-family:var(--mono);font-size:10px;color:var(--accent3);margin-top:2px;}
 
 /* Trip cards */
 .trip-card{background:var(--surface2);border-radius:10px;border:1px solid var(--border);
@@ -464,6 +464,15 @@ function prevMonth(obj, n) {
   while (m < 0) { m += 12; y--; }
   return { y, m };
 }
+function fmtDateShort(raw) {
+  if (!raw) return '';
+  const s = raw.toString().trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { const [y, mo, d] = s.split('-'); return parseInt(d) + ' ' + MONTHS[parseInt(mo) - 1] + ' ' + y.slice(2); }
+  if (/^\d{1,2}\s[A-Z][a-z]{2}\s\d{4}$/.test(s)) { const parts = s.split(' '); return parts[0] + ' ' + parts[1] + ' ' + parts[2].slice(2); }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) { return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2); }
+  return s;
+}
 function getRowsForMonth(month) {
   return (dashData.summary?.rows || []).filter(r => r.month && r.month.trim() === month && parseFloat(r.cost || 0) > 0);
 }
@@ -572,12 +581,12 @@ function renderTrendChart() {
       scales: {
         x: {
           grid: { color: 'rgba(255,255,255,0.05)' },
-          ticks: { color: '#888', font: { family: 'DM Mono', size: 10 }, maxRotation: 45 }
+          ticks: { color: '#969696', font: { family: 'DM Mono', size: 10 }, maxRotation: 45 }
         },
         y: {
           grid: { color: 'rgba(255,255,255,0.05)' },
           ticks: {
-            color: '#888', font: { family: 'DM Mono', size: 10 },
+            color: '#969696', font: { family: 'DM Mono', size: 10 },
             callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'k' : v)
           }
         }
@@ -647,12 +656,16 @@ function renderTrips() {
     const settleText = settled ? '✓ Settled'
       : net > 0 ? `Paige owes Aizat ${fmt(Math.abs(net))}`
       : `Aizat owes Paige ${fmt(Math.abs(net))}`;
+    const startStr = t.startDate ? fmtDateShort(t.startDate.toString()) : '';
+    const endStr = t.endDate ? fmtDateShort(t.endDate.toString()) : '';
+    const dateRange = startStr && endStr ? startStr + ' – ' + endStr : startStr || endStr || (t.currency || 'mixed');
     html += `<div class="trip-card">
       <div class="trip-card-top">
         <div>
           <div class="trip-card-name">${t.name}</div>
-          <div class="trip-card-dates">${t.currency || 'mixed'} · ${fmt(t.totalSpent)} total</div>
+          <div class="trip-card-dates">${dateRange}</div>
         </div>
+        <div class="trip-card-total">${fmt(t.totalSpent)}</div>
       </div>
       <div class="trip-settle ${settled ? 'settled' : 'owes'}">${settleText}</div>
     </div>`;
