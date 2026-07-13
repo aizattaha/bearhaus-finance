@@ -9,7 +9,7 @@
   :root {
     --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--border:#2e2e2e;
     --accent:#c8f55a;--accent2:#5af5c8;--accent3:#f5c85a;--accent4:#f55ac8;
-    --text:#f0f0f0;--muted:#969696;--danger:#f55a5a;--success:#5af55a;--radius:14px;
+    --text:#f0f0f0;--muted:#888;--danger:#f55a5a;--success:#5af55a;--radius:14px;
     --font:'Sora',sans-serif;--mono:'DM Mono',monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -48,18 +48,18 @@
   .curr-btn{padding:0 14px;font-family:var(--mono);font-size:12px;font-weight:500;color:var(--muted);background:transparent;border:none;cursor:pointer;transition:all 0.15s;}
   .curr-btn.active{background:var(--accent);color:#000;}
   .payer-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
-  .payer-btn{padding:13px 4px;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.15s;line-height:1.3;}
+  .payer-btn{padding:11px 4px;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.15s;line-height:1.3;}
   .payer-btn.active-aizat{border-color:var(--accent);color:var(--accent);background:rgba(200,245,90,0.08);}
   .payer-btn.active-joint{border-color:var(--accent3);color:var(--accent3);background:rgba(245,200,90,0.08);}
   .payer-btn.active-paige{border-color:var(--accent2);color:var(--accent2);background:rgba(90,245,200,0.08);}
   .account-chips{display:flex;flex-wrap:wrap;gap:6px;}
-  .chip{padding:10px 14px;border-radius:40px;border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
+  .chip{padding:7px 12px;border-radius:40px;border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
   .chip.active-aizat{border-color:var(--accent);color:var(--accent);background:rgba(200,245,90,0.08);}
   .chip.active-joint{border-color:var(--accent3);color:var(--accent3);background:rgba(245,200,90,0.08);}
   .chip.active-paige{border-color:var(--accent2);color:var(--accent2);background:rgba(90,245,200,0.08);}
   .chip.active-other{border-color:var(--muted);color:var(--text);background:rgba(255,255,255,0.06);}
   .account-group{display:flex;flex-direction:column;gap:6px;}
-  .account-group-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;}
+  .account-group-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;}
   .share-preview{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;display:flex;flex-direction:column;gap:7px;}
   .share-row{display:flex;justify-content:space-between;align-items:center;}
   .share-name{font-family:var(--mono);font-size:11px;color:var(--muted);}
@@ -68,7 +68,7 @@
   .share-value.positive{color:var(--success);}
   .share-value.zero{color:var(--muted);}
   .share-divider{height:1px;background:var(--border);}
-  .share-preview-label{font-family:var(--mono);font-size:10px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;margin-bottom:2px;}
+  .share-preview-label{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;margin-bottom:2px;}
   .country-toggle,.type-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
   .country-btn,.type-btn{padding:11px;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.15s;}
   .country-btn.active{border-color:var(--accent2);color:var(--accent2);background:rgba(90,245,200,0.08);}
@@ -83,7 +83,7 @@
   .advanced-fields.hidden{display:none;}
   .split-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
   .split-input-wrap{display:flex;flex-direction:column;gap:4px;}
-  .split-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:0.06em;}
+  .split-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.06em;}
   .submit-btn{width:100%;padding:17px;border-radius:var(--radius);border:none;background:var(--accent);color:#000;font-family:var(--font);font-size:15px;font-weight:600;cursor:pointer;letter-spacing:0.02em;transition:all 0.2s;margin-top:4px;position:relative;overflow:hidden;}
   .submit-btn:active{transform:scale(0.98);}
   .submit-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
@@ -195,7 +195,7 @@
   .trip-balance-amount{font-family:var(--mono);font-size:13px;font-weight:500;}
   .trip-balance-amount.owes{color:var(--danger);}
   .trip-balance-amount.settled{color:var(--success);}
-  .trip-fund-pill{background:rgba(200,245,90,0.1);border:1px solid rgba(200,245,90,0.3);border-radius:20px;padding:4px 9px;font-family:var(--mono);font-size:10px;color:var(--accent);}
+  .trip-fund-pill{background:rgba(200,245,90,0.1);border:1px solid rgba(200,245,90,0.3);border-radius:20px;padding:3px 8px;font-family:var(--mono);font-size:9px;color:var(--accent);}
 
   /* TRIP DETAIL */
   .trip-detail-area{flex:1;display:flex;flex-direction:column;overflow:hidden;}
@@ -205,7 +205,7 @@
   .trip-detail-body{flex:1;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:12px;}
   .trip-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   .trip-stat-card{background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:12px;}
-  .trip-stat-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;}
+  .trip-stat-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;}
   .trip-stat-value{font-family:var(--mono);font-size:16px;font-weight:500;color:var(--accent);}
   .trip-stat-value.danger{color:var(--danger);}
   .trip-stat-value.success{color:var(--success);}
@@ -315,7 +315,7 @@
       <div class="field-label">USING</div>
       <div class="account-group" id="d_aizatAccounts" style="display:none"><div class="account-group-label">Aizat</div><div class="account-chips"><button class="chip" onclick="setUsing('d','Macquarie - Aizat',this,'aizat')">Macquarie - Aizat</button><button class="chip" onclick="setUsing('d','YouTrip - Aizat',this,'aizat')">YouTrip - Aizat</button><button class="chip" onclick="setUsing('d','ComBank - Aizat',this,'aizat')">ComBank - Aizat</button><button class="chip" onclick="setUsing('d','Bank - Aizat',this,'aizat')">Bank - Aizat</button></div></div>
       <div class="account-group" id="d_jointAccounts" style="display:none"><div class="account-group-label">Joint</div><div class="account-chips"><button class="chip" onclick="setUsing('d','Bank - Joint',this,'joint')">Bank - Joint</button><button class="chip" onclick="setUsing('d','YouTrip - Joint',this,'joint')">YouTrip - Joint</button></div></div>
-      <div class="account-group" id="d_paigeAccounts" style="display:none"><div class="account-group-label">Paige</div><div class="account-chips"><button class="chip" onclick="setUsing('d','YouTrip - Paige',this,'paige')">YouTrip - Paige</button><button class="chip" onclick="setUsing('d','Bank - Paige',this,'paige')">Bank - Paige</button><button class="chip" onclick="setUsing('d','Macquarie - Paige',this,'paige')">Macquarie - Paige</button><button class="chip" onclick="setUsing('d','HSBC Star Alliance - Paige',this,'paige')">HSBC Star Alliance</button></div></div>
+      <div class="account-group" id="d_paigeAccounts" style="display:none"><div class="account-group-label">Paige</div><div class="account-chips"><button class="chip" onclick="setUsing('d','HSBC Star Alliance - Paige',this,'paige')">HSBC Star Alliance</button><button class="chip" onclick="setUsing('d','YouTrip - Paige',this,'paige')">YouTrip - Paige</button><button class="chip" onclick="setUsing('d','Bank - Paige',this,'paige')">Bank - Paige</button><button class="chip" onclick="setUsing('d','Macquarie - Paige',this,'paige')">Macquarie - Paige</button></div></div>
       <div class="account-group"><div class="account-group-label">Other</div><div class="account-chips"><button class="chip" onclick="setUsing('d','Cash',this,'other')">Cash</button></div></div>
     </div>
     <div class="share-preview" id="d_sharePreview" style="display:none"><div class="share-preview-label">Split Preview</div><div class="share-row"><span class="share-name">AIZAT</span><span class="share-value" id="d_prev_aizat">—</span></div><div class="share-divider"></div><div class="share-row"><span class="share-name">AIZAT &amp; PAIGE</span><span class="share-value" id="d_prev_joint">—</span></div><div class="share-divider"></div><div class="share-row"><span class="share-name">PAIGE</span><span class="share-value" id="d_prev_paige">—</span></div></div>
@@ -411,7 +411,7 @@
       <button class="month-pill active" id="pillSpending" onclick="setSummaryView('spending')" style="flex:1;font-size:12px">📊 Spending</button>
       <button class="month-pill" id="pillFunds" onclick="setSummaryView('funds')" style="flex:1;font-size:12px">💰 Funds</button>
     </div>
-    <div class="summary-header"><div class="summary-title" id="summaryTitle">Spending Summary</div><button class="lock-btn" onclick="lockSummary()">🔒 Lock</button></div>
+    <div class="summary-header"><div class="summary-title" id="summaryTitle">Spending Summary</div><div style="display:flex;gap:6px"><button class="lock-btn" onclick="window.open('dashboard.html','_blank')" style="border-color:var(--accent3);color:var(--accent3)">📊 Dashboard</button><button class="lock-btn" onclick="lockSummary()">🔒 Lock</button></div></div>
     <div class="month-selector" id="monthSelector"></div>
     <div id="summaryContent"><div class="loading-spinner">Loading…</div></div>
     <div class="section-divider"><span>Recent Transactions</span></div>
@@ -518,7 +518,7 @@ function fmtDateWithDay(raw){
 const DAILY_CAT_OPTIONS=`<option value="">Select category…</option>
 <optgroup label="🏠 Rent"><option>Rent</option></optgroup>
 <optgroup label="🛍️ Daily Expenses"><option>Dining out</option><option>Groceries</option><option>Furniture</option><option>Home - Other</option><option>Household supplies</option><option>Sports</option><option>Clothing</option><option>Gifts</option><option>Life - Other</option><option>Medical Expenses</option><option>Liquor</option><option>Entertainment - Other</option><option>Electronics</option><option>Movies</option><option>Games</option></optgroup>
-<optgroup label="👶 Education"><option>Childcare</option><option>Education</option></optgroup>
+<optgroup label="👶 Education"><option>Childcare</option><option>Education</option><option>Activities</option></optgroup>
 <optgroup label="🚗 Transportation"><option>Bus/train</option><option>Gas/fuel</option><option>Car</option><option>Parking</option><option>Taxi</option><option>Bicycle</option></optgroup>
 <optgroup label="💡 Utilities"><option>Water</option><option>Electricity</option><option>Gas</option></optgroup>
 <optgroup label="🛡️ Insurance"><option>Insurance</option></optgroup>
@@ -556,7 +556,7 @@ const CATEGORY_MAP={'woolworths':'Groceries','woolies':'Groceries','coles':'Groc
 const CATEGORY_GROUPS=[
   {name:'🏠 Rent',cats:['Rent']},
   {name:'🛍️ Daily Expenses',cats:['Dining out','Groceries','Furniture','Home - Other','Household supplies','Sports','Clothing','Gifts','Life - Other','Medical Expenses','Liquor','Entertainment - Other','Electronics','Movies','Games']},
-  {name:'👶 Education',cats:['Childcare','Education']},
+  {name:'👶 Education',cats:['Childcare','Education','Activities']},
   {name:'🚗 Transportation',cats:['Bus/train','Gas/fuel','Car','Parking','Taxi','Bicycle']},
   {name:'💡 Utilities',cats:['Water','Electricity','Gas']},
   {name:'🛡️ Insurance',cats:['Insurance']},
@@ -1172,7 +1172,12 @@ function setSummaryView(view){
   renderSummaryView();
 }
 
+// Global registry so fund names with apostrophes or special chars are never
+// embedded in onclick attribute strings — we pass an integer index instead.
+let _fundNameRegistry=[];
+
 async function renderFundSummary(){
+  _fundNameRegistry=[];
   const content=document.getElementById('summaryContent');
   content.innerHTML='<div class="loading-spinner">Loading fund balances…</div>';
   try{
@@ -1183,15 +1188,19 @@ async function renderFundSummary(){
     const FLOAT_FUND=['Float'];
     const AU_FUNDS_LIST=['Rainy Day Fund AU (Aizat)','Emergency Fund AU (Paige)','Edu Fund (Claire)','Edu Fund (Anne)','Car Fund','BearHaus Rainy Day AU','Travel Fund AU','Monthly Expenses (Aizat)','Monthly Expenses (Paige)','Investment Fund AU (Aizat)','Dry Powder AU (Paige)'];
     const SG_FUNDS_LIST=['MediShield (Aizat)','Life Multiprotect (Aizat)','FWD Future First','MediShield (Paige)','Life Multiprotect (Paige)','AXA Term Protector','Pruwealth (May 2025)','HSBC FlexiProtector (Anne)','AIA ProtectPlus 2 (Anne)','Early Saver 5-Pay (Anne)','MediShield (Anne)','MediShield (Claire)','Life Treasure (Claire)',"Anne's Savings SG","Claire's Savings SG",'Taxes Fund SG (Aizat)','Investment Fund SG (Aizat)','Dry Powder SG (Paige)','Emergency Fund SG (Paige)','Stashaway','BOC','Property Tax','Google Drive','Future DreamHouse SG'];
+
     function renderFundGroup(title,flag,funds){
-      let html=`<div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;padding:4px 0 8px">${flag} ${title}</div>`;
+      let html=`<div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;padding:4px 0 8px">${flag} ${title}</div>`;
       funds.forEach(name=>{
+        // Store name in registry and use index in onclick — avoids apostrophe/quote breakage
+        const nameIdx=_fundNameRegistry.length;
+        _fundNameRegistry.push(name);
         const b=balances[name];const val=b?b.balance:null;const cur=b?b.currency:(title==='SG Funds'?'SGD':'AUD');
         const hasVal=val!==null&&val!==undefined;
         const valDisplay=hasVal?(cur+' '+Math.abs(val).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})):'—';
         const valColor=hasVal&&val>0?'var(--accent)':(title==='SG Funds'?'var(--accent2)':'var(--accent)');
-        const panelId='fund_'+name.replace(/[^a-zA-Z0-9]/g,'_');
-        html+=`<div class="summary-group" style="margin-bottom:6px"><div class="summary-group-header" onclick="toggleFundPanel('${panelId}','${name}',this)"><span class="summary-group-name" style="font-size:12px">💰 ${name}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);font-size:13px;font-weight:500;color:${valColor}">${valDisplay}</span><span class="summary-group-arrow">▾</span></div></div><div class="summary-group-body" id="${panelId}"><div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--muted)">Loading…</div></div></div>`;
+        const panelId='fund_'+name.replace(/[^a-zA-Z0-9]/g,'_')+'_'+nameIdx;
+        html+=`<div class="summary-group" style="margin-bottom:6px"><div class="summary-group-header" onclick="toggleFundPanel('${panelId}',${nameIdx},this)"><span class="summary-group-name" style="font-size:12px">💰 ${name}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);font-size:13px;font-weight:500;color:${valColor}">${valDisplay}</span><span class="summary-group-arrow">▾</span></div></div><div class="summary-group-body" id="${panelId}"><div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--muted)">Loading…</div></div></div>`;
       });
       return html;
     }
@@ -1203,7 +1212,9 @@ async function renderFundSummary(){
   }catch(e){content.innerHTML='<div class="loading-spinner">Could not reach script: '+e.message+'</div>';}
 }
 
-async function toggleFundPanel(panelId,fundName,header){
+// nameIdx is an integer — safe to embed in onclick. Fund name is retrieved from registry.
+async function toggleFundPanel(panelId,nameIdx,header){
+  const fundName=_fundNameRegistry[nameIdx];
   const body=document.getElementById(panelId);const arrow=header.querySelector('.summary-group-arrow');const isOpen=body.style.display==='block';
   if(isOpen){body.style.display='none';if(arrow)arrow.classList.remove('open');return;}
   body.style.display='block';if(arrow)arrow.classList.add('open');
