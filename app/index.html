@@ -73,6 +73,39 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .legend .dot{width:8px;height:8px;border-radius:99px;flex-shrink:0}
 .legend .amt{margin-left:auto;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;font-size:12px}
 
+/* ── quick-add sheet ───────────────────────── */
+.backdrop{position:fixed;inset:0;background:rgba(26,43,68,.35);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
+.backdrop.open{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:50%;transform:translate(-50%,105%);bottom:0;width:100%;max-width:520px;background:#fff;border-radius:24px 24px 0 0;box-shadow:var(--shadow-lift);padding:18px 20px calc(22px + env(safe-area-inset-bottom));transition:transform .25s cubic-bezier(.4,0,.2,1);z-index:21;max-height:93dvh;overflow-y:auto}
+.sheet.open{transform:translate(-50%,0)}
+.grab{width:36px;height:4px;border-radius:999px;background:var(--muted);margin:0 auto 14px}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.choice{display:flex;align-items:center;gap:14px;width:100%;background:var(--field);border:none;border-radius:16px;padding:14px 16px;margin-top:10px;cursor:pointer;font-family:inherit;font-size:15px;text-align:left;color:var(--ink)}
+.choice:hover{background:var(--accent-soft)}
+.descinput{width:100%;font-family:inherit;font-size:14px;background:var(--field);border:2px solid transparent;border-radius:14px;padding:10px 14px;outline:none;color:var(--ink);transition:border .15s}
+.descinput:focus{border-color:var(--accent);background:#fff}
+.descinput::placeholder{color:var(--ink-soft)}
+select.descinput{appearance:none;-webkit-appearance:none}
+.amount-line{display:flex;align-items:center;gap:12px;margin:8px 0 2px;min-height:44px}
+.amount-line .disp{margin-left:auto}
+.seg{display:inline-flex;background:var(--field);border-radius:999px;padding:3px;gap:2px}
+.seg button{border:none;background:none;font-family:inherit;font-size:13px;font-weight:500;color:var(--ink-soft);border-radius:999px;padding:6px 14px;cursor:pointer;transition:all .15s}
+.seg button.sel{background:var(--primary);color:#fff}
+.seg.grow{display:flex}
+.seg.grow button{flex:1}
+#segType button:first-child.sel{background:var(--good)}
+#segType button:last-child.sel{background:var(--bad)}
+.catgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cat{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;font-family:inherit;cursor:pointer;padding:0}
+.cat .ci{width:40px;height:40px;border-radius:13px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:18px;transition:all .15s}
+.cat .cl{font-size:10px;line-height:12px;color:var(--ink-soft);font-weight:500;white-space:nowrap;max-width:74px;overflow:hidden;text-overflow:ellipsis}
+.cat.sel .ci{background:var(--primary)}
+.cat.sel .cl{color:var(--primary)}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+.key{height:40px;border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:17px;font-weight:500;color:var(--ink);cursor:pointer}
+.key:active{background:var(--accent-soft)}
+.f-sec{margin-top:10px}
+
 /* tab bar */
 .tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--muted);display:flex;justify-content:space-around;align-items:center;height:calc(72px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);max-width:520px;margin:0 auto;z-index:10}
 .tab{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;line-height:14px;color:var(--ink-soft);width:64px;background:none;border:none;cursor:pointer;padding:6px 0;font-family:inherit}
@@ -183,10 +216,50 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
   <nav class="tabbar">
     <button class="tab active" data-scr="scr-home" onclick="go('scr-home')"><span class="ti">●</span>Home</button>
     <button class="tab" data-scr="scr-budget" onclick="go('scr-budget')"><span class="ti">◐</span>Budget</button>
-    <button class="fab" onclick="toast('quick-add arrives in step 5.3 🐻')" aria-label="Add">+</button>
+    <button class="fab" onclick="openSheet()" aria-label="Add">+</button>
     <button class="tab" data-scr="scr-travel" onclick="go('scr-travel')"><span class="ti">◈</span>Travel</button>
     <button class="tab" data-scr="scr-funds" onclick="go('scr-funds')"><span class="ti">◇</span>Funds</button>
   </nav>
+</div>
+
+<!-- ══ QUICK-ADD SHEET ══ -->
+<div class="backdrop" id="backdrop" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+
+  <div id="sh-chooser">
+    <div class="sheet-head"><span class="h2">Add</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
+    <button class="choice" onclick="openForm('daily')"><div class="rowicon">🛒</div><span class="lbl">Daily expense</span></button>
+    <button class="choice" onclick="openForm('fund')"><div class="rowicon">💰</div><span class="lbl">Fund transaction</span></button>
+    <button class="choice" onclick="openForm('trip')"><div class="rowicon">✈️</div><span class="lbl">Trip expense</span></button>
+  </div>
+
+  <div id="sh-form" style="display:none">
+    <div class="sheet-head"><span class="h2" id="formTitle">Add expense</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
+    <div class="f-sec" style="margin-top:0"><input class="descinput" id="descInput" placeholder="description" autocomplete="off"></div>
+    <div class="f-sec" id="rowTrip" style="display:none"><select class="descinput" id="tripSel"></select></div>
+    <div class="f-sec" id="rowFund" style="display:none"><select class="descinput" id="fundSel"></select></div>
+    <div class="amount-line">
+      <div class="seg" id="segCurrency"></div>
+      <span class="lbl" id="fundCurLabel" style="display:none;color:var(--ink-soft)"></span>
+      <span class="disp num" id="amtDisp" style="color:var(--primary)">0</span>
+    </div>
+    <div class="f-sec" id="rowType" style="display:none"><div class="seg grow" id="segType"></div></div>
+    <div class="f-sec" id="rowCategory"><div class="catgrid" id="gridCategory"></div></div>
+    <div class="f-sec" id="rowPayer"><div class="seg grow" id="segPayer"></div></div>
+    <div class="f-sec" id="rowDetails" style="display:none">
+      <div style="display:flex;gap:8px">
+        <input class="descinput" id="dateInput" type="date" style="flex:1">
+        <select class="descinput" id="cardSel" style="flex:1"></select>
+      </div>
+      <input class="descinput" id="commentsInput" placeholder="note (optional)" style="margin-top:8px">
+    </div>
+    <div class="keypad" id="keypad"></div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
+      <button class="btn btn-primary" style="flex:1" id="saveBtn" onclick="saveEntry()">Save</button>
+      <button class="btn-tert" onclick="toggleDetails()">+ details</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toastEl"></div>
@@ -285,9 +358,8 @@ async function enterApp(){
   const cached = localStorage.getItem('bh-home');
   if (cached) { try { renderHome(JSON.parse(cached)); } catch(e){} }
   loadHome();
-
-  sb.from('households').select('name').single().then(({ data }) => {
-    if (data) $('hhLabel').textContent = '🐻 ' + data.name + ' household';
+  loadContext().then(() => {
+    if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
   });
 }
 
@@ -418,6 +490,236 @@ function renderHome(state){
     <div class="legend">${top.map(([g, v], i) =>
       `<div class="li"><span class="dot" style="background:${COLORS[i]}"></span><span>${esc(g)}</span><span class="amt">${Math.round(v).toLocaleString('en-AU')}</span></div>`).join('')
       || '<p class="cap">no spending yet this month</p>'}</div>`;
+}
+
+// ══ QUICK-ADD ═══════════════════════════════
+// household context: who we are, our funds, our trips
+let CTX = { hh: null, profiles: [], funds: [], trips: [], cards: [] };
+async function loadContext(){
+  const cached = localStorage.getItem('bh-ctx');
+  if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
+  const [hh, profiles, funds, trips, cards] = await Promise.all([
+    sb.from('households').select('id, name').single(),
+    sb.from('profiles').select('id, display_name').order('sort_order'),
+    sb.from('funds').select('id, name, country, currency').eq('is_active', true).order('sort_order'),
+    sb.from('trips').select('id, name, currency, start_date').order('start_date', {ascending:false}),
+    sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order').eq('is_archived', false).order('sort_order'),
+  ]);
+  if (!hh.error) CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
+                         trips: trips.data || [], cards: cards.data || [] };
+  localStorage.setItem('bh-ctx', JSON.stringify(CTX));
+}
+
+const DAILY_MAIN  = ['Dining out','Groceries','Bus/train','Household supplies','Childcare','Gas/fuel','Parking','__MORE__'];
+const DAILY_ALL   = ['Dining out','Groceries','Bus/train','Household supplies','Childcare','Gas/fuel','Parking',
+  'Home - Other','TV/Phone/Internet','Insurance','Furniture','Sports','Rent','Electricity','Gifts','Car','Clothing',
+  'Water','Life - Other','Education','Liquor','Entertainment - Other','Transportation - Other','Electronics',
+  'Medical Expenses','Games','Gas','Taxi','Movies','Bicycle','Health','Activities','Hotel','Payment'];
+const TRAVEL_MAIN = ['Dining out','Taxi/Grab','Public Transport','Hotel','Shopping','Currency exchange','Flights','__MORE__'];
+const TRAVEL_ALL  = ['Dining out','Taxi/Grab','Public Transport','Hotel','Shopping','Currency exchange','Flights',
+  'Airport Transfer','Car Rental','Ferry/Train','Airbnb/Hostel','Street Food','Groceries','Drinks',
+  'Tours & Experiences','Attraction Entry','Souvenirs','Travel Insurance','Medical','SIM Card/Data','Other'];
+Object.assign(CAT_ICON, {'Flights':'✈️','Airport Transfer':'🚐','Taxi/Grab':'🚕','Public Transport':'🚆',
+  'Car Rental':'🚙','Ferry/Train':'⛴️','Airbnb/Hostel':'🏘️','Street Food':'🌮','Drinks':'🥤',
+  'Tours & Experiences':'🎡','Attraction Entry':'🎟️','Shopping':'🛍️','Souvenirs':'🎁','Travel Insurance':'🛡️',
+  'Medical':'💊','SIM Card/Data':'📶','Currency exchange':'💱','Other':'🗂️','__MORE__':'➕'});
+
+// cards belong strictly to their payer — Joint is its own person with its own
+// wallet (Cash, Bank - Joint, …), never mixed into Aizat's or Paige's lists.
+function cardOptions(payerName){
+  const p = CTX.profiles.find(x => x.display_name === payerName);
+  const pid = p ? p.id : null;   // null = Joint's cards
+  return (CTX.cards || [])
+    .filter(c => c.profile_id === pid && (!c.travel_only || mode === 'trip'))
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+function refreshCards(payerName){
+  const opts = cardOptions(payerName);
+  $('cardSel').innerHTML = opts.map(c => '<option>' + esc(c.name) + '</option>').join('')
+    + '<option value="">no card</option>';
+  if (opts.length) $('cardSel').value = opts[0].name;
+}
+
+let amt = '', mode = 'daily', saving = false;
+
+function openSheet(){
+  $('sh-chooser').style.display = 'block';
+  $('sh-form').style.display = 'none';
+  $('backdrop').classList.add('open');
+  $('sheet').classList.add('open');
+}
+function closeSheet(){
+  $('backdrop').classList.remove('open');
+  $('sheet').classList.remove('open');
+}
+function buildSeg(id, items, selIdx, onPick){
+  const box = $(id); box.innerHTML = '';
+  items.forEach((c, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = c;
+    if (i === selIdx) b.classList.add('sel');
+    b.onclick = () => { box.querySelectorAll('button').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); if (onPick) onPick(c); };
+    box.appendChild(b);
+  });
+}
+function segSel(id){ const b = document.querySelector('#' + id + ' .sel'); return b ? b.textContent : ''; }
+function buildGrid(names, selName){
+  const box = $('gridCategory'); box.innerHTML = '';
+  names.forEach(name => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'cat' + (name === selName ? ' sel' : '');
+    b.dataset.name = name;
+    const label = name === '__MORE__' ? 'More' : name;
+    b.innerHTML = '<span class="ci">' + (CAT_ICON[name] || '🛍️') + '</span><span class="cl">' + esc(label) + '</span>';
+    b.onclick = () => {
+      if (name === '__MORE__') { buildGrid(mode === 'trip' ? TRAVEL_ALL : DAILY_ALL, gridSel()); return; }
+      box.querySelectorAll('.cat').forEach(x => x.classList.remove('sel')); b.classList.add('sel');
+    };
+    box.appendChild(b);
+  });
+}
+function gridSel(){ const b = document.querySelector('#gridCategory .cat.sel'); return b ? b.dataset.name : ''; }
+
+function fillSelect(sel, options){ // options: [value, label]
+  sel.innerHTML = options.map(([v, l]) => '<option value="' + esc(v) + '">' + esc(l) + '</option>').join('');
+}
+function payerNames(){ return CTX.profiles.map(p => p.display_name).concat('Joint'); }
+
+function openForm(m){
+  mode = m; amt = ''; renderAmt(); saving = false; $('saveBtn').textContent = 'Save';
+  $('descInput').value = ''; $('commentsInput').value = '';
+  $('dateInput').value = isoDate(new Date());
+  $('rowDetails').style.display = 'none';
+  const names = payerNames();
+  const lastPayer = localStorage.getItem('bh-payer') || names[0];
+  const lastCur = localStorage.getItem('bh-cur') || 'A$';
+
+  $('rowTrip').style.display = m === 'trip' ? 'block' : 'none';
+  $('rowFund').style.display = m === 'fund' ? 'block' : 'none';
+  $('rowType').style.display = m === 'fund' ? 'block' : 'none';
+  $('rowCategory').style.display = m === 'fund' ? 'none' : 'block';
+  $('rowPayer').style.display = m === 'fund' ? 'none' : 'block';
+  $('segCurrency').style.display = m === 'fund' ? 'none' : 'inline-flex';
+  $('fundCurLabel').style.display = m === 'fund' ? 'inline' : 'none';
+
+  if (m === 'daily') {
+    $('formTitle').textContent = 'Add expense';
+    $('descInput').placeholder = 'description — e.g. Woolworths';
+    buildSeg('segCurrency', ['A$','S$'], lastCur === 'S$' ? 1 : 0);
+    buildGrid(DAILY_MAIN, 'Dining out');
+  } else if (m === 'fund') {
+    $('formTitle').textContent = 'Fund transaction';
+    $('descInput').placeholder = 'remarks — e.g. July top-up';
+    buildSeg('segType', ['Into the fund','Out of the fund'], 0);
+    const au = CTX.funds.filter(f => f.country === 'AU'), sg = CTX.funds.filter(f => f.country === 'SG');
+    $('fundSel').innerHTML =
+      '<optgroup label="AU">' + au.map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('') + '</optgroup>' +
+      '<optgroup label="SG">' + sg.map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('') + '</optgroup>';
+    const lastFund = localStorage.getItem('bh-fund');
+    if (lastFund && CTX.funds.some(f => f.id === lastFund)) $('fundSel').value = lastFund;
+    updateFundCur();
+    $('fundSel').onchange = updateFundCur;
+  } else {
+    $('formTitle').textContent = 'Trip expense';
+    $('descInput').placeholder = 'description — e.g. beach club';
+    fillSelect($('tripSel'), CTX.trips.map(t => [t.id, t.name]));
+    buildSeg('segCurrency', ['A$','S$'], lastCur === 'S$' ? 1 : 0);
+    buildGrid(TRAVEL_MAIN, 'Dining out');
+  }
+  if (m !== 'fund') {
+    buildSeg('segPayer', names, Math.max(names.indexOf(lastPayer), 0),
+      p => refreshCards(p));
+    refreshCards(lastPayer);
+  }
+  $('sh-chooser').style.display = 'none';
+  $('sh-form').style.display = 'block';
+}
+function updateFundCur(){
+  const f = CTX.funds.find(x => x.id === $('fundSel').value);
+  $('fundCurLabel').textContent = f ? (f.currency === 'SGD' ? 'S$' : 'A$') : '';
+}
+function toggleDetails(){
+  const r = $('rowDetails');
+  r.style.display = r.style.display === 'none' ? 'block' : 'none';
+}
+
+// keypad
+(function(){
+  const pad = $('keypad');
+  ['1','2','3','4','5','6','7','8','9','.','0','⌫'].forEach(k => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'key'; b.textContent = k;
+    b.onclick = () => {
+      if (k === '⌫') amt = amt.slice(0, -1);
+      else if (k === '.') { if (!amt.includes('.')) amt = (amt || '0') + '.'; }
+      else { if (amt.includes('.') && amt.split('.')[1].length >= 2) return; if (amt.replace('.', '').length >= 8) return; amt += k; }
+      renderAmt();
+    };
+    pad.appendChild(b);
+  });
+})();
+function renderAmt(){
+  const d = $('amtDisp');
+  if (!amt) { d.textContent = '0'; return; }
+  const [i, f] = amt.split('.');
+  d.textContent = Number(i || 0).toLocaleString('en-AU') + (f !== undefined ? '.' + f : '');
+}
+
+// who-owes-what rows for one expense (payer +cost, joint −cost)
+function buildSplits(payerName, cost){
+  const joint = { profile_id: null, amount: -cost };
+  if (payerName === 'Joint') return [joint];
+  const p = CTX.profiles.find(x => x.display_name === payerName);
+  return p ? [{ profile_id: p.id, amount: cost }, joint] : [joint];
+}
+
+async function saveEntry(){
+  if (saving) return;
+  const cost = parseFloat(amt);
+  if (!(cost > 0)) { toast('enter an amount first'); return; }
+  const desc = $('descInput').value.trim();
+  if (mode !== 'fund' && !desc) { toast('add a description — the shop or what it was'); return; }
+  if (!CTX.hh) { toast('still connecting — try again in a second'); await loadContext(); return; }
+
+  saving = true; $('saveBtn').innerHTML = '<span class="spin"></span>';
+  const done = (ok, msg) => { saving = false; $('saveBtn').textContent = 'Save';
+    if (ok) { closeSheet(); toast(msg); loadHome(); } else { toast('couldn’t save: ' + msg); } };
+
+  const date = $('dateInput').value || isoDate(new Date());
+  try {
+    if (mode === 'fund') {
+      const fundId = $('fundSel').value;
+      const { error } = await sb.from('fund_transactions').insert({
+        household_id: CTX.hh.id, fund_id: fundId,
+        type: segSel('segType') === 'Into the fund' ? 'income' : 'expense',
+        date, amount: cost, remarks: desc, origin: 'manual',
+      });
+      if (error) throw error;
+      localStorage.setItem('bh-fund', fundId);
+      const f = CTX.funds.find(x => x.id === fundId);
+      done(true, 'saved — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
+      return;
+    }
+    const currency = segSel('segCurrency') === 'S$' ? 'SGD' : 'AUD';
+    const payer = segSel('segPayer');
+    const cat = gridSel();
+    if (!cat) { done(false, 'pick a category'); return; }
+    const pid = (CTX.profiles.find(x => x.display_name === payer) || {}).id || null;
+    const base = {
+      household_id: CTX.hh.id, date, description: desc, category: cat, amount: cost,
+      currency, payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
+    };
+    const table = mode === 'trip' ? 'travel_expenses' : 'daily_expenses';
+    if (mode === 'trip') base.trip_id = $('tripSel').value;
+    const { data: row, error } = await sb.from(table).insert(base).select('id').single();
+    if (error) throw error;
+    const splits = buildSplits(payer, cost).map(s => ({ household_id: CTX.hh.id, expense_id: row.id, ...s }));
+    const { error: e2 } = await sb.from(mode === 'trip' ? 'travel_expense_splits' : 'daily_expense_splits').insert(splits);
+    if (e2) throw e2;
+    localStorage.setItem('bh-payer', payer);
+    localStorage.setItem('bh-cur', segSel('segCurrency'));
+    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + (mode === 'trip' ? ' · trip' : ''));
+  } catch (err) {
+    done(false, err.message || String(err));
+  }
 }
 
 // stay signed in across visits
