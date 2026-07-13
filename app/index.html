@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>BearHaus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
+  --canvas:#FFFFFF; --muted:#E6E5E5; --ink:#1A2B44; --ink-soft:#6B7A90; --field:#F7F9FC;
+  --good:#3E9C6E; --good-soft:#E3F4EA; --bad:#D25353; --bad-bar:#F0A8A8;
+  --shadow-soft:0 2px 12px rgba(0,74,152,.06); --shadow-lift:0 8px 28px rgba(0,74,152,.12);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;background:#F7F9FC;color:var(--ink);font-size:15px;line-height:24px}
+
+.h1{font-size:24px;line-height:32px;font-weight:600}
+.h2{font-size:18px;line-height:26px;font-weight:600}
+.cap{font-size:12px;line-height:16px;color:var(--ink-soft)}
+.lbl{font-size:13px;line-height:18px;font-weight:500}
+.disp{font-size:34px;line-height:40px;font-weight:600;font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+.card{background:var(--canvas);border-radius:24px;box-shadow:var(--shadow-soft);padding:24px}
+.btn{font-family:inherit;font-size:15px;font-weight:500;border:none;border-radius:999px;height:48px;padding:0 28px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1)}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-hover)}
+.btn-primary:disabled{opacity:.55;cursor:default}
+.btn-tert{background:none;border:none;color:var(--primary);font-size:13px;font-weight:500;cursor:pointer;padding:4px 8px;border-radius:999px;font-family:inherit}
+.rowicon{width:40px;height:40px;border-radius:12px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.iconbtn{width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--primary);border:none;font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.field{display:block;width:100%;font-family:inherit;font-size:15px;background:var(--field);border:2px solid transparent;border-radius:16px;padding:13px 16px;outline:none;transition:border .15s;color:var(--ink)}
+.field:focus{border-color:var(--accent);background:#fff}
+
+/* ── login ─────────────────────────────────── */
+#login{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(170deg,#DCE9FC 0%,#E9F1FD 55%,#F7F9FC 100%)}
+.login-card{width:100%;max-width:380px;background:var(--canvas);border-radius:32px;box-shadow:0 24px 64px rgba(0,74,152,.22),0 4px 16px rgba(0,74,152,.10);padding:40px 28px 32px;display:flex;flex-direction:column;align-items:center;gap:16px}
+#login .logo{width:76px;height:76px;border-radius:24px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:40px}
+#login form{width:100%;display:flex;flex-direction:column;gap:12px;margin-top:8px}
+#loginError{color:var(--bad);font-size:13px;line-height:18px;text-align:center;min-height:18px}
+
+/* ── app shell ─────────────────────────────── */
+#app{display:none;min-height:100dvh;flex-direction:column;max-width:520px;margin:0 auto}
+.screens{flex:1;position:relative}
+.screen{display:none;flex-direction:column;gap:16px;padding:28px 20px 110px}
+.screen.active{display:flex}
+.scr-head{display:flex;align-items:flex-start;justify-content:space-between}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.total-card{background:var(--primary);color:#fff;border-radius:24px;padding:20px;box-shadow:var(--shadow-soft)}
+.total-card .cap{color:var(--accent)}
+.total-card .disp{font-size:24px;line-height:32px;color:#fff}
+.tick{width:28px;height:28px;border-radius:999px;background:var(--good-soft);color:var(--good);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.placeholder{color:var(--ink-soft);text-align:center;padding:40px 20px}
+
+/* transaction rows */
+.row{display:flex;align-items:center;gap:14px;min-height:64px;padding:8px 0}
+.row+.row{border-top:1px solid var(--muted)}
+.row .amt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--bad)}
+/* 7-day bars */
+.bars{display:flex;align-items:flex-end;gap:10px;height:80px;margin-top:16px}
+.bars i{flex:1;border-radius:8px 8px 4px 4px;background:var(--accent);min-height:4px}
+.bars i.today{background:var(--primary)}
+.daylbl{display:flex;margin-top:6px}
+.daylbl span{flex:1;text-align:center;font-size:12px;line-height:16px;color:var(--ink-soft)}
+.daylbl span.today{color:var(--primary);font-weight:500}
+/* donut */
+.donutwrap{display:flex;align-items:center;gap:18px;margin-top:14px}
+.legend{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+.legend .li{display:flex;align-items:center;gap:8px;font-size:12px;line-height:16px;color:var(--ink-soft)}
+.legend .li span:first-of-type{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legend .dot{width:8px;height:8px;border-radius:99px;flex-shrink:0}
+.legend .amt{margin-left:auto;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;font-size:12px}
+
+/* tab bar */
+.tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--muted);display:flex;justify-content:space-around;align-items:center;height:calc(72px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);max-width:520px;margin:0 auto;z-index:10}
+.tab{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;line-height:14px;color:var(--ink-soft);width:64px;background:none;border:none;cursor:pointer;padding:6px 0;font-family:inherit}
+.tab .ti{font-size:16px;line-height:18px}
+.tab.active{color:var(--primary);font-weight:500}
+.fab{width:56px;height:56px;border-radius:999px;background:var(--primary);color:#fff;font-size:26px;border:none;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-lift);margin-top:-32px;cursor:pointer}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,16px);background:var(--ink);color:#fff;font-size:13px;font-weight:500;line-height:18px;border-radius:999px;padding:10px 20px;opacity:0;transition:all .25s;z-index:30;pointer-events:none;white-space:nowrap;max-width:88%;overflow:hidden;text-overflow:ellipsis}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:99px;animation:sp .7s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div id="login">
+  <div class="login-card">
+    <div class="logo">🐻</div>
+    <div style="text-align:center">
+      <h1 class="h1">BearHaus</h1>
+      <p class="cap" style="margin-top:4px">one login for the whole household</p>
+    </div>
+    <form id="loginForm">
+      <input class="field" id="email" type="email" placeholder="email" autocomplete="username" required>
+      <input class="field" id="password" type="password" placeholder="password" autocomplete="current-password" required>
+      <button class="btn btn-primary" id="loginBtn" type="submit">Sign in</button>
+      <p id="loginError"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ══ APP ══ -->
+<div id="app">
+  <div class="screens">
+
+    <section class="screen active" id="scr-home">
+      <div class="scr-head">
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="rowicon" style="font-size:20px">🐻</div>
+          <div>
+            <p class="cap" id="todayLabel">…</p>
+            <h2 class="h1" id="monthLabel" style="margin-top:2px">…</h2>
+          </div>
+        </div>
+        <button class="iconbtn" onclick="go('scr-settings')" aria-label="Settings">⚙</button>
+      </div>
+
+      <div class="card" id="errorCard" style="display:none;background:var(--bad-bar)">
+        <p class="lbl" id="errorMsg">something went wrong</p>
+        <button class="btn btn-primary" style="height:40px;padding:0 20px;font-size:13px;margin-top:10px" onclick="retryLoad()">Try again</button>
+      </div>
+
+      <div class="card">
+        <p class="lbl" style="color:var(--ink-soft)">Spent this week</p>
+        <p class="disp num" id="weekTotal" style="color:var(--primary);margin-top:4px">…</p>
+        <p class="cap num" id="weekTotalSG" style="margin-top:2px"></p>
+        <div class="bars" id="weekBars"></div>
+        <div class="daylbl" id="weekLabels"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span class="h2">Recent</span>
+          <button class="btn-tert" onclick="toast('the full, filterable list arrives with quick-add in 5.3 🐻')">View all</button>
+        </div>
+        <div id="recentList"><p class="cap" style="padding:12px 0">loading…</p></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="h2" id="donutTitle">This month by category</span>
+          <span style="display:inline-flex;font-size:12px;font-weight:500;border-radius:999px;padding:3px 12px;background:var(--accent-soft);color:var(--primary)">A$</span>
+        </div>
+        <div class="donutwrap" id="donutWrap"><p class="cap">loading…</p></div>
+      </div>
+    </section>
+
+    <section class="screen" id="scr-budget">
+      <div><p class="cap">Budget</p><h2 class="h1" style="margin-top:2px">Am I on pace?</h2></div>
+      <div class="card placeholder">building in step 5.4 🐻</div>
+    </section>
+
+    <section class="screen" id="scr-travel">
+      <div><p class="cap">Travel</p><h2 class="h1" style="margin-top:2px">Trips</h2></div>
+      <div class="card placeholder">building in step 5.6 🐻</div>
+    </section>
+
+    <section class="screen" id="scr-funds">
+      <div><p class="cap">Funds</p><h2 class="h1" style="margin-top:2px">How much do we have?</h2></div>
+      <div class="card placeholder">building in step 5.5 🐻</div>
+    </section>
+
+    <section class="screen" id="scr-settings">
+      <div>
+        <button class="btn-tert" style="padding-left:0" onclick="go('scr-home')">‹ Home</button>
+        <h2 class="h1" style="margin-top:6px">Settings</h2>
+        <p class="cap" id="hhLabel">🐻 …</p>
+      </div>
+      <div class="card placeholder">full settings arrive in step 5.7 🐻</div>
+      <button class="btn-tert" style="align-self:center" onclick="signOut()">Sign out</button>
+    </section>
+  </div>
+
+  <nav class="tabbar">
+    <button class="tab active" data-scr="scr-home" onclick="go('scr-home')"><span class="ti">●</span>Home</button>
+    <button class="tab" data-scr="scr-budget" onclick="go('scr-budget')"><span class="ti">◐</span>Budget</button>
+    <button class="fab" onclick="toast('quick-add arrives in step 5.3 🐻')" aria-label="Add">+</button>
+    <button class="tab" data-scr="scr-travel" onclick="go('scr-travel')"><span class="ti">◈</span>Travel</button>
+    <button class="tab" data-scr="scr-funds" onclick="go('scr-funds')"><span class="ti">◇</span>Funds</button>
+  </nav>
+</div>
+
+<div class="toast" id="toastEl"></div>
+
+<script>
+// ── connection ───────────────────────────────
+const SUPABASE_URL = 'https://diqaezhdxloqhglndqrq.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_K-fUtwnuZAJLTNquqDN87Q_yBkEEGhZ';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── tiny helpers ─────────────────────────────
+const $ = id => document.getElementById(id);
+let toastTimer = null;
+function toast(msg){
+  const t = $('toastEl');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function go(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+  const tabFor = {'scr-home':'scr-home','scr-settings':'scr-home','scr-budget':'scr-budget','scr-travel':'scr-travel','scr-funds':'scr-funds'};
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.scr === tabFor[id]));
+  window.scrollTo(0, 0);
+}
+function fmtMoney(v, cur){
+  const sym = cur === 'SGD' ? 'S$' : 'A$';
+  return sym + Number(v).toLocaleString('en-AU', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ── auth flow ────────────────────────────────
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('loginBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+  $('loginError').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({
+    email: $('email').value.trim(),
+    password: $('password').value,
+  });
+  btn.disabled = false; btn.textContent = 'Sign in';
+  if (error) {
+    $('loginError').textContent = error.message === 'Invalid login credentials'
+      ? 'email or password didn’t match — try again'
+      : 'couldn’t sign in: ' + error.message;
+    return;
+  }
+  enterApp();
+});
+
+async function signOut(){
+  await sb.auth.signOut();
+  location.reload();
+}
+
+// ── category knowledge ───────────────────────
+// 'Payment' rows are settle-up transfers between you two, not spending —
+// they are excluded from every total on this screen.
+const GROUP_OF = {};
+const GROUPS = {
+  'Rent':               ['Rent'],
+  'Daily Expenses':     ['Dining out','Groceries','Furniture','Home - Other','Household supplies',
+                         'Sports','Clothing','Gifts','Life - Other','Medical Expenses','Liquor',
+                         'Entertainment - Other','Electronics','Movies','Games','Health','Hotel'],
+  'Education':          ['Childcare','Education','Activities'],
+  'Transportation':     ['Bus/train','Gas/fuel','Car','Parking','Taxi','Bicycle','Transportation - Other'],
+  'Utilities':          ['Water','Electricity','Gas'],
+  'Insurance':          ['Insurance'],
+  'TV/Phone/Internet':  ['TV/Phone/Internet'],
+};
+Object.entries(GROUPS).forEach(([g, cats]) => cats.forEach(c => GROUP_OF[c] = g));
+const CAT_ICON = {
+  'Groceries':'🛒','Dining out':'🍜','Bus/train':'🚆','Taxi':'🚕','Parking':'🅿️','Gas/fuel':'⛽',
+  'Car':'🚗','Bicycle':'🚲','Rent':'🏠','Electricity':'💡','Water':'🚿','Gas':'🔥',
+  'TV/Phone/Internet':'📱','Insurance':'🛡️','Childcare':'👶','Education':'🎓','Activities':'🎨',
+  'Furniture':'🛋️','Home - Other':'🏡','Household supplies':'🧻','Sports':'⚽','Clothing':'👕',
+  'Gifts':'🎁','Medical Expenses':'💊','Health':'💊','Liquor':'🍺','Movies':'🎬','Games':'🎮',
+  'Electronics':'🔌','Hotel':'🏨','Payment':'🔁',
+};
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// local calendar date, NOT toISOString() — that detours through UTC and,
+// being 10h behind Sydney, drags the previous day into every range
+const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+// ── app boot ─────────────────────────────────
+async function enterApp(){
+  $('login').style.display = 'none';
+  $('app').style.display = 'flex';
+
+  const now = new Date();
+  $('todayLabel').textContent = now.toLocaleDateString('en-AU', {weekday:'long', day:'numeric', month:'long'});
+  $('monthLabel').textContent = now.toLocaleDateString('en-AU', {month:'long'});
+  $('donutTitle').textContent = now.toLocaleDateString('en-AU', {month:'long'}) + ' by category';
+
+  // instant paint from the last visit, then refresh live
+  const cached = localStorage.getItem('bh-home');
+  if (cached) { try { renderHome(JSON.parse(cached)); } catch(e){} }
+  loadHome();
+
+  sb.from('households').select('name').single().then(({ data }) => {
+    if (data) $('hhLabel').textContent = '🐻 ' + data.name + ' household';
+  });
+}
+
+// ── error surfacing + self-heal ──────────────
+function showError(msg){
+  $('errorMsg').textContent = msg;
+  $('errorCard').style.display = 'block';
+}
+async function retryLoad(){
+  $('errorCard').style.display = 'none';
+  await sb.auth.refreshSession();   // get a fresh token if the old one expired
+  loadHome();
+}
+window.addEventListener('unhandledrejection', e =>
+  showError('unexpected error: ' + (e.reason && e.reason.message || e.reason)));
+
+// ── HOME: fetch tiny, pre-scoped slices ──────
+let homeRetried = false;
+async function loadHome(){
+  try {
+    const now = new Date();
+    const weekStart = new Date(now); weekStart.setDate(now.getDate() - 6);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [week, recent, month] = await Promise.all([
+      sb.from('daily_expenses').select('date, amount, currency, category')
+        .gte('date', isoDate(weekStart)).neq('category', 'Payment'),
+      sb.from('daily_expenses')
+        .select('date, description, category, amount, currency, profiles(display_name)')
+        .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(5),
+      sb.from('daily_expenses').select('category, amount, currency')
+        .gte('date', isoDate(monthStart)).neq('category', 'Payment'),
+    ]);
+    if (week.error) throw week.error;
+    if (recent.error) throw recent.error;
+    if (month.error) throw month.error;
+
+    const state = { week: week.data, recent: recent.data, month: month.data, today: isoDate(now) };
+    localStorage.setItem('bh-home', JSON.stringify(state));
+    $('errorCard').style.display = 'none';
+    renderHome(state);
+  } catch (err) {
+    const msg = String(err.message || err);
+    // expired login token? refresh it once and retry automatically
+    if (!homeRetried && /jwt|token|expired|401/i.test(msg)) {
+      homeRetried = true;
+      const { error } = await sb.auth.refreshSession();
+      if (!error) return loadHome();
+      await sb.auth.signOut();
+      location.reload();            // refresh failed → back to login, cleanly
+      return;
+    }
+    showError('couldn’t load your data: ' + msg);
+  }
+}
+
+function renderHome(state){
+  const now = new Date();
+  // hero + bars: last 7 days, A$ (S$ shown separately, never blended)
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now); d.setDate(now.getDate() - i);
+    days.push({ iso: isoDate(d), label: i === 0 ? 'Today' : d.toLocaleDateString('en-AU', {weekday:'short'}), au: 0 });
+  }
+  let weekAU = 0, weekSG = 0;
+  (state.week || []).forEach(r => {
+    const amt = Number(r.amount);
+    if (r.currency === 'SGD') { weekSG += amt; return; }
+    weekAU += amt;
+    const day = days.find(d => d.iso === r.date);
+    if (day) day.au += amt;
+  });
+  $('weekTotal').textContent = fmtMoney(weekAU, 'AUD');
+  $('weekTotalSG').textContent = weekSG > 0 ? '+ ' + fmtMoney(weekSG, 'SGD') + ' in SG' : '';
+  const max = Math.max(...days.map(d => d.au), 1);
+  $('weekBars').innerHTML = days.map((d, i) =>
+    `<i class="${i === 6 ? 'today' : ''}" style="height:${Math.max(Math.round(d.au / max * 100), 4)}%"></i>`).join('');
+  $('weekLabels').innerHTML = days.map((d, i) =>
+    `<span class="${i === 6 ? 'today' : ''}">${d.label}</span>`).join('');
+
+  // recent
+  $('recentList').innerHTML = (state.recent || []).map(r => {
+    const icon = CAT_ICON[r.category] || '🛍️';
+    const who = r.profiles ? r.profiles.display_name : 'Joint';
+    const d = new Date(r.date + 'T00:00:00');
+    const daysAgo = Math.round((new Date(state.today + 'T00:00:00') - d) / 86400000);
+    const when = daysAgo <= 0 ? 'today' : daysAgo === 1 ? 'yesterday'
+               : daysAgo < 7 ? d.toLocaleDateString('en-AU', {weekday:'long'})
+               : d.toLocaleDateString('en-AU', {day:'numeric', month:'short'});
+    return `<div class="row"><div class="rowicon">${icon}</div>
+      <div style="min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.description)}</div>
+      <div class="cap">${esc(r.category)} · ${esc(who)} · ${when}</div></div>
+      <div class="amt num">−${fmtMoney(r.amount, r.currency)}</div></div>`;
+  }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet this week 🐻</p>';
+
+  // donut: this month, A$, grouped
+  const byGroup = {};
+  let monthAU = 0;
+  (state.month || []).forEach(r => {
+    if (r.currency === 'SGD' || r.category === 'Payment') return;
+    const g = GROUP_OF[r.category] || 'Other';
+    byGroup[g] = (byGroup[g] || 0) + Number(r.amount);
+    monthAU += Number(r.amount);
+  });
+  const sorted = Object.entries(byGroup).sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, 4);
+  const restVal = sorted.slice(4).reduce((s, [, v]) => s + v, 0);
+  if (restVal > 0) {
+    const other = top.find(([g]) => g === 'Other');
+    if (other) other[1] += restVal; else top.push(['Other', restVal]);
+  }
+  const COLORS = ['#004A98', '#5A8AC7', '#B4CEFF', '#E4EEFF', '#E6E5E5'];
+  const C = 2 * Math.PI * 45;
+  let offset = 0;
+  const segs = top.map(([g, v], i) => {
+    const len = monthAU > 0 ? v / monthAU * C : 0;
+    const seg = `<circle cx="60" cy="60" r="45" fill="none" stroke="${COLORS[i]}" stroke-width="13"
+      stroke-dasharray="${len.toFixed(1)} ${(C - len).toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 60 60)"/>`;
+    offset += len;
+    return seg;
+  }).join('');
+  $('donutWrap').innerHTML = `
+    <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Spending by category">
+      <circle cx="60" cy="60" r="45" fill="none" stroke="#E6E5E5" stroke-width="13"/>${segs}
+      <text x="60" y="57" text-anchor="middle" font-size="14" font-weight="600" fill="#1A2B44" font-family="Poppins,sans-serif">A$${Math.round(monthAU).toLocaleString('en-AU')}</text>
+      <text x="60" y="73" text-anchor="middle" font-size="10" fill="#6B7A90" font-family="Poppins,sans-serif">so far</text>
+    </svg>
+    <div class="legend">${top.map(([g, v], i) =>
+      `<div class="li"><span class="dot" style="background:${COLORS[i]}"></span><span>${esc(g)}</span><span class="amt">${Math.round(v).toLocaleString('en-AU')}</span></div>`).join('')
+      || '<p class="cap">no spending yet this month</p>'}</div>`;
+}
+
+// stay signed in across visits
+sb.auth.getSession().then(({ data }) => { if (data.session) enterApp(); });
+</script>
+</body>
+</html>
