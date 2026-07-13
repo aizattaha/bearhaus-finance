@@ -3,70 +3,714 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>BearHaus Finance</title>
+<title>BearHaus Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-  :root {
-    --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--border:#2e2e2e;
-    --accent:#c8f55a;--accent2:#5af5c8;--accent3:#f5c85a;--accent4:#f55ac8;
-    --text:#f0f0f0;--muted:#888;--danger:#f55a5a;--success:#5af55a;--radius:14px;
-    --font:'Sora',sans-serif;--mono:'DM Mono',monospace;
+:root{
+  --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--border:#2e2e2e;
+  --accent:#c8f55a;--accent2:#5af5c8;--accent3:#f5c85a;--accent4:#f55ac8;
+  --text:#f0f0f0;--muted:#888;--danger:#f55a5a;--success:#5af55a;
+  --radius:14px;--font:'Sora',sans-serif;--mono:'DM Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100dvh;}
+
+/* ── LOCK SCREEN ── */
+#lockScreen{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100dvh;gap:24px;padding:40px 20px;}
+.lock-icon{font-size:48px;}
+.lock-title{font-size:20px;font-weight:600;}
+.lock-sub{font-size:12px;color:var(--muted);font-family:var(--mono);text-align:center;}
+.pin-dots{display:flex;gap:16px;margin:8px 0;}
+.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);background:transparent;transition:all 0.15s;}
+.pin-dot.filled{background:var(--accent);border-color:var(--accent);}
+.pin-dot.error{background:var(--danger);border-color:var(--danger);}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:280px;}
+.num-btn{padding:18px;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);
+  color:var(--text);font-family:var(--font);font-size:20px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.15s;}
+.num-btn:active{background:var(--surface2);transform:scale(0.95);}
+.num-btn.del{font-size:16px;color:var(--muted);}
+.num-btn.empty{border:none;background:transparent;cursor:default;}
+
+/* ── DASHBOARD ── */
+#dashboard{display:none;padding:0 0 40px;}
+.dash-header{padding:20px 24px 16px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:10;}
+.dash-logo{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:0.08em;}
+.dash-header-right{display:flex;align-items:center;gap:10px;}
+.dash-date{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--surface);
+  padding:4px 10px;border-radius:20px;border:1px solid var(--border);}
+.lock-btn{background:transparent;border:1px solid var(--border);border-radius:8px;
+  padding:4px 10px;font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;}
+
+/* Month selector */
+.month-bar{padding:14px 24px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;}
+.month-bar::-webkit-scrollbar{display:none;}
+.mpill{padding:7px 14px;border-radius:40px;border:1.5px solid var(--border);background:var(--surface);
+  color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;white-space:nowrap;transition:all 0.15s;flex-shrink:0;}
+.mpill.active{border-color:var(--accent);color:var(--accent);background:rgba(200,245,90,0.08);font-weight:500;}
+
+/* Grid layout */
+.dash-grid{display:grid;grid-template-columns:1fr;gap:16px;padding:16px 24px 0;}
+@media(min-width:768px){.dash-grid{grid-template-columns:1fr 1fr;}}
+@media(min-width:1100px){.dash-grid{grid-template-columns:1fr 1fr 1fr;}}
+
+/* Section cards */
+.section{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;}
+.section.wide{grid-column:1/-1;}
+.section-header{padding:14px 16px 10px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);}
+.section-title{font-size:13px;font-weight:600;}
+.section-sub{font-family:var(--mono);font-size:10px;color:var(--muted);}
+.section-body{padding:14px 16px;}
+
+/* KPI cards row */
+.kpi-row{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:16px 24px 0;}
+@media(min-width:768px){.kpi-row{grid-template-columns:repeat(4,1fr);}}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;}
+.kpi-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;}
+.kpi-value{font-family:var(--mono);font-size:20px;font-weight:500;color:var(--accent);}
+.kpi-value.warn{color:var(--danger);}
+.kpi-sub{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px;}
+
+/* Budget progress bars */
+.budget-row{display:flex;flex-direction:column;gap:5px;padding:9px 0;border-bottom:1px solid var(--border);}
+.budget-row:last-child{border-bottom:none;}
+.budget-top{display:flex;justify-content:space-between;align-items:center;}
+.budget-cat{font-size:12px;font-weight:500;}
+.budget-amounts{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.budget-amounts span{color:var(--text);}
+.progress-track{height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
+.progress-bar{height:100%;border-radius:3px;transition:width 0.6s ease;}
+.progress-bar.ok{background:var(--success);}
+.progress-bar.warn{background:var(--accent3);}
+.progress-bar.over{background:var(--danger);}
+
+/* Fund balance rows */
+.fund-row{display:flex;justify-content:space-between;align-items:center;
+  padding:9px 0;border-bottom:1px solid var(--border);}
+.fund-row:last-child{border-bottom:none;}
+.fund-name{font-size:12px;font-weight:500;}
+.fund-budget-line{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px;}
+.fund-balance{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent);}
+.fund-balance.sg{color:var(--accent2);}
+.fund-unmatched{font-family:var(--mono);font-size:9px;color:var(--accent3);margin-top:2px;}
+
+/* Trip cards */
+.trip-card{background:var(--surface2);border-radius:10px;border:1px solid var(--border);
+  padding:12px 14px;margin-bottom:8px;}
+.trip-card:last-child{margin-bottom:0;}
+.trip-card-top{display:flex;justify-content:space-between;align-items:flex-start;}
+.trip-card-name{font-size:13px;font-weight:600;}
+.trip-card-total{font-family:var(--mono);font-size:14px;color:var(--accent);}
+.trip-card-dates{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px;}
+.trip-settle{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;}
+.trip-settle.owes{color:var(--danger);}
+.trip-settle.settled{color:var(--success);}
+
+/* Chart container */
+.chart-wrap{position:relative;height:220px;}
+@media(min-width:768px){.chart-wrap{height:260px;}}
+
+/* Loading / empty states */
+.loading{text-align:center;padding:24px;color:var(--muted);font-family:var(--mono);font-size:12px;}
+.empty{text-align:center;padding:20px;color:var(--muted);font-size:12px;}
+
+/* Scrollable fund list */
+.fund-list-scroll{max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+</style>
+</head>
+<body>
+
+<!-- LOCK SCREEN -->
+<div id="lockScreen">
+  <div class="lock-icon">🐻</div>
+  <div>
+    <div class="lock-title">BearHaus Dashboard</div>
+    <div class="lock-sub" style="margin-top:6px">Enter PIN to view</div>
+  </div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="dot0"></div>
+    <div class="pin-dot" id="dot1"></div>
+    <div class="pin-dot" id="dot2"></div>
+    <div class="pin-dot" id="dot3"></div>
+  </div>
+  <div class="numpad">
+    <button class="num-btn" onclick="pinInput('1')">1</button>
+    <button class="num-btn" onclick="pinInput('2')">2</button>
+    <button class="num-btn" onclick="pinInput('3')">3</button>
+    <button class="num-btn" onclick="pinInput('4')">4</button>
+    <button class="num-btn" onclick="pinInput('5')">5</button>
+    <button class="num-btn" onclick="pinInput('6')">6</button>
+    <button class="num-btn" onclick="pinInput('7')">7</button>
+    <button class="num-btn" onclick="pinInput('8')">8</button>
+    <button class="num-btn" onclick="pinInput('9')">9</button>
+    <button class="num-btn empty"></button>
+    <button class="num-btn" onclick="pinInput('0')">0</button>
+    <button class="num-btn del" onclick="pinDelete()">⌫</button>
+  </div>
+  <div id="pinError" style="font-family:var(--mono);font-size:11px;color:var(--danger);display:none">Incorrect PIN</div>
+  <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:8px">
+    Script URL: <span id="urlStatus" style="color:var(--accent3)">not set</span>
+  </div>
+  <input id="scriptUrlInput" class="url-input" type="url" placeholder="Paste Apps Script /exec URL…"
+    style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);
+    color:var(--text);font-family:var(--mono);font-size:12px;padding:10px 14px;width:100%;max-width:320px;outline:none;display:none"/>
+  <button id="urlToggleBtn" onclick="toggleUrlInput()"
+    style="background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 14px;
+    font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;">⚙ Set script URL</button>
+  <button id="urlSaveBtn" onclick="saveUrl()" style="display:none;background:var(--accent);color:#000;
+    border:none;border-radius:8px;padding:8px 20px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">Save</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="dash-header">
+    <div class="dash-logo">🐻 BEARHAUS</div>
+    <div class="dash-header-right">
+      <div class="dash-date" id="dashDate"></div>
+      <button class="lock-btn" onclick="lockDash()">🔒 Lock</button>
+    </div>
+  </div>
+
+  <!-- Month pills -->
+  <div class="month-bar" id="monthBar"></div>
+
+  <!-- KPI row -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-label">This Month</div>
+      <div class="kpi-value" id="kpiThisMonth">—</div>
+      <div class="kpi-sub" id="kpiThisMonthSub"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">vs Budget</div>
+      <div class="kpi-value" id="kpiBudgetDiff">—</div>
+      <div class="kpi-sub" id="kpiBudgetDiffSub"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">AU Float</div>
+      <div class="kpi-value" id="kpiFloat">—</div>
+      <div class="kpi-sub">current balance</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Active Trips</div>
+      <div class="kpi-value" id="kpiTrips">—</div>
+      <div class="kpi-sub" id="kpiTripsSub"></div>
+    </div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="dash-grid">
+
+    <!-- Spending trend chart — full width -->
+    <div class="section wide">
+      <div class="section-header">
+        <div class="section-title">📈 Spending Trend</div>
+        <div class="section-sub">last 12 months · AUD</div>
+      </div>
+      <div class="section-body">
+        <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Budget vs actual -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">🎯 Budget vs Actual</div>
+        <div class="section-sub" id="budgetMonthLabel"></div>
+      </div>
+      <div class="section-body" id="budgetBody"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- Trips settle-up -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">✈️ Trip Settle-Up</div>
+        <div class="section-sub" id="tripSubLabel"></div>
+      </div>
+      <div class="section-body" id="tripsBody"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- AU Fund balances -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">🇦🇺 AU Funds</div>
+        <div class="section-sub" id="auFundMonthLabel"></div>
+      </div>
+      <div class="section-body fund-list-scroll" id="auFundsBody"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- SG Fund balances -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">🇸🇬 SG Funds</div>
+        <div class="section-sub" id="sgFundMonthLabel"></div>
+      </div>
+      <div class="section-body fund-list-scroll" id="sgFundsBody"><div class="loading">Loading…</div></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────
+const PIN = '1478';
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTH_IDX = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+
+const AU_FUNDS_LIST = ['Float','Rainy Day Fund AU (Aizat)','Emergency Fund AU (Paige)','Edu Fund (Claire)',
+  'Edu Fund (Anne)','Car Fund','BearHaus Rainy Day AU','Travel Fund AU',
+  'Monthly Expenses (Aizat)','Monthly Expenses (Paige)','Investment Fund AU (Aizat)','Dry Powder AU (Paige)'];
+const SG_FUNDS_LIST = ['MediShield (Aizat)','Life Multiprotect (Aizat)','FWD Future First',
+  'MediShield (Paige)','Life Multiprotect (Paige)','AXA Term Protector','Pruwealth (May 2025)',
+  'HSBC FlexiProtector (Anne)','AIA ProtectPlus 2 (Anne)','Early Saver 5-Pay (Anne)',
+  'MediShield (Anne)','MediShield (Claire)','Life Treasure (Claire)',
+  "Anne's Savings SG","Claire's Savings SG",'Taxes Fund SG (Aizat)',
+  'Investment Fund SG (Aizat)','Dry Powder SG (Paige)','Emergency Fund SG (Paige)',
+  'Stashaway','BOC','Property Tax','Google Drive','Future DreamHouse SG'];
+
+const CATEGORY_GROUPS = [
+  {name:'🏠 Rent',cats:['Rent']},
+  {name:'🛍️ Daily Expenses',cats:['Dining out','Groceries','Furniture','Home - Other','Household supplies','Sports','Clothing','Gifts','Life - Other','Medical Expenses','Liquor','Entertainment - Other','Electronics','Movies','Games']},
+  {name:'👶 Education',cats:['Childcare','Education']},
+  {name:'🚗 Transportation',cats:['Bus/train','Gas/fuel','Car','Parking','Taxi','Bicycle']},
+  {name:'💡 Utilities',cats:['Water','Electricity','Gas']},
+  {name:'🛡️ Insurance',cats:['Insurance']},
+  {name:'📱 TV/Phone/Internet',cats:['TV/Phone/Internet']},
+];
+
+// ── STATE ─────────────────────────────────────────
+let scriptUrl = localStorage.getItem('financeScriptUrl') || '';
+let pinEntry = '';
+let dashData = {};          // cached fetched data
+let selectedMonth = null;
+let allMonths = [];
+let trendChartInstance = null;
+
+// ── PIN ───────────────────────────────────────────
+function pinInput(d) {
+  if (pinEntry.length >= 4) return;
+  pinEntry += d;
+  updatePinDots();
+  if (pinEntry.length === 4) {
+    if (pinEntry === PIN) {
+      unlock();
+    } else {
+      document.querySelectorAll('.pin-dot').forEach(x => { x.classList.add('error'); x.classList.remove('filled'); });
+      document.getElementById('pinError').style.display = 'block';
+      setTimeout(() => { pinEntry = ''; updatePinDots(); document.getElementById('pinError').style.display = 'none'; }, 700);
+    }
   }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-  body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100dvh;display:flex;flex-direction:column;max-width:480px;margin:0 auto;}
-  .header{padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between;}
-  .logo{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:0.08em;}
-  .date-pill{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--surface);padding:4px 10px;border-radius:20px;border:1px solid var(--border);}
-  .mode-tabs{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;padding:14px 20px 0;}
-  .tab-btn{padding:10px 4px;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--font);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.2s;text-align:center;}
-  .tab-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(200,245,90,0.08);}
-  .tab-btn .tab-icon{font-size:16px;display:block;margin-bottom:2px;}
-  .form-area{flex:1;padding:14px 20px 20px;display:flex;flex-direction:column;gap:11px;}
-  .section-label{font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:var(--muted);text-transform:uppercase;margin-top:2px;}
-  .field{display:flex;flex-direction:column;gap:6px;}
-  .field-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;}
-  .input,.select,textarea{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--font);font-size:15px;padding:13px 16px;width:100%;outline:none;transition:border-color 0.2s;appearance:none;-webkit-appearance:none;}
-  .input:focus,.select:focus,textarea:focus{border-color:var(--accent);}
-  .input::placeholder{color:var(--muted);}
-  textarea{resize:none;height:68px;font-size:14px;}
-  .select-wrap{position:relative;}
-  .select-wrap::after{content:'▾';position:absolute;right:16px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;font-size:14px;}
-  .select{padding-right:36px;cursor:pointer;}
-  .select option{background:#1a1a1a;}
-  .select optgroup{background:#111;color:var(--muted);font-size:11px;}
-  .cat-suggestion{display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(200,245,90,0.06);border:1px solid rgba(200,245,90,0.2);border-radius:var(--radius);cursor:pointer;}
-  .cat-suggestion-text{font-size:12px;color:var(--muted);}
-  .cat-suggestion-value{font-size:13px;color:var(--accent);font-weight:500;}
-  .recurring-row{display:flex;align-items:center;gap:10px;}
-  .recurring-toggle-btn{padding:10px 16px;border-radius:40px;border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
-  .recurring-toggle-btn.active{border-color:var(--accent3);color:var(--accent3);background:rgba(245,200,90,0.08);}
-  .recurring-period{display:flex;gap:6px;flex:1;}
-  .period-btn{flex:1;padding:10px 6px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;text-align:center;transition:all 0.15s;}
-  .period-btn.active{border-color:var(--accent3);color:var(--accent3);background:rgba(245,200,90,0.08);}
-  .amount-row{display:grid;grid-template-columns:1fr auto;gap:8px;}
-  .currency-toggle{display:flex;border-radius:var(--radius);overflow:hidden;border:1.5px solid var(--border);background:var(--surface);flex-shrink:0;}
-  .curr-btn{padding:0 14px;font-family:var(--mono);font-size:12px;font-weight:500;color:var(--muted);background:transparent;border:none;cursor:pointer;transition:all 0.15s;}
-  .curr-btn.active{background:var(--accent);color:#000;}
-  .payer-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
-  .payer-btn{padding:11px 4px;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.15s;line-height:1.3;}
-  .payer-btn.active-aizat{border-color:var(--accent);color:var(--accent);background:rgba(200,245,90,0.08);}
-  .payer-btn.active-joint{border-color:var(--accent3);color:var(--accent3);background:rgba(245,200,90,0.08);}
-  .payer-btn.active-paige{border-color:var(--accent2);color:var(--accent2);background:rgba(90,245,200,0.08);}
-  .account-chips{display:flex;flex-wrap:wrap;gap:6px;}
-  .chip{padding:7px 12px;border-radius:40px;border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
-  .chip.active-aizat{border-color:var(--accent);color:var(--accent);background:rgba(200,245,90,0.08);}
-  .chip.active-joint{border-color:var(--accent3);color:var(--accent3);background:rgba(245,200,90,0.08);}
-  .chip.active-paige{border-color:var(--accent2);color:var(--accent2);background:rgba(90,245,200,0.08);}
-  .chip.active-other{border-color:var(--muted);color:var(--text);background:rgba(255,255,255,0.06);}
-  .account-group{display:flex;flex-direction:column;gap:6px;}
-  .account-group-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;}
-  .share-preview{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;display:flex;flex-direction:column;gap:7px;}
-  .share-row{display:flex;justify-content:space-between;align-items:center;}
-  .share-name{font-family:var(--mono);font-size:11px;color:var(--muted);}
-  .share-value{font-family:var(--mono);font-size:13px;font-weight:500;}
-  .share-value.negative{color:var(--danger);}
-  .share-value.positive{color:var(--success);}
-  .share-value.zero{color:var(--muted);}
+}
+function pinDelete() { if (pinEntry.length > 0) { pinEntry = pinEntry.slice(0,-1); updatePinDots(); } }
+function updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    const d = document.getElementById('dot'+i);
+    d.classList.remove('filled','error');
+    if (i < pinEntry.length) d.classList.add('filled');
+  }
+}
+
+// ── URL SETUP ─────────────────────────────────────
+function toggleUrlInput() {
+  const inp = document.getElementById('scriptUrlInput');
+  const saveBtn = document.getElementById('urlSaveBtn');
+  const visible = inp.style.display !== 'none';
+  inp.style.display = visible ? 'none' : 'block';
+  saveBtn.style.display = visible ? 'none' : 'block';
+  if (!visible) inp.value = scriptUrl || '';
+}
+function saveUrl() {
+  const val = document.getElementById('scriptUrlInput').value.trim();
+  if (val.startsWith('https://script.google.com')) {
+    scriptUrl = val;
+    localStorage.setItem('financeScriptUrl', val);
+    document.getElementById('urlStatus').textContent = 'set ✓';
+    document.getElementById('urlStatus').style.color = 'var(--success)';
+    toggleUrlInput();
+  }
+}
+
+// ── INIT ──────────────────────────────────────────
+window.onload = () => {
+  document.getElementById('dashDate').textContent =
+    new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (scriptUrl) {
+    document.getElementById('urlStatus').textContent = 'set ✓';
+    document.getElementById('urlStatus').style.color = 'var(--success)';
+  }
+};
+
+function unlock() {
+  document.getElementById('lockScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  if (!scriptUrl) { alert('Please set your Apps Script URL first (⚙ Set script URL on the lock screen).'); lockDash(); return; }
+  loadDashboard();
+}
+
+function lockDash() {
+  pinEntry = '';
+  updatePinDots();
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('lockScreen').style.display = 'flex';
+}
+
+// ── DATA LOADING ──────────────────────────────────
+async function loadDashboard() {
+  // Fire all requests in parallel
+  const [summaryRes, tripsRes] = await Promise.allSettled([
+    fetch(scriptUrl + '?action=dashboardSummary'),
+    fetch(scriptUrl + '?action=trips'),
+  ]);
+
+  if (summaryRes.status === 'fulfilled') {
+    try { dashData.summary = await summaryRes.value.json(); } catch(e) {}
+  }
+  if (tripsRes.status === 'fulfilled') {
+    try { dashData.trips = await tripsRes.value.json(); } catch(e) {}
+  }
+
+  // Build month list from summary data
+  buildMonthPills();
+
+  // Now load month-specific data
+  await loadMonthData(selectedMonth);
+}
+
+async function loadMonthData(month) {
+  // Fire funds, budget, fundBudgets in parallel for the selected month
+  const [fundsRes, budgetRes, fundBudgetsRes] = await Promise.allSettled([
+    fetch(scriptUrl + '?action=funds&month=' + encodeURIComponent(month)),
+    fetch(scriptUrl + '?action=budget&month=' + encodeURIComponent(month)),
+    fetch(scriptUrl + '?action=fundBudgets&month=' + encodeURIComponent(month)),
+  ]);
+
+  if (fundsRes.status === 'fulfilled') {
+    try { dashData.funds = await fundsRes.value.json(); } catch(e) {}
+  }
+  if (budgetRes.status === 'fulfilled') {
+    try { dashData.budget = await budgetRes.value.json(); } catch(e) {}
+  }
+  if (fundBudgetsRes.status === 'fulfilled') {
+    try { dashData.fundBudgets = await fundBudgetsRes.value.json(); } catch(e) {}
+  }
+
+  renderAll(month);
+}
+
+// ── MONTH PILLS ───────────────────────────────────
+function buildMonthPills() {
+  const rows = dashData.summary?.rows || [];
+  const monthSet = new Set();
+  rows.forEach(r => { if (r.month) monthSet.add(r.month.trim()); });
+
+  // Sort months newest first
+  allMonths = Array.from(monthSet).sort((a, b) => {
+    const pa = parseMonthLabel(a), pb = parseMonthLabel(b);
+    if (!pa || !pb) return 0;
+    return (pb.y * 12 + pb.m) - (pa.y * 12 + pa.m);
+  });
+
+  if (!selectedMonth || !allMonths.includes(selectedMonth)) {
+    selectedMonth = allMonths[0] || fmtMonthLabel({ y: new Date().getFullYear(), m: new Date().getMonth() });
+  }
+
+  const bar = document.getElementById('monthBar');
+  bar.innerHTML = '';
+  allMonths.forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'mpill' + (m === selectedMonth ? ' active' : '');
+    btn.textContent = m;
+    btn.onclick = async () => {
+      selectedMonth = m;
+      document.querySelectorAll('.mpill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setLoadingAll();
+      await loadMonthData(m);
+    };
+    bar.appendChild(btn);
+  });
+}
+
+function setLoadingAll() {
+  ['budgetBody','tripsBody','auFundsBody','sgFundsBody'].forEach(id => {
+    document.getElementById(id).innerHTML = '<div class="loading">Loading…</div>';
+  });
+}
+
+// ── RENDER ALL ────────────────────────────────────
+function renderAll(month) {
+  renderKPIs(month);
+  renderTrendChart();
+  renderBudget(month);
+  renderTrips();
+  renderFunds(month);
+}
+
+// ── HELPERS ───────────────────────────────────────
+function parseMonthLabel(label) {
+  if (!label) return null;
+  const parts = label.trim().split(' ');
+  if (parts.length < 2) return null;
+  const m = MONTH_IDX[parts[0]]; const y = parseInt(parts[1]);
+  if (isNaN(m) || isNaN(y)) return null;
+  return { y, m };
+}
+function fmtMonthLabel(obj) { return MONTHS[obj.m] + ' ' + obj.y; }
+function prevMonth(obj, n) {
+  let m = obj.m - n, y = obj.y;
+  while (m < 0) { m += 12; y--; }
+  return { y, m };
+}
+function getRowsForMonth(month) {
+  return (dashData.summary?.rows || []).filter(r => r.month && r.month.trim() === month && parseFloat(r.cost || 0) > 0);
+}
+function sumForMonth(month) {
+  return getRowsForMonth(month).reduce((t, r) => t + parseFloat(r.cost || 0), 0);
+}
+function fmt(n) { return '$' + parseFloat(n || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+// Fuzzy fund name matching (mirrors Apps Script logic)
+function normaliseName(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+function fuzzyFindBudget(fundName, budgetMap) {
+  if (!budgetMap) return null;
+  // Exact
+  if (budgetMap[fundName] !== undefined) return budgetMap[fundName];
+  // Case-insensitive
+  const lower = fundName.toLowerCase();
+  for (const k of Object.keys(budgetMap)) {
+    if (k.toLowerCase() === lower) return budgetMap[k];
+  }
+  // Normalised
+  const norm = normaliseName(fundName);
+  for (const k of Object.keys(budgetMap)) {
+    if (normaliseName(k) === norm) return budgetMap[k];
+  }
+  return null;
+}
+
+// ── KPIs ──────────────────────────────────────────
+function renderKPIs(month) {
+  const thisMonthTotal = sumForMonth(month);
+  document.getElementById('kpiThisMonth').textContent = fmt(thisMonthTotal);
+  const parsed = parseMonthLabel(month);
+  if (parsed) {
+    const prev = fmtMonthLabel(prevMonth(parsed, 1));
+    const prevTotal = sumForMonth(prev);
+    const diff = thisMonthTotal - prevTotal;
+    const kpiSub = document.getElementById('kpiThisMonthSub');
+    kpiSub.textContent = (diff >= 0 ? '+' : '') + fmt(diff) + ' vs ' + prev;
+    kpiSub.style.color = diff > 0 ? 'var(--danger)' : 'var(--success)';
+  }
+
+  // Budget diff
+  const budgets = dashData.budget?.budgets || {};
+  const totalBudget = Object.values(budgets).reduce((t, v) => t + (parseFloat(v) || 0), 0);
+  if (totalBudget > 0) {
+    const diff = totalBudget - thisMonthTotal;
+    const el = document.getElementById('kpiBudgetDiff');
+    el.textContent = (diff >= 0 ? '+' : '') + fmt(diff);
+    el.className = 'kpi-value' + (diff < 0 ? ' warn' : '');
+    document.getElementById('kpiBudgetDiffSub').textContent =
+      fmt(thisMonthTotal) + ' of ' + fmt(totalBudget);
+  } else {
+    document.getElementById('kpiBudgetDiff').textContent = '—';
+    document.getElementById('kpiBudgetDiffSub').textContent = 'no budget set';
+  }
+
+  // Float balance
+  const balances = dashData.funds?.balances || {};
+  const floatVal = balances['Float']?.balance;
+  if (floatVal !== undefined) {
+    document.getElementById('kpiFloat').textContent = fmt(floatVal);
+  }
+
+  // Trips
+  const trips = dashData.trips?.trips || [];
+  const unsettled = trips.filter(t => Math.abs(parseFloat(t.net || 0)) >= 0.01);
+  document.getElementById('kpiTrips').textContent = trips.length;
+  document.getElementById('kpiTripsSub').textContent =
+    unsettled.length > 0 ? unsettled.length + ' unsettled' : 'all settled ✓';
+  document.getElementById('kpiTrips').className = 'kpi-value' + (unsettled.length > 0 ? ' warn' : '');
+}
+
+// ── TREND CHART ───────────────────────────────────
+function renderTrendChart() {
+  const labels = [...allMonths].reverse(); // oldest → newest
+  const totals = labels.map(m => sumForMonth(m));
+
+  if (trendChartInstance) trendChartInstance.destroy();
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  trendChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'AUD Spent',
+        data: totals,
+        backgroundColor: labels.map((m, i) =>
+          i === labels.length - 1 ? 'rgba(200,245,90,0.85)' : 'rgba(200,245,90,0.3)'),
+        borderColor: 'rgba(200,245,90,0.8)',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' ' + fmt(ctx.parsed.y)
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#888', font: { family: 'DM Mono', size: 10 }, maxRotation: 45 }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: {
+            color: '#888', font: { family: 'DM Mono', size: 10 },
+            callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'k' : v)
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── BUDGET VS ACTUAL ──────────────────────────────
+function renderBudget(month) {
+  document.getElementById('budgetMonthLabel').textContent = month;
+  const body = document.getElementById('budgetBody');
+  const budgets = dashData.budget?.budgets || {};
+  const rows = getRowsForMonth(month);
+
+  // Sum actual by category group
+  const actualByGroup = {};
+  CATEGORY_GROUPS.forEach(g => {
+    let total = 0;
+    g.cats.forEach(cat => {
+      rows.forEach(r => { if (r.category === cat) total += parseFloat(r.cost || 0); });
+    });
+    actualByGroup[g.name] = total;
+  });
+
+  const entries = CATEGORY_GROUPS.map(g => ({
+    name: g.name,
+    actual: actualByGroup[g.name] || 0,
+    budget: budgets[g.name] || 0,
+  })).filter(e => e.actual > 0 || e.budget > 0);
+
+  if (!entries.length) { body.innerHTML = '<div class="empty">No data for this month</div>'; return; }
+
+  let html = '';
+  entries.forEach(e => {
+    const pct = e.budget > 0 ? Math.min((e.actual / e.budget) * 100, 100) : 0;
+    const barClass = e.budget === 0 ? 'ok' : e.actual > e.budget ? 'over' : pct > 80 ? 'warn' : 'ok';
+    const remaining = e.budget > 0 ? e.budget - e.actual : null;
+    html += `<div class="budget-row">
+      <div class="budget-top">
+        <span class="budget-cat">${e.name}</span>
+        <span class="budget-amounts">
+          <span>${fmt(e.actual)}</span>
+          ${e.budget > 0 ? ' / ' + fmt(e.budget) : ''}
+          ${remaining !== null ? `<span style="color:${remaining>=0?'var(--success)':'var(--danger)'};margin-left:6px">${remaining>=0?'+':'-'}${fmt(Math.abs(remaining))}</span>` : ''}
+        </span>
+      </div>
+      ${e.budget > 0 ? `<div class="progress-track"><div class="progress-bar ${barClass}" style="width:${pct}%"></div></div>` : ''}
+    </div>`;
+  });
+  body.innerHTML = html;
+}
+
+// ── TRIPS ─────────────────────────────────────────
+function renderTrips() {
+  const body = document.getElementById('tripsBody');
+  const trips = dashData.trips?.trips || [];
+  document.getElementById('tripSubLabel').textContent = trips.length + ' trip' + (trips.length !== 1 ? 's' : '');
+
+  if (!trips.length) { body.innerHTML = '<div class="empty">No trips yet</div>'; return; }
+
+  let html = '';
+  // Show most recent trips first (reverse order)
+  [...trips].reverse().forEach(t => {
+    const net = parseFloat(t.net || 0);
+    const settled = Math.abs(net) < 0.01;
+    const settleText = settled ? '✓ Settled'
+      : net > 0 ? `Paige owes Aizat ${fmt(Math.abs(net))}`
+      : `Aizat owes Paige ${fmt(Math.abs(net))}`;
+    html += `<div class="trip-card">
+      <div class="trip-card-top">
+        <div>
+          <div class="trip-card-name">${t.name}</div>
+          <div class="trip-card-dates">${t.currency || 'mixed'} · ${fmt(t.totalSpent)} total</div>
+        </div>
+      </div>
+      <div class="trip-settle ${settled ? 'settled' : 'owes'}">${settleText}</div>
+    </div>`;
+  });
+  body.innerHTML = html;
+}
+
+// ── FUND BALANCES ─────────────────────────────────
+function renderFunds(month) {
+  document.getElementById('auFundMonthLabel').textContent = month;
+  document.getElementById('sgFundMonthLabel').textContent = month;
+
+  const balances = dashData.funds?.balances || {};
+  const fundBudgets = dashData.fundBudgets?.budgets || {};
+
+  function renderFundList(fundNames, currency, containerId) {
+    const body = document.getElementById(containerId);
+    let html = '';
+    fundNames.forEach(name => {
+      const b = balances[name];
+      const val = b ? b.balance : null;
+      const hasVal = val !== null && val !== undefined;
+      const valDisplay = hasVal
+        ? currency + ' ' + Math.abs(val).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '—';
+      const valColor = hasVal && val >= 0
+        ? (currency === 'SGD' ? 'var(--accent2)' : 'var(--accent)')
+        : 'var(--danger)';
+
+      // Budget contribution for this fund this month (fuzzy matched)
+      const budgetAmt = fuzzyFindBudget(name, fundBudgets);
+      const budgetLine = budgetAmt && budgetAmt > 0
+        ? `<div class="fund-budget-line">Budget: ${currency} ${parseFloat(budgetAmt).toFixed(2)}/mo</div>`
+        : '';
+
+      // Flag potential name mismatch — if balance is missing but budget exists, might be a name mismatch
+      const mismatchWarning = (!hasVal && budgetAmt && budgetAmt > 0)
+        ? `<div class="fund-unmatched">⚠ Balance not found — check name in sheet</div>`
+        : '';
+
+      html += `<div class="fund-row">
+        <div>
+          <div class="fund-name">${name}</div>
+          ${budgetLine}
+          ${mismatchWarning}
+        </div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:500;color:${valColor};text-align:right">${valDisplay}</div>
+      </div>`;
+    });
+    body.innerHTML = html || '<div class="empty">No data</div>';
+  }
+
+  renderFundList(AU_FUNDS_LIST, 'AUD', 'auFundsBody');
+  renderFundList(SG_FUNDS_LIST, 'SGD', 'sgFundsBody');
+}
+</script>
+</body>
+</html>  .share-value.zero{color:var(--muted);}
   .share-divider{height:1px;background:var(--border);}
   .share-preview-label{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;margin-bottom:2px;}
   .country-toggle,.type-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
