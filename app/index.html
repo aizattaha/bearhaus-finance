@@ -107,6 +107,8 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .applyrow .amt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;color:var(--good)}
 .applyrow.off{opacity:.35}
 .applyrow.off .amt{text-decoration:line-through}
+.fgroup{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:12px 0 2px}
+.fgroup:first-child{margin-top:2px}
 
 /* ── quick-add sheet ───────────────────────── */
 .backdrop{position:fixed;inset:0;background:rgba(26,43,68,.35);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
@@ -373,7 +375,6 @@ select.descinput{appearance:none;-webkit-appearance:none}
 
   <div id="sh-apply" style="display:none">
     <div class="sheet-head"><span class="h2" id="applyTitle">Review &amp; apply</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
-    <p class="cap" style="margin-bottom:4px">tap a line to skip it this month — everything else is written as a real contribution</p>
     <div id="applyRows"></div>
     <p class="cap num" id="applySummary" style="margin-top:10px"></p>
     <button class="btn btn-primary" style="width:100%;margin-top:12px" id="applyGo" onclick="applyPlan()">Apply</button>
@@ -822,8 +823,8 @@ async function loadFunds(){
   const m = curMonthIso(), next = addMonths(m, 1);
   try {
     const [bal, inc, cat, fb, applied] = await Promise.all([
-      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order').eq('is_active', true).order('sort_order'),
-      sb.from('income_budgets').select('currency, amount').eq('month', m),
+      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order, group_name').eq('is_active', true).order('sort_order'),
+      sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
       sb.from('category_budgets').select('currency, amount').eq('month', m),
       sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
       sb.from('fund_transactions').select('date').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
@@ -864,12 +865,23 @@ function renderFunds(st){
   const row = (label, a, s, style) => '<div class="flowrow"' + (style ? ' style="' + style + '"' : '') + '><span class="cap">' + label + '</span>' + a + s + '</div>';
   const leftA = (sum.inc.AUD || 0) - (sum.cat.AUD || 0) - (sum.funds.AUD || 0);
   const leftS = (sum.inc.SGD || 0) - (sum.cat.SGD || 0) - (sum.funds.SGD || 0);
+  const blank = '<span class="num"></span>';
+  const incBreak = (st.inc || []).map(r =>
+    row('<span style="padding-left:12px">↳ ' + esc(r.source_name || 'Income') + '</span>',
+        r.currency === 'AUD' ? cell(Number(r.amount), 'AUD', 'var(--good)', 'var(--bad)') : blank,
+        r.currency === 'SGD' ? cell(Number(r.amount), 'SGD', 'var(--good)', 'var(--bad)') : blank)).join('');
   $('flowRows').innerHTML =
-    row('Income', cell(sum.inc.AUD || 0, 'AUD', 'var(--good)', 'var(--bad)'), cell(sum.inc.SGD || 0, 'SGD', 'var(--good)', 'var(--bad)'))
+    '<div id="incHead" style="cursor:pointer">'
+      + row('Income · ' + (st.inc || []).length + ' sources ▾', cell(sum.inc.AUD || 0, 'AUD', 'var(--good)', 'var(--bad)'), cell(sum.inc.SGD || 0, 'SGD', 'var(--good)', 'var(--bad)'))
+    + '</div><div id="incBreak" style="display:none">' + incBreak + '</div>'
     + row('Spending budget', cell(-(sum.cat.AUD || 0), 'AUD', 'var(--ink)', 'var(--ink)'), cell(-(sum.cat.SGD || 0), 'SGD', 'var(--ink)', 'var(--ink)'))
     + row('Into funds · ' + fundCount, cell(-(sum.funds.AUD || 0), 'AUD', 'var(--ink)', 'var(--ink)'), cell(-(sum.funds.SGD || 0), 'SGD', 'var(--ink)', 'var(--ink)'))
     + row('Leftover', cell(leftA, 'AUD', 'var(--good)', 'var(--bad)'), cell(leftS, 'SGD', 'var(--good)', 'var(--bad)'),
           'border-top:1px solid rgba(0,74,152,.15);margin-top:4px;padding-top:8px');
+  $('incHead').onclick = () => {
+    const b = $('incBreak');
+    b.style.display = b.style.display === 'none' ? 'block' : 'none';
+  };
   let cap = 'leftover flows to Float 🇦🇺 · Future DreamHouse SG 🇸🇬';
   const btn = $('applyBtn');
   if (st.appliedOn) {
@@ -888,21 +900,34 @@ function renderFundList(country, st){
   const box = $(country === 'AU' ? 'fundsAU' : 'fundsSG');
   const more = $(country === 'AU' ? 'fAUmore' : 'fSGmore');
   const all = st.bal.filter(b => b.country === country);
-  const nonzero = all.filter(b => Math.abs(Number(b.balance)) >= 0.005);
   const expanded = fundsExpanded[country];
-  const list = expanded ? all : nonzero.slice(0, 6);
+  const visible = expanded ? all : all.filter(b => Math.abs(Number(b.balance)) >= 0.005);
+  // second-level grouping, ordered by each group's first fund
+  const groups = {};
+  visible.forEach(b => { const g = b.group_name || 'Other'; (groups[g] = groups[g] || []).push(b); });
+  const order = Object.keys(groups).sort((a, b) =>
+    Math.min(...groups[a].map(x => x.sort_order)) - Math.min(...groups[b].map(x => x.sort_order)));
   box.innerHTML = '';
-  list.forEach(b => {
-    const btn = document.createElement('button');
-    btn.type = 'button'; btn.className = 'fundrow';
-    btn.innerHTML = '<div class="rowicon">' + fundIcon(b.name) + '</div>'
-      + '<div class="lbl" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
-      + '<div class="amt num" style="color:' + (Number(b.balance) < 0 ? 'var(--bad)' : 'var(--ink)') + '">' + fmtMoney(b.balance, b.currency) + '</div>';
-    btn.onclick = () => toggleFundDrill(btn, b);
-    box.appendChild(btn);
+  order.forEach(g => {
+    const list = groups[g];
+    const sub = list.reduce((s, b) => s + Number(b.balance), 0);
+    const h = document.createElement('div');
+    h.className = 'fgroup';
+    h.innerHTML = '<span class="cap" style="letter-spacing:.05em;text-transform:uppercase">' + esc(g) + '</span>'
+      + '<span class="lbl num" style="color:' + (sub < 0 ? 'var(--bad)' : 'var(--ink-soft)') + '">' + fmtMoney(sub, list[0].currency) + '</span>';
+    box.appendChild(h);
+    list.forEach(b => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'fundrow';
+      btn.innerHTML = '<div class="rowicon">' + fundIcon(b.name) + '</div>'
+        + '<div class="lbl" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
+        + '<div class="amt num" style="color:' + (Number(b.balance) < 0 ? 'var(--bad)' : 'var(--ink)') + '">' + fmtMoney(b.balance, b.currency) + '</div>';
+      btn.onclick = () => toggleFundDrill(btn, b);
+      box.appendChild(btn);
+    });
   });
-  if (!list.length) box.innerHTML = '<p class="cap" style="padding:8px 0">nothing here yet</p>';
-  const hidden = all.length - list.length;
+  if (!visible.length) box.innerHTML = '<p class="cap" style="padding:8px 0">nothing here yet</p>';
+  const hidden = all.length - visible.length;
   if (expanded || hidden > 0) {
     more.style.display = 'inline';
     more.textContent = expanded ? 'Show less' : 'View all ' + all.length;
@@ -940,6 +965,14 @@ function openApplySheet(){
     .map(r => ({ fund_id: r.fund_id, amount: Number(r.amount), fund: byId[r.fund_id], on: true }))
     .filter(r => r.fund && r.amount > 0);
   const box = $('applyRows'); box.innerHTML = '';
+  // income first — the money coming in this month (assumed, never written)
+  const incSection = document.createElement('div');
+  incSection.innerHTML = '<p class="cap" style="margin:2px 0 2px">income · assumed automatically, nothing is written</p>'
+    + (fundsState.inc || []).map(r =>
+      '<div class="flowrow"><span class="cap" style="color:var(--ink)">' + esc(r.source_name || 'Income') + '</span>'
+      + '<span class="num" style="color:var(--good)">+' + fmtMoney(r.amount, r.currency) + '</span></div>').join('')
+    + '<p class="cap" style="margin:12px 0 0">contributions — tap a line to skip it this month; the rest are written as real transactions</p>';
+  box.appendChild(incSection);
   applyRowsData.forEach(r => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'applyrow';
     b.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(r.fund.name) + '</div>'
