@@ -95,6 +95,19 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .drow .dd{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drow .amt{color:var(--bad);font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
 
+/* ── funds page ────────────────────────────── */
+.flowrow{display:flex;align-items:baseline;padding:3px 0}
+.flowrow .cap{flex:1}
+.flowrow .num{display:inline-block;min-width:86px;text-align:right;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums}
+.fundrow{display:flex;align-items:center;gap:14px;min-height:56px;padding:6px 0;width:100%;background:none;border:none;font-family:inherit;font-size:15px;color:var(--ink);cursor:pointer;text-align:left}
+.fundrow+.fundrow,.funddrill+.fundrow{border-top:1px solid var(--muted)}
+.fundrow .amt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.funddrill{padding:0 0 10px 54px}
+.applyrow{display:flex;align-items:center;gap:12px;width:100%;background:var(--field);border:none;border-radius:14px;padding:10px 14px;margin-top:8px;font-family:inherit;font-size:14px;color:var(--ink);cursor:pointer;text-align:left}
+.applyrow .amt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;color:var(--good)}
+.applyrow.off{opacity:.35}
+.applyrow.off .amt{text-decoration:line-through}
+
 /* ── quick-add sheet ───────────────────────── */
 .backdrop{position:fixed;inset:0;background:rgba(26,43,68,.35);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
 .backdrop.open{opacity:1;pointer-events:auto}
@@ -263,7 +276,40 @@ select.descinput{appearance:none;-webkit-appearance:none}
 
     <section class="screen" id="scr-funds">
       <div><p class="cap">Funds</p><h2 class="h1" style="margin-top:2px">How much do we have?</h2></div>
-      <div class="card placeholder">building in step 5.5 🐻</div>
+      <div class="duo">
+        <div class="total-card">
+          <p class="cap">AU funds</p>
+          <p class="disp num" id="fTotAU" style="margin-top:2px;font-size:19px;line-height:28px">…</p>
+          <p class="cap num" id="fTotAUn" style="margin-top:2px"></p>
+        </div>
+        <div class="total-card" style="background:#003A78">
+          <p class="cap">SG funds</p>
+          <p class="disp num" id="fTotSG" style="margin-top:2px;font-size:19px;line-height:28px">…</p>
+          <p class="cap num" id="fTotSGn" style="margin-top:2px"></p>
+        </div>
+      </div>
+      <div class="card" id="planCard" style="background:var(--accent-soft);box-shadow:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
+          <p class="lbl" style="color:var(--primary)" id="planTitle">This month's plan</p>
+          <button class="btn btn-primary" style="height:40px;padding:0 18px;font-size:13px;flex-shrink:0" id="applyBtn" onclick="openApplySheet()">Review &amp; apply</button>
+        </div>
+        <div id="flowRows"><p class="cap">loading…</p></div>
+        <p class="cap" style="margin-top:8px" id="planCaption"></p>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span class="h2">AU</span>
+          <button class="btn-tert" id="fAUmore" style="display:none"></button>
+        </div>
+        <div id="fundsAU"></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span class="h2">SG</span>
+          <button class="btn-tert" id="fSGmore" style="display:none"></button>
+        </div>
+        <div id="fundsSG"></div>
+      </div>
     </section>
 
     <section class="screen" id="scr-settings">
@@ -324,6 +370,14 @@ select.descinput{appearance:none;-webkit-appearance:none}
       <button class="btn-tert" onclick="toggleDetails()">+ details</button>
     </div>
   </div>
+
+  <div id="sh-apply" style="display:none">
+    <div class="sheet-head"><span class="h2" id="applyTitle">Review &amp; apply</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
+    <p class="cap" style="margin-bottom:4px">tap a line to skip it this month — everything else is written as a real contribution</p>
+    <div id="applyRows"></div>
+    <p class="cap num" id="applySummary" style="margin-top:10px"></p>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" id="applyGo" onclick="applyPlan()">Apply</button>
+  </div>
 </div>
 
 <div class="toast" id="toastEl"></div>
@@ -349,6 +403,7 @@ function go(id){
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.scr === tabFor[id]));
   window.scrollTo(0, 0);
   if (id === 'scr-budget' && !budgetInit) initBudget();
+  if (id === 'scr-funds' && !fundsInit) initFunds();
 }
 const CURSYM = { AUD:'A$', SGD:'S$', IDR:'Rp', JPY:'¥', CNY:'¥', KRW:'₩', THB:'฿', MYR:'RM',
                  VND:'₫', EUR:'€', GBP:'£', USD:'US$', NZD:'NZ$', TWD:'NT$', HKD:'HK$', INR:'₹' };
@@ -735,6 +790,191 @@ function renderBudget(st){
   });
 }
 
+// ══ FUNDS ═══════════════════════════════════
+let fundsInit = false, fundsState = null, fundsExpanded = { AU:false, SG:false };
+const SURPLUS_FUNDS = ['Float', 'Future DreamHouse SG'];   // leftover destinations
+function fundIcon(name){
+  const n = name.toLowerCase();
+  if (n.includes('float')) return '🌊';
+  if (n.includes('car')) return '🚗';
+  if (n.includes('travel')) return '✈️';
+  if (n.includes('edu')) return '🎓';
+  if (n.includes('rainy')) return '☂️';
+  if (n.includes('emergency')) return '🚨';
+  if (n.includes('invest') || n.includes('stashaway')) return '📈';
+  if (n.includes('dream') || n.includes('house') || n.includes('property')) return '🏠';
+  if (n.includes('tax')) return '🧾';
+  if (n.includes('monthly')) return '📅';
+  if (n.includes('savings')) return '🐷';
+  if (n.includes('dry powder')) return '🎯';
+  if (n.includes('boc')) return '🏦';
+  if (n.includes('google')) return '☁️';
+  if (['medishield','protect','axa','pru','aia','fwd','treasure','saver','hsbc'].some(k => n.includes(k))) return '🛡️';
+  return '💰';
+}
+function initFunds(){
+  fundsInit = true;
+  const cached = localStorage.getItem('bh-funds');
+  if (cached) { try { fundsState = JSON.parse(cached); renderFunds(fundsState); } catch(e){} }
+  loadFunds();
+}
+async function loadFunds(){
+  const m = curMonthIso(), next = addMonths(m, 1);
+  try {
+    const [bal, inc, cat, fb, applied] = await Promise.all([
+      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order').eq('is_active', true).order('sort_order'),
+      sb.from('income_budgets').select('currency, amount').eq('month', m),
+      sb.from('category_budgets').select('currency, amount').eq('month', m),
+      sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
+      sb.from('fund_transactions').select('date').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
+    ]);
+    for (const r of [bal, inc, cat, fb, applied]) if (r.error) throw r.error;
+    fundsState = { month: m, bal: bal.data, inc: inc.data, cat: cat.data, fb: fb.data,
+                   appliedOn: applied.data.length ? applied.data[0].date : null };
+    localStorage.setItem('bh-funds', JSON.stringify(fundsState));
+    renderFunds(fundsState);
+  } catch (err) { toast('couldn’t load funds: ' + err.message); }
+}
+function renderFunds(st){
+  const tot = { AUD:0, SGD:0 }, cnt = { AUD:0, SGD:0 };
+  st.bal.forEach(b => { tot[b.currency] = (tot[b.currency] || 0) + Number(b.balance); cnt[b.currency] = (cnt[b.currency] || 0) + 1; });
+  $('fTotAU').textContent = fmtMoney(tot.AUD || 0, 'AUD');
+  $('fTotSG').textContent = fmtMoney(tot.SGD || 0, 'SGD');
+  $('fTotAUn').textContent = 'across ' + (cnt.AUD || 0) + ' funds';
+  $('fTotSGn').textContent = 'across ' + (cnt.SGD || 0) + ' funds';
+
+  // money flow: income − spending budget − contributions = leftover
+  $('planTitle').textContent = monthName(st.month, true).split(' ')[0] + '’s plan';
+  const byId = {}; st.bal.forEach(b => byId[b.fund_id] = b);
+  const sum = { inc:{}, cat:{}, funds:{} };
+  st.inc.forEach(r => sum.inc[r.currency] = (sum.inc[r.currency] || 0) + Number(r.amount));
+  st.cat.forEach(r => sum.cat[r.currency] = (sum.cat[r.currency] || 0) + Number(r.amount));
+  let fundCount = 0;
+  st.fb.forEach(r => {
+    const f = byId[r.fund_id];
+    if (!f || SURPLUS_FUNDS.includes(f.name)) return;
+    sum.funds[f.currency] = (sum.funds[f.currency] || 0) + Number(r.amount);
+    fundCount++;
+  });
+  const cell = (v, c, posColor, negColor) => {
+    if (!v || Math.abs(v) < 0.005) return '<span class="num" style="color:var(--ink-soft)">—</span>';
+    return '<span class="num" style="color:' + (v > 0 ? posColor : negColor) + '">'
+      + (v > 0 ? '+' : '−') + fmtMoney(Math.abs(v), c) + '</span>';
+  };
+  const row = (label, a, s, style) => '<div class="flowrow"' + (style ? ' style="' + style + '"' : '') + '><span class="cap">' + label + '</span>' + a + s + '</div>';
+  const leftA = (sum.inc.AUD || 0) - (sum.cat.AUD || 0) - (sum.funds.AUD || 0);
+  const leftS = (sum.inc.SGD || 0) - (sum.cat.SGD || 0) - (sum.funds.SGD || 0);
+  $('flowRows').innerHTML =
+    row('Income', cell(sum.inc.AUD || 0, 'AUD', 'var(--good)', 'var(--bad)'), cell(sum.inc.SGD || 0, 'SGD', 'var(--good)', 'var(--bad)'))
+    + row('Spending budget', cell(-(sum.cat.AUD || 0), 'AUD', 'var(--ink)', 'var(--ink)'), cell(-(sum.cat.SGD || 0), 'SGD', 'var(--ink)', 'var(--ink)'))
+    + row('Into funds · ' + fundCount, cell(-(sum.funds.AUD || 0), 'AUD', 'var(--ink)', 'var(--ink)'), cell(-(sum.funds.SGD || 0), 'SGD', 'var(--ink)', 'var(--ink)'))
+    + row('Leftover', cell(leftA, 'AUD', 'var(--good)', 'var(--bad)'), cell(leftS, 'SGD', 'var(--good)', 'var(--bad)'),
+          'border-top:1px solid rgba(0,74,152,.15);margin-top:4px;padding-top:8px');
+  let cap = 'leftover flows to Float 🇦🇺 · Future DreamHouse SG 🇸🇬';
+  const btn = $('applyBtn');
+  if (st.appliedOn) {
+    btn.textContent = 'Applied ✓'; btn.disabled = true; btn.style.opacity = '.55';
+    cap += ' · applied ' + new Date(st.appliedOn + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
+  } else if (!st.fb.length) {
+    btn.textContent = 'No plan'; btn.disabled = true; btn.style.opacity = '.55';
+  } else {
+    btn.textContent = 'Review & apply'; btn.disabled = false; btn.style.opacity = '1';
+  }
+  $('planCaption').textContent = cap;
+  renderFundList('AU', st);
+  renderFundList('SG', st);
+}
+function renderFundList(country, st){
+  const box = $(country === 'AU' ? 'fundsAU' : 'fundsSG');
+  const more = $(country === 'AU' ? 'fAUmore' : 'fSGmore');
+  const all = st.bal.filter(b => b.country === country);
+  const nonzero = all.filter(b => Math.abs(Number(b.balance)) >= 0.005);
+  const expanded = fundsExpanded[country];
+  const list = expanded ? all : nonzero.slice(0, 6);
+  box.innerHTML = '';
+  list.forEach(b => {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'fundrow';
+    btn.innerHTML = '<div class="rowicon">' + fundIcon(b.name) + '</div>'
+      + '<div class="lbl" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
+      + '<div class="amt num" style="color:' + (Number(b.balance) < 0 ? 'var(--bad)' : 'var(--ink)') + '">' + fmtMoney(b.balance, b.currency) + '</div>';
+    btn.onclick = () => toggleFundDrill(btn, b);
+    box.appendChild(btn);
+  });
+  if (!list.length) box.innerHTML = '<p class="cap" style="padding:8px 0">nothing here yet</p>';
+  const hidden = all.length - list.length;
+  if (expanded || hidden > 0) {
+    more.style.display = 'inline';
+    more.textContent = expanded ? 'Show less' : 'View all ' + all.length;
+    more.onclick = () => { fundsExpanded[country] = !expanded; renderFundList(country, st); };
+  } else more.style.display = 'none';
+}
+async function toggleFundDrill(btn, fund){
+  const nxt = btn.nextElementSibling;
+  if (nxt && nxt.classList.contains('funddrill')) { nxt.remove(); return; }
+  document.querySelectorAll('.funddrill').forEach(d => d.remove());
+  const d = document.createElement('div');
+  d.className = 'funddrill';
+  d.innerHTML = '<p class="cap">loading…</p>';
+  btn.after(d);
+  const { data, error } = await sb.from('fund_transactions')
+    .select('date, type, amount, remarks, origin')
+    .eq('fund_id', fund.fund_id)
+    .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(8);
+  if (error) { d.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
+  d.innerHTML = (data || []).map(t => {
+    const inc = t.type === 'income';
+    return '<div class="drow"><span class="dd">' + esc(t.remarks || (inc ? 'money in' : 'money out'))
+      + (t.origin === 'planned' ? ' <span class="cap">· plan</span>' : '') + '</span>'
+      + '<span class="cap">' + new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'}) + '</span>'
+      + '<span class="amt" style="color:' + (inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span></div>';
+  }).join('') || '<p class="cap">no transactions yet</p>';
+}
+
+// Review & apply — writes the month's planned contributions as real transactions
+let applyRowsData = [], applying = false;
+function openApplySheet(){
+  if (!fundsState || !fundsState.fb.length) { toast('no plan set for this month'); return; }
+  const byId = {}; fundsState.bal.forEach(b => byId[b.fund_id] = b);
+  applyRowsData = fundsState.fb
+    .map(r => ({ fund_id: r.fund_id, amount: Number(r.amount), fund: byId[r.fund_id], on: true }))
+    .filter(r => r.fund && r.amount > 0);
+  const box = $('applyRows'); box.innerHTML = '';
+  applyRowsData.forEach(r => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'applyrow';
+    b.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(r.fund.name) + '</div>'
+      + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.fund.name) + '</span>'
+      + '<span class="amt">+' + fmtMoney(r.amount, r.fund.currency) + '</span>';
+    b.onclick = () => { r.on = !r.on; b.classList.toggle('off', !r.on); updateApplySummary(); };
+    box.appendChild(b);
+  });
+  $('applyTitle').textContent = monthName(fundsState.month, true) + ' plan';
+  updateApplySummary();
+  $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none'; $('sh-apply').style.display = 'block';
+  $('backdrop').classList.add('open'); $('sheet').classList.add('open');
+}
+function updateApplySummary(){
+  const t = { AUD:0, SGD:0 }; let n = 0;
+  applyRowsData.forEach(r => { if (r.on) { t[r.fund.currency] += r.amount; n++; } });
+  $('applySummary').textContent = n + ' contributions · +' + fmtMoney(t.AUD, 'AUD') + ' · +' + fmtMoney(t.SGD, 'SGD');
+}
+async function applyPlan(){
+  if (applying) return;
+  if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
+  const rows = applyRowsData.filter(r => r.on);
+  if (!rows.length) { toast('everything is skipped — nothing to apply'); return; }
+  applying = true; $('applyGo').innerHTML = '<span class="spin"></span>';
+  const remark = monthName(fundsState.month, true) + ' plan';
+  const { error } = await sb.from('fund_transactions').insert(rows.map(r => ({
+    household_id: CTX.hh.id, fund_id: r.fund_id, type: 'income',
+    date: isoDate(new Date()), amount: r.amount, remarks: remark, origin: 'planned',
+  })));
+  applying = false; $('applyGo').textContent = 'Apply';
+  if (error) { toast('couldn’t apply: ' + error.message); return; }
+  closeSheet(); toast('applied — ' + rows.length + ' contributions written 🐻');
+  loadFunds();
+}
+
 // ══ QUICK-ADD ═══════════════════════════════
 // household context: who we are, our funds, our trips
 let CTX = { hh: null, profiles: [], funds: [], trips: [], cards: [] };
@@ -813,6 +1053,7 @@ let amt = '', mode = 'daily', saving = false;
 function openSheet(){
   $('sh-chooser').style.display = 'block';
   $('sh-form').style.display = 'none';
+  $('sh-apply').style.display = 'none';
   $('backdrop').classList.add('open');
   $('sheet').classList.add('open');
 }
