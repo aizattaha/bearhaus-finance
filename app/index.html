@@ -73,6 +73,26 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .legend .dot{width:8px;height:8px;border-radius:99px;flex-shrink:0}
 .legend .amt{margin-left:auto;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;font-size:12px}
 
+/* ── budget page ───────────────────────────── */
+.pill{display:inline-flex;font-size:12px;font-weight:500;border-radius:999px;padding:3px 12px;background:var(--accent-soft);color:var(--primary)}
+.monthstrip{display:flex;gap:22px;overflow-x:auto;margin:0 -20px;padding:0 20px 6px;scrollbar-width:none;flex-shrink:0}
+.monthstrip::-webkit-scrollbar{display:none}
+.monthstrip button{background:none;border:none;font-family:inherit;font-size:13px;font-weight:500;color:var(--ink-soft);cursor:pointer;padding:4px 0 6px;white-space:nowrap;flex-shrink:0;border-bottom:2px solid transparent}
+.monthstrip button.sel{color:var(--primary);font-weight:600;border-bottom-color:var(--primary)}
+.legend2{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.legend2 .li{display:flex;align-items:center;gap:6px;font-size:11px;line-height:14px;color:var(--ink-soft)}
+.legend2 .dot{width:8px;height:8px;border-radius:99px;flex-shrink:0}
+.legend2 .dash{width:14px;border-top:2px dashed var(--ink);flex-shrink:0}
+.pace{height:8px;border-radius:999px;background:var(--muted);overflow:hidden;display:flex;margin-top:8px}
+.pace i{display:block;height:100%;background:var(--primary)}
+.pace i.over{background:var(--bad-bar)}
+.pacecard{cursor:pointer}
+.drill{display:none;margin-top:12px;border-top:1px solid var(--muted);padding-top:6px}
+.drill.open{display:block}
+.drow{display:flex;gap:10px;align-items:baseline;padding:5px 0;font-size:13px;line-height:20px}
+.drow .dd{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drow .amt{color:var(--bad);font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+
 /* ── quick-add sheet ───────────────────────── */
 .backdrop{position:fixed;inset:0;background:rgba(26,43,68,.35);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
 .backdrop.open{opacity:1;pointer-events:auto}
@@ -101,6 +121,12 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .cat .cl{font-size:10px;line-height:12px;color:var(--ink-soft);font-weight:500;white-space:nowrap;max-width:74px;overflow:hidden;text-overflow:ellipsis}
 .cat.sel .ci{background:var(--primary)}
 .cat.sel .cl{color:var(--primary)}
+.catgroup{grid-column:1/-1;margin:8px 0 -2px;font-weight:500}
+.tripcard{display:flex;align-items:center;gap:12px;width:100%;background:var(--field);border:2px solid transparent;border-radius:16px;padding:10px 14px;font-family:inherit;cursor:pointer;text-align:left;color:var(--ink);margin-top:6px;font-size:15px}
+.tripcard:first-child{margin-top:0}
+.tripcard.sel{border-color:var(--primary);background:var(--accent-soft)}
+.tripcard .tflags{font-size:22px;flex-shrink:0;line-height:1}
+.tripcard .chev{margin-left:auto;color:var(--ink-soft)}
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
 .key{height:40px;border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:17px;font-weight:500;color:var(--ink);cursor:pointer}
 .key:active{background:var(--accent-soft)}
@@ -189,7 +215,28 @@ select.descinput{appearance:none;-webkit-appearance:none}
 
     <section class="screen" id="scr-budget">
       <div><p class="cap">Budget</p><h2 class="h1" style="margin-top:2px">Am I on pace?</h2></div>
-      <div class="card placeholder">building in step 5.4 🐻</div>
+      <div class="monthstrip" id="monthStrip"></div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="h2">Last 6 months</span><span class="pill">A$</span>
+        </div>
+        <div id="budChart" style="margin-top:10px"><p class="cap">loading…</p></div>
+        <div class="legend2">
+          <span class="li"><span class="dot" style="background:#004A98"></span>Rent</span>
+          <span class="li"><span class="dot" style="background:#5A8AC7"></span>Daily</span>
+          <span class="li"><span class="dot" style="background:#B4CEFF"></span>Education</span>
+          <span class="li"><span class="dot" style="background:#E4EEFF"></span>Transport</span>
+          <span class="li"><span class="dot" style="background:#E6E5E5"></span>Other</span>
+          <span class="li"><span class="dash"></span>budget</span>
+          <span class="li"><span class="dot" style="background:#D25353"></span>over</span>
+        </div>
+      </div>
+      <div class="total-card">
+        <p class="cap" id="budTotalLabel">…</p>
+        <p class="disp num" id="budTotalMain" style="margin-top:2px;font-size:28px;line-height:36px">…</p>
+        <p class="cap num" id="budTotalSub" style="margin-top:2px"></p>
+      </div>
+      <div id="paceCards" style="display:flex;flex-direction:column;gap:16px"></div>
     </section>
 
     <section class="screen" id="scr-travel">
@@ -237,7 +284,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
   <div id="sh-form" style="display:none">
     <div class="sheet-head"><span class="h2" id="formTitle">Add expense</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
     <div class="f-sec" style="margin-top:0"><input class="descinput" id="descInput" placeholder="description" autocomplete="off"></div>
-    <div class="f-sec" id="rowTrip" style="display:none"><select class="descinput" id="tripSel"></select></div>
+    <div class="f-sec" id="rowTrip" style="display:none"><div id="tripPick"></div></div>
     <div class="f-sec" id="rowFund" style="display:none"><select class="descinput" id="fundSel"></select></div>
     <div class="amount-line">
       <div class="seg" id="segCurrency"></div>
@@ -284,11 +331,16 @@ function go(id){
   const tabFor = {'scr-home':'scr-home','scr-settings':'scr-home','scr-budget':'scr-budget','scr-travel':'scr-travel','scr-funds':'scr-funds'};
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.scr === tabFor[id]));
   window.scrollTo(0, 0);
+  if (id === 'scr-budget' && !budgetInit) initBudget();
 }
+const CURSYM = { AUD:'A$', SGD:'S$', IDR:'Rp', JPY:'¥', CNY:'¥', KRW:'₩', THB:'฿', MYR:'RM',
+                 VND:'₫', EUR:'€', GBP:'£', USD:'US$', NZD:'NZ$', TWD:'NT$', HKD:'HK$', INR:'₹' };
 function fmtMoney(v, cur){
-  const sym = cur === 'SGD' ? 'S$' : 'A$';
+  const sym = CURSYM[cur] || (cur ? cur + ' ' : 'A$');
   return sym + Number(v).toLocaleString('en-AU', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
+// 'SG' -> 🇸🇬 (country code to flag emoji)
+const flagOf = cc => /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
 
 // ── auth flow ────────────────────────────────
 $('loginForm').addEventListener('submit', async e => {
@@ -492,33 +544,207 @@ function renderHome(state){
       || '<p class="cap">no spending yet this month</p>'}</div>`;
 }
 
+// ══ BUDGET ══════════════════════════════════
+const BUDGET_ROWS = [
+  { icon:'🏠', group:'Rent',              blabel:'Rental' },
+  { icon:'🛍️', group:'Daily Expenses',    blabel:'Daily Expenses' },
+  { icon:'👶', group:'Education',         blabel:'Education' },
+  { icon:'🚗', group:'Transportation',    blabel:'Transport' },
+  { icon:'💡', group:'Utilities',         blabel:'Utilities' },
+  { icon:'📱', group:'TV/Phone/Internet', blabel:'Phone Bill/Internet' },
+  { icon:'🛡️', group:'Insurance',         blabel:'Insurance' },
+];
+const CHART_GROUPS = ['Rent','Daily Expenses','Education','Transportation'];   // rest = Other
+const CHART_COLORS = ['#004A98','#5A8AC7','#B4CEFF','#E4EEFF','#E6E5E5'];
+let budgetMonth = null, budgetInit = false;
+
+const curMonthIso = () => { const n = new Date(); return isoDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
+function addMonths(iso, n){
+  const d = new Date(iso + 'T00:00:00');
+  return isoDate(new Date(d.getFullYear(), d.getMonth() + n, 1));
+}
+function monthName(iso, long){
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', long ? {month:'long', year:'numeric'} : {month:'short', year:'numeric'});
+}
+function initBudget(){
+  budgetInit = true;
+  budgetMonth = curMonthIso();
+  const box = $('monthStrip'); box.innerHTML = '';
+  let m = budgetMonth;
+  while (m >= '2024-02-01') {              // first month of your data
+    const b = document.createElement('button'); b.type = 'button';
+    b.textContent = monthName(m); b.dataset.m = m;
+    b.onclick = () => selectBudgetMonth(b.dataset.m);
+    box.appendChild(b);
+    m = addMonths(m, -1);
+  }
+  const cached = localStorage.getItem('bh-budget');
+  if (cached) { try { renderBudget(JSON.parse(cached)); } catch(e){} }
+  selectBudgetMonth(budgetMonth);
+}
+async function selectBudgetMonth(m){
+  budgetMonth = m;
+  document.querySelectorAll('#monthStrip button').forEach(b => b.classList.toggle('sel', b.dataset.m === m));
+  const chartStart = addMonths(m, -5), next = addMonths(m, 1);
+  try {
+    const [exp, bud] = await Promise.all([
+      sb.from('daily_expenses').select('date, description, category, amount, currency')
+        .gte('date', chartStart).lt('date', next).neq('category', 'Payment'),
+      sb.from('category_budgets').select('month, category_group, amount')
+        .gte('month', chartStart).lte('month', m).eq('currency', 'AUD'),
+    ]);
+    if (exp.error) throw exp.error;
+    if (bud.error) throw bud.error;
+    const state = { month: m, chartStart, exp: exp.data, bud: bud.data };
+    localStorage.setItem('bh-budget', JSON.stringify(state));
+    renderBudget(state);
+  } catch (err) { toast('couldn’t load budget: ' + err.message); }
+}
+
+function renderBudget(st){
+  const months = []; for (let i = 5; i >= 0; i--) months.push(addMonths(st.month, -i));
+  // sums[month] = {group: amount}, totals + budgets per month
+  const sums = {}, budTot = {}, budByLabel = {};
+  months.forEach(m => { sums[m] = {}; budTot[m] = 0; });
+  (st.exp || []).forEach(r => {
+    if (r.currency !== 'AUD') return;
+    const m = r.date.slice(0, 7) + '-01';
+    if (!sums[m]) return;
+    const g = GROUP_OF[r.category] || 'Other';
+    sums[m][g] = (sums[m][g] || 0) + Number(r.amount);
+  });
+  (st.bud || []).forEach(r => {
+    if (budTot[r.month] === undefined) return;
+    budTot[r.month] += Number(r.amount);
+    if (r.month === st.month) budByLabel[r.category_group] = Number(r.amount);
+  });
+  const totalOf = m => Object.values(sums[m]).reduce((s, v) => s + v, 0);
+
+  // chart
+  const maxV = Math.max(...months.map(m => Math.max(totalOf(m), budTot[m])), 1);
+  const k = 110 / maxV, baseY = 120;
+  let svg = '';
+  months.forEach((m, i) => {
+    const x = 20 + i * 50;
+    let y = baseY;
+    const chartVals = CHART_GROUPS.map(g => sums[m][g] || 0);
+    const other = totalOf(m) - chartVals.reduce((s, v) => s + v, 0);
+    chartVals.concat(other).forEach((v, gi) => {
+      const h = v * k; if (h < 0.5) return;
+      y -= h;
+      svg += `<rect x="${x}" y="${y.toFixed(1)}" width="30" height="${h.toFixed(1)}" fill="${CHART_COLORS[gi]}"/>`;
+    });
+    const over = budTot[m] > 0 && totalOf(m) > budTot[m];
+    if (over) svg += `<rect x="${x}" y="${(y - 3).toFixed(1)}" width="30" height="3" rx="1.5" fill="#D25353"/>`;
+    if (budTot[m] > 0) {
+      const by = baseY - budTot[m] * k;
+      svg += `<line x1="${x - 5}" y1="${by.toFixed(1)}" x2="${x + 35}" y2="${by.toFixed(1)}" stroke="#1A2B44" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+    }
+    const sel = m === st.month;
+    svg += `<text x="${x + 15}" y="137" text-anchor="middle" font-size="9" font-family="Poppins,sans-serif"
+      font-weight="${sel ? 600 : 400}" fill="${over ? '#D25353' : sel ? '#004A98' : '#6B7A90'}">${monthName(m).split(' ')[0]}</text>`;
+  });
+  $('budChart').innerHTML = `<svg viewBox="0 0 320 150" style="display:block;width:100%;height:auto" role="img" aria-label="Six months of spending vs budget">${svg}</svg>`;
+
+  // total card
+  const spent = totalOf(st.month), budget = budTot[st.month];
+  const isCur = st.month === curMonthIso();
+  $('budTotalLabel').textContent = monthName(st.month, true) + (isCur ? ' so far' : '');
+  $('budTotalMain').innerHTML = fmtMoney(spent, 'AUD')
+    + (budget > 0 ? ' <span style="font-size:15px;font-weight:400;color:var(--accent)">of ' + fmtMoney(budget, 'AUD') + '</span>' : '');
+  const sub = $('budTotalSub');
+  if (!budget) { sub.textContent = 'no budget set for this month'; sub.style.color = ''; }
+  else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, 'AUD') + ' still available'; sub.style.color = ''; }
+  else { sub.textContent = fmtMoney(spent - budget, 'AUD') + ' over budget'; sub.style.color = '#F0A8A8'; }
+
+  // pace cards with drill-down
+  const box = $('paceCards'); box.innerHTML = '';
+  BUDGET_ROWS.forEach(row => {
+    const s = sums[st.month][row.group] || 0, b = budByLabel[row.blabel] || 0;
+    if (!s && !b) return;
+    const over = b > 0 && s > b;
+    const wMain = b <= 0 ? (s > 0 ? 100 : 0) : Math.min(s / b, 1) * (over ? b / s : 1) * 100;
+    const wOver = over ? (1 - b / s) * 100 : 0;
+    const capTxt = b > 0
+      ? fmtMoney(s, 'AUD') + ' of ' + fmtMoney(b, 'AUD') + (over ? ' · ' + fmtMoney(s - b, 'AUD') + ' over' : '')
+      : fmtMoney(s, 'AUD') + ' · no budget';
+    const rows = (st.exp || [])
+      .filter(r => r.currency === 'AUD' && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group)
+      .sort((a, c) => c.date < a.date ? -1 : 1)
+      .map(r => `<div class="drow"><span class="dd">${esc(r.description)}</span>
+        <span class="cap">${new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})}</span>
+        <span class="amt">−${fmtMoney(r.amount, 'AUD')}</span></div>`).join('')
+      || '<p class="cap" style="padding:4px 0">nothing this month</p>';
+    const card = document.createElement('div');
+    card.className = 'card pacecard';
+    card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
+        <div class="rowicon">${row.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <span class="lbl">${esc(row.group)}</span>
+            <span class="cap num" style="${over ? 'color:var(--bad);font-weight:500' : ''}">${capTxt}</span>
+          </div>
+          <div class="pace"><i style="width:${wMain.toFixed(1)}%"></i>${over ? '<i class="over" style="width:' + wOver.toFixed(1) + '%"></i>' : ''}</div>
+        </div>
+      </div>
+      <div class="drill">${rows}</div>`;
+    card.onclick = () => card.querySelector('.drill').classList.toggle('open');
+    box.appendChild(card);
+  });
+}
+
 // ══ QUICK-ADD ═══════════════════════════════
 // household context: who we are, our funds, our trips
 let CTX = { hh: null, profiles: [], funds: [], trips: [], cards: [] };
 async function loadContext(){
   const cached = localStorage.getItem('bh-ctx');
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
-  const [hh, profiles, funds, trips, cards] = await Promise.all([
+  const [hh, profiles, funds, trips, cards, dCats, tCats] = await Promise.all([
     sb.from('households').select('id, name').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('funds').select('id, name, country, currency').eq('is_active', true).order('sort_order'),
-    sb.from('trips').select('id, name, currency, start_date').order('start_date', {ascending:false}),
+    sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
     sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order').eq('is_archived', false).order('sort_order'),
+    sb.from('daily_expenses').select('category').order('date', {ascending:false}).limit(300),
+    sb.from('travel_expenses').select('category').order('date', {ascending:false}).limit(120),
   ]);
   if (!hh.error) CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
-                         trips: trips.data || [], cards: cards.data || [] };
+                         trips: trips.data || [], cards: cards.data || [],
+                         topDaily: topCats(dCats.data, FALLBACK_DAILY),
+                         topTravel: topCats(tCats.data, FALLBACK_TRAVEL) };
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
 }
 
-const DAILY_MAIN  = ['Dining out','Groceries','Bus/train','Household supplies','Childcare','Gas/fuel','Parking','__MORE__'];
-const DAILY_ALL   = ['Dining out','Groceries','Bus/train','Household supplies','Childcare','Gas/fuel','Parking',
-  'Home - Other','TV/Phone/Internet','Insurance','Furniture','Sports','Rent','Electricity','Gifts','Car','Clothing',
-  'Water','Life - Other','Education','Liquor','Entertainment - Other','Transportation - Other','Electronics',
-  'Medical Expenses','Games','Gas','Taxi','Movies','Bicycle','Health','Activities','Hotel','Payment'];
-const TRAVEL_MAIN = ['Dining out','Taxi/Grab','Public Transport','Hotel','Shopping','Currency exchange','Flights','__MORE__'];
-const TRAVEL_ALL  = ['Dining out','Taxi/Grab','Public Transport','Hotel','Shopping','Currency exchange','Flights',
-  'Airport Transfer','Car Rental','Ferry/Train','Airbnb/Hostel','Street Food','Groceries','Drinks',
-  'Tours & Experiences','Attraction Entry','Souvenirs','Travel Insurance','Medical','SIM Card/Data','Other'];
+// grouped category catalogues — shown when "More" is tapped
+const DAILY_GROUPED = {
+  '🛍️ Daily expenses': ['Dining out','Groceries','Household supplies','Home - Other','Furniture','Sports',
+                         'Clothing','Gifts','Liquor','Entertainment - Other','Electronics','Movies','Games',
+                         'Medical Expenses','Health','Life - Other','Hotel'],
+  '👶 Education':       ['Childcare','Education','Activities'],
+  '🚗 Transportation':  ['Bus/train','Gas/fuel','Car','Parking','Taxi','Bicycle','Transportation - Other'],
+  '💡 Utilities':       ['Water','Electricity','Gas'],
+  '🏠 Home & fixed':    ['Rent','Insurance','TV/Phone/Internet'],
+  '🔁 Transfers':       ['Payment'],
+};
+const TRAVEL_GROUPED = {
+  '✈️ Flights & transport': ['Flights','Airport Transfer','Taxi/Grab','Public Transport','Car Rental','Ferry/Train'],
+  '🏨 Accommodation':       ['Hotel','Airbnb/Hostel'],
+  '🍜 Food & drinks':       ['Dining out','Street Food','Groceries','Drinks'],
+  '🎡 Activities':          ['Tours & Experiences','Attraction Entry'],
+  '🛍️ Shopping':           ['Shopping','Souvenirs'],
+  '💊 Health & comms':      ['Travel Insurance','Medical','SIM Card/Data'],
+  '💱 Money':               ['Currency exchange'],
+  '🗂️ Other':              ['Other'],
+};
+// first-eight fallbacks until your real usage stats load
+const FALLBACK_DAILY  = ['Dining out','Groceries','Bus/train','Home - Other','TV/Phone/Internet','Household supplies','Childcare'];
+const FALLBACK_TRAVEL = ['Dining out','Taxi/Grab','Public Transport','Hotel','Shopping','Currency exchange','Flights'];
+function topCats(rows, fallback){
+  const freq = {};
+  (rows || []).forEach(r => { if (r.category !== 'Payment') freq[r.category] = (freq[r.category] || 0) + 1; });
+  const top = Object.entries(freq).sort((a, b) => b[1] - a[1]).map(([c]) => c);
+  return top.concat(fallback.filter(c => !top.includes(c))).slice(0, 7);
+}
 Object.assign(CAT_ICON, {'Flights':'✈️','Airport Transfer':'🚐','Taxi/Grab':'🚕','Public Transport':'🚆',
   'Car Rental':'🚙','Ferry/Train':'⛴️','Airbnb/Hostel':'🏘️','Street Food':'🌮','Drinks':'🥤',
   'Tours & Experiences':'🎡','Attraction Entry':'🎟️','Shopping':'🛍️','Souvenirs':'🎁','Travel Insurance':'🛡️',
@@ -562,27 +788,75 @@ function buildSeg(id, items, selIdx, onPick){
   });
 }
 function segSel(id){ const b = document.querySelector('#' + id + ' .sel'); return b ? b.textContent : ''; }
-function buildGrid(names, selName){
+function buildGrid(spec, selName){
+  // spec = array of names (top-used view) OR grouped object (after "More")
   const box = $('gridCategory'); box.innerHTML = '';
-  names.forEach(name => {
+  const addTile = name => {
     const b = document.createElement('button'); b.type = 'button';
     b.className = 'cat' + (name === selName ? ' sel' : '');
     b.dataset.name = name;
     const label = name === '__MORE__' ? 'More' : name;
     b.innerHTML = '<span class="ci">' + (CAT_ICON[name] || '🛍️') + '</span><span class="cl">' + esc(label) + '</span>';
     b.onclick = () => {
-      if (name === '__MORE__') { buildGrid(mode === 'trip' ? TRAVEL_ALL : DAILY_ALL, gridSel()); return; }
+      if (name === '__MORE__') { buildGrid(mode === 'trip' ? TRAVEL_GROUPED : DAILY_GROUPED, gridSel()); return; }
       box.querySelectorAll('.cat').forEach(x => x.classList.remove('sel')); b.classList.add('sel');
     };
     box.appendChild(b);
+  };
+  if (Array.isArray(spec)) spec.forEach(addTile);
+  else Object.entries(spec).forEach(([group, names]) => {
+    const h = document.createElement('p');
+    h.className = 'cap catgroup'; h.textContent = group;
+    box.appendChild(h);
+    names.forEach(addTile);
   });
 }
 function gridSel(){ const b = document.querySelector('#gridCategory .cat.sel'); return b ? b.dataset.name : ''; }
 
-function fillSelect(sel, options){ // options: [value, label]
-  sel.innerHTML = options.map(([v, l]) => '<option value="' + esc(v) + '">' + esc(l) + '</option>').join('');
-}
 function payerNames(){ return CTX.profiles.map(p => p.display_name).concat('Joint'); }
+
+// ── trip picker (large cards) + per-trip currencies ──
+let selectedTripId = null, tripListOpen = false;
+let SEG2CODE = { 'A$':'AUD', 'S$':'SGD' };
+function tripById(id){ return CTX.trips.find(t => t.id === id); }
+function renderTripPick(){
+  const box = $('tripPick'); box.innerHTML = '';
+  const sel = tripById(selectedTripId) || CTX.trips[0];
+  if (!sel) { box.innerHTML = '<p class="cap">no trips yet — trip creation arrives with the Travel tab (5.6)</p>'; return; }
+  selectedTripId = sel.id;
+  const mk = (t, isHeader) => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'tripcard' + (!isHeader ? '' : ' sel');
+    const flags = (t.countries || []).map(flagOf).join('') || '✈️';
+    const when = t.start_date
+      ? new Date(t.start_date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'})
+        + (t.end_date ? ' – ' + new Date(t.end_date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'}) : '')
+      : '';
+    b.innerHTML = '<span class="tflags">' + flags + '</span>'
+      + '<span style="min-width:0"><span class="lbl">' + esc(t.name) + '</span><br><span class="cap">' + when + '</span></span>'
+      + (isHeader ? '<span class="chev">' + (tripListOpen ? '▴' : '▾') + '</span>' : '');
+    b.onclick = () => {
+      if (isHeader) { tripListOpen = !tripListOpen; renderTripPick(); }
+      else { selectedTripId = t.id; tripListOpen = false; localStorage.setItem('bh-trip', t.id); renderTripPick(); refreshTripCurrencies(); }
+    };
+    return b;
+  };
+  box.appendChild(mk(sel, true));
+  if (tripListOpen) CTX.trips.filter(t => t.id !== selectedTripId).forEach(t => box.appendChild(mk(t, false)));
+}
+function refreshTripCurrencies(){
+  const t = tripById(selectedTripId);
+  const codes = ['AUD', 'SGD'].concat((t && t.currencies) || []).filter((c, i, a) => a.indexOf(c) === i);
+  SEG2CODE = {};
+  const labels = codes.map(c => {
+    let l = CURSYM[c] || c;
+    if (SEG2CODE[l]) l = c;          // two currencies sharing a symbol (¥) — show the code
+    SEG2CODE[l] = c;
+    return l;
+  });
+  const last = localStorage.getItem('bh-cur') || 'A$';
+  buildSeg('segCurrency', labels, Math.max(labels.indexOf(last), 0));
+}
 
 function openForm(m){
   mode = m; amt = ''; renderAmt(); saving = false; $('saveBtn').textContent = 'Save';
@@ -601,11 +875,15 @@ function openForm(m){
   $('segCurrency').style.display = m === 'fund' ? 'none' : 'inline-flex';
   $('fundCurLabel').style.display = m === 'fund' ? 'inline' : 'none';
 
+  $('cardSel').style.display = m === 'fund' ? 'none' : 'block';   // funds have no card; date takes the row
+
   if (m === 'daily') {
     $('formTitle').textContent = 'Add expense';
     $('descInput').placeholder = 'description — e.g. Woolworths';
+    SEG2CODE = { 'A$':'AUD', 'S$':'SGD' };
     buildSeg('segCurrency', ['A$','S$'], lastCur === 'S$' ? 1 : 0);
-    buildGrid(DAILY_MAIN, 'Dining out');
+    const top = (CTX.topDaily || FALLBACK_DAILY).concat('__MORE__');
+    buildGrid(top, top[0]);
   } else if (m === 'fund') {
     $('formTitle').textContent = 'Fund transaction';
     $('descInput').placeholder = 'remarks — e.g. July top-up';
@@ -621,9 +899,13 @@ function openForm(m){
   } else {
     $('formTitle').textContent = 'Trip expense';
     $('descInput').placeholder = 'description — e.g. beach club';
-    fillSelect($('tripSel'), CTX.trips.map(t => [t.id, t.name]));
-    buildSeg('segCurrency', ['A$','S$'], lastCur === 'S$' ? 1 : 0);
-    buildGrid(TRAVEL_MAIN, 'Dining out');
+    const lastTrip = localStorage.getItem('bh-trip');
+    selectedTripId = (lastTrip && tripById(lastTrip)) ? lastTrip : null;
+    tripListOpen = false;
+    renderTripPick();
+    refreshTripCurrencies();
+    const top = (CTX.topTravel || FALLBACK_TRAVEL).concat('__MORE__');
+    buildGrid(top, top[0]);
   }
   if (m !== 'fund') {
     buildSeg('segPayer', names, Math.max(names.indexOf(lastPayer), 0),
@@ -698,7 +980,7 @@ async function saveEntry(){
       done(true, 'saved — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
       return;
     }
-    const currency = segSel('segCurrency') === 'S$' ? 'SGD' : 'AUD';
+    const currency = SEG2CODE[segSel('segCurrency')] || 'AUD';
     const payer = segSel('segPayer');
     const cat = gridSel();
     if (!cat) { done(false, 'pick a category'); return; }
@@ -708,7 +990,10 @@ async function saveEntry(){
       currency, payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
     };
     const table = mode === 'trip' ? 'travel_expenses' : 'daily_expenses';
-    if (mode === 'trip') base.trip_id = $('tripSel').value;
+    if (mode === 'trip') {
+      if (!selectedTripId) { done(false, 'pick a trip first'); return; }
+      base.trip_id = selectedTripId;
+    }
     const { data: row, error } = await sb.from(table).insert(base).select('id').single();
     if (error) throw error;
     const splits = buildSplits(payer, cost).map(s => ({ household_id: CTX.hh.id, expense_id: row.id, ...s }));
