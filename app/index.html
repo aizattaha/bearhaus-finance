@@ -228,13 +228,22 @@ select.descinput{appearance:none;-webkit-appearance:none}
           <span class="li"><span class="dot" style="background:#E4EEFF"></span>Transport</span>
           <span class="li"><span class="dot" style="background:#E6E5E5"></span>Other</span>
           <span class="li"><span class="dash"></span>budget</span>
-          <span class="li"><span class="dot" style="background:#D25353"></span>over</span>
         </div>
       </div>
       <div class="total-card">
         <p class="cap" id="budTotalLabel">…</p>
         <p class="disp num" id="budTotalMain" style="margin-top:2px;font-size:28px;line-height:36px">…</p>
         <p class="cap num" id="budTotalSub" style="margin-top:2px"></p>
+      </div>
+      <div class="card" id="floatCard" style="display:none">
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="rowicon">🌊</div>
+          <div style="flex:1;min-width:0">
+            <div class="lbl">Float</div>
+            <div class="cap">the buffer that rides out an over-budget month</div>
+          </div>
+          <div class="lbl num" id="floatBal" style="font-size:16px;color:var(--primary)"></div>
+        </div>
       </div>
       <div id="paceCards" style="display:flex;flex-direction:column;gap:16px"></div>
     </section>
@@ -587,15 +596,17 @@ async function selectBudgetMonth(m){
   document.querySelectorAll('#monthStrip button').forEach(b => b.classList.toggle('sel', b.dataset.m === m));
   const chartStart = addMonths(m, -5), next = addMonths(m, 1);
   try {
-    const [exp, bud] = await Promise.all([
+    const [exp, bud, flt] = await Promise.all([
       sb.from('daily_expenses').select('date, description, category, amount, currency')
         .gte('date', chartStart).lt('date', next).neq('category', 'Payment'),
       sb.from('category_budgets').select('month, category_group, amount')
         .gte('month', chartStart).lte('month', m).eq('currency', 'AUD'),
+      sb.from('fund_balances').select('balance').eq('name', 'Float').maybeSingle(),
     ]);
     if (exp.error) throw exp.error;
     if (bud.error) throw bud.error;
-    const state = { month: m, chartStart, exp: exp.data, bud: bud.data };
+    const state = { month: m, chartStart, exp: exp.data, bud: bud.data,
+                    float: flt.data ? Number(flt.data.balance) : null };
     localStorage.setItem('bh-budget', JSON.stringify(state));
     renderBudget(state);
   } catch (err) { toast('couldn’t load budget: ' + err.message); }
@@ -635,7 +646,13 @@ function renderBudget(st){
       svg += `<rect x="${x}" y="${y.toFixed(1)}" width="30" height="${h.toFixed(1)}" fill="${CHART_COLORS[gi]}"/>`;
     });
     const over = budTot[m] > 0 && totalOf(m) > budTot[m];
-    if (over) svg += `<rect x="${x}" y="${(y - 3).toFixed(1)}" width="30" height="3" rx="1.5" fill="#D25353"/>`;
+    if (over) {
+      // everything above the budget line turns red — the block's height IS the overspend
+      const overH = (totalOf(m) - budTot[m]) * k;
+      svg += `<rect x="${x}" y="${y.toFixed(1)}" width="30" height="${overH.toFixed(1)}" fill="#D25353"/>`;
+      svg += `<text x="${x + 15}" y="${Math.max(y - 3, 7).toFixed(1)}" text-anchor="middle" font-size="8"
+        font-weight="600" fill="#D25353" font-family="Poppins,sans-serif">+${Math.round(totalOf(m) - budTot[m]).toLocaleString('en-AU')}</text>`;
+    }
     if (budTot[m] > 0) {
       const by = baseY - budTot[m] * k;
       svg += `<line x1="${x - 5}" y1="${by.toFixed(1)}" x2="${x + 35}" y2="${by.toFixed(1)}" stroke="#1A2B44" stroke-width="1.5" stroke-dasharray="3 3"/>`;
@@ -657,6 +674,13 @@ function renderBudget(st){
   else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, 'AUD') + ' still available'; sub.style.color = ''; }
   else { sub.textContent = fmtMoney(spent - budget, 'AUD') + ' over budget'; sub.style.color = '#F0A8A8'; }
 
+  // float buffer card
+  if (st.float !== null && st.float !== undefined) {
+    $('floatCard').style.display = 'block';
+    $('floatBal').textContent = fmtMoney(st.float, 'AUD');
+    $('floatBal').style.color = st.float < 0 ? 'var(--bad)' : 'var(--primary)';
+  }
+
   // pace cards with drill-down
   const box = $('paceCards'); box.innerHTML = '';
   BUDGET_ROWS.forEach(row => {
@@ -665,9 +689,12 @@ function renderBudget(st){
     const over = b > 0 && s > b;
     const wMain = b <= 0 ? (s > 0 ? 100 : 0) : Math.min(s / b, 1) * (over ? b / s : 1) * 100;
     const wOver = over ? (1 - b / s) * 100 : 0;
-    const capTxt = b > 0
-      ? fmtMoney(s, 'AUD') + ' of ' + fmtMoney(b, 'AUD') + (over ? ' · ' + fmtMoney(s - b, 'AUD') + ' over' : '')
-      : fmtMoney(s, 'AUD') + ' · no budget';
+    const status = b <= 0 ? ''
+      : over ? '<div class="lbl num" style="color:var(--bad)">' + fmtMoney(s - b, 'AUD') + ' over</div>'
+      : b - s < 0.005 ? '<div class="lbl num" style="color:var(--good)">on budget</div>'
+             : '<div class="lbl num" style="color:var(--good)">' + fmtMoney(b - s, 'AUD') + ' left</div>';
+    const capTxt = b > 0 ? fmtMoney(s, 'AUD') + ' of ' + fmtMoney(b, 'AUD')
+                         : fmtMoney(s, 'AUD') + ' · no budget';
     const rows = (st.exp || [])
       .filter(r => r.currency === 'AUD' && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group)
       .sort((a, c) => c.date < a.date ? -1 : 1)
@@ -680,9 +707,9 @@ function renderBudget(st){
     card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
         <div class="rowicon">${row.icon}</div>
         <div style="flex:1;min-width:0">
-          <div style="display:flex;justify-content:space-between;gap:8px">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-end">
             <span class="lbl">${esc(row.group)}</span>
-            <span class="cap num" style="${over ? 'color:var(--bad);font-weight:500' : ''}">${capTxt}</span>
+            <span style="text-align:right">${status}<div class="cap num">${capTxt}</div></span>
           </div>
           <div class="pace"><i style="width:${wMain.toFixed(1)}%"></i>${over ? '<i class="over" style="width:' + wOver.toFixed(1) + '%"></i>' : ''}</div>
         </div>
