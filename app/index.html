@@ -116,6 +116,40 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .dragghost{position:fixed;z-index:99;pointer-events:none;background:#fff;box-shadow:var(--shadow-lift);border-radius:14px;padding:2px 12px;opacity:.95;display:flex;align-items:center;gap:10px;min-height:44px}
 .btn-mini{font-family:inherit;font-size:13px;font-weight:500;border:none;border-radius:999px;height:40px;padding:0 18px;background:var(--primary);color:#fff;cursor:pointer;flex-shrink:0}
 
+/* ── settings ──────────────────────────────── */
+.setrow{display:flex;align-items:center;gap:14px;min-height:56px;padding:4px 0;width:100%;background:none;border:none;font-family:inherit;font-size:15px;color:var(--ink);cursor:pointer;text-align:left}
+.setrow .chev{margin-left:auto;color:var(--ink-soft);transition:transform .15s}
+.setrow.open .chev{transform:rotate(90deg)}
+.setrow+.setrow,.setbody+.setrow{border-top:1px solid var(--muted)}
+.setbody{display:none;padding:2px 0 16px}
+.setbody.open{display:block}
+.srow{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 0}
+.srow+.srow{border-top:1px solid var(--field)}
+.srow .edit{color:var(--primary);background:var(--accent-soft);border:none;border-radius:8px;width:26px;height:26px;font-size:12px;cursor:pointer;flex-shrink:0}
+.tag{font-size:10px;font-weight:500;border-radius:999px;padding:2px 8px;background:var(--muted);color:var(--ink-soft);flex-shrink:0;white-space:nowrap}
+.tag.blue{background:var(--accent-soft);color:var(--primary)}
+
+/* ── travel page ───────────────────────────── */
+.chip{display:inline-flex;align-items:center;font-size:13px;font-weight:500;border-radius:999px;padding:8px 16px;background:var(--accent-soft);color:var(--primary);border:none;cursor:pointer;font-family:inherit;transition:all .15s}
+.chip.sel{background:var(--primary);color:#fff}
+.tripbtn{width:100%;background:none;border:none;font-family:inherit;text-align:left;color:var(--ink);cursor:pointer;padding:0}
+.card.settled{background:#F1F3F6;box-shadow:none}
+.card.settled .h2{color:var(--ink-soft)}
+.settlebox{background:var(--accent-soft);border-radius:16px;padding:12px 16px;margin-top:14px}
+.settlebox .lbl{color:var(--primary)}
+details.grp{border-top:1px solid var(--muted)}
+details.grp:first-of-type{border-top:none}
+details.grp summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:52px;cursor:pointer;font-size:13px;font-weight:500}
+details.grp summary::-webkit-details-marker{display:none}
+details.grp summary .gamt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px;text-align:right;color:var(--ink-soft)}
+details.grp summary .arr{color:var(--ink-soft);font-size:11px;transition:transform .15s}
+details.grp[open] summary .arr{transform:rotate(90deg)}
+.trow{display:flex;gap:10px;align-items:center;padding:6px 0 6px 8px;font-size:13px;line-height:18px}
+.trow .td{flex:1;min-width:0}
+.trow .td .cap{display:block}
+.trow .amt{font-weight:500;font-variant-numeric:tabular-nums;color:var(--bad);white-space:nowrap}
+.trow .edit{color:var(--primary);background:var(--accent-soft);border:none;border-radius:8px;width:26px;height:26px;font-size:12px;cursor:pointer;flex-shrink:0}
+
 /* ── quick-add sheet ───────────────────────── */
 .backdrop{position:fixed;inset:0;background:rgba(26,43,68,.35);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
 .backdrop.open{opacity:1;pointer-events:auto}
@@ -278,8 +312,25 @@ select.descinput{appearance:none;-webkit-appearance:none}
     </section>
 
     <section class="screen" id="scr-travel">
-      <div><p class="cap">Travel</p><h2 class="h1" style="margin-top:2px">Trips</h2></div>
-      <div class="card placeholder">building in step 5.6 🐻</div>
+      <div class="scr-head">
+        <div><p class="cap">Travel</p><h2 class="h1" style="margin-top:2px">Trips</h2></div>
+        <button class="iconbtn" onclick="openNewTripSheet()" aria-label="New trip">+</button>
+      </div>
+      <div id="tripCards" style="display:flex;flex-direction:column;gap:16px"><p class="cap">loading…</p></div>
+    </section>
+
+    <section class="screen" id="scr-trip">
+      <div class="scr-head">
+        <div style="min-width:0">
+          <button class="btn-tert" style="padding-left:0" onclick="go('scr-travel')">‹ Trips</button>
+          <h2 class="h1" id="tripDetName" style="margin-top:6px">…</h2>
+          <p class="cap" id="tripDetCap"></p>
+        </div>
+        <span class="tick" id="tripDetTick" style="display:none" title="sent to the travel fund">✓</span>
+      </div>
+      <div id="tripCurChips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      <div class="card" id="tripGroups" style="padding-top:16px;padding-bottom:16px"></div>
+      <div class="card" id="tripSettle"></div>
     </section>
 
     <section class="screen" id="scr-funds">
@@ -326,7 +377,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
         <h2 class="h1" style="margin-top:6px">Settings</h2>
         <p class="cap" id="hhLabel">🐻 …</p>
       </div>
-      <div class="card placeholder">full settings arrive in step 5.7 🐻</div>
+      <div class="card" style="padding-top:8px;padding-bottom:8px"><div id="setRows"></div></div>
       <button class="btn-tert" style="align-self:center" onclick="signOut()">Sign out</button>
     </section>
   </div>
@@ -375,7 +426,8 @@ select.descinput{appearance:none;-webkit-appearance:none}
     <div class="keypad" id="keypad"></div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
       <button class="btn btn-primary" style="flex:1" id="saveBtn" onclick="saveEntry()">Save</button>
-      <button class="btn-tert" onclick="toggleDetails()">+ details</button>
+      <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad)" onclick="deleteExpense()">Delete</button>
+      <button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button>
     </div>
   </div>
 
@@ -384,6 +436,18 @@ select.descinput{appearance:none;-webkit-appearance:none}
     <div id="applyRows"></div>
     <p class="cap num" id="applySummary" style="margin-top:10px"></p>
     <button class="btn btn-primary" style="width:100%;margin-top:12px" id="applyGo" onclick="applyPlan()">Apply</button>
+  </div>
+
+  <div id="sh-newtrip" style="display:none">
+    <div class="sheet-head"><span class="h2">New trip</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
+    <div class="f-sec" style="margin-top:0"><input class="descinput" id="ntName" placeholder="trip name — e.g. 202612 Bangkok" autocomplete="off"></div>
+    <div class="f-sec" style="display:flex;gap:8px">
+      <input class="descinput" id="ntStart" type="date" style="flex:1">
+      <input class="descinput" id="ntEnd" type="date" style="flex:1">
+    </div>
+    <div class="f-sec"><p class="cap" style="margin-bottom:6px">countries</p><div id="ntCountries" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
+    <div class="f-sec"><p class="cap" style="margin-bottom:6px">local currencies · A$ and S$ are always available</p><div id="ntCurrencies" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:16px" id="ntGo" onclick="createTrip()">Create trip</button>
   </div>
 </div>
 
@@ -406,11 +470,13 @@ function toast(msg){
 function go(id){
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
-  const tabFor = {'scr-home':'scr-home','scr-settings':'scr-home','scr-budget':'scr-budget','scr-travel':'scr-travel','scr-funds':'scr-funds'};
+  const tabFor = {'scr-home':'scr-home','scr-settings':'scr-home','scr-budget':'scr-budget','scr-travel':'scr-travel','scr-trip':'scr-travel','scr-funds':'scr-funds'};
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.scr === tabFor[id]));
   window.scrollTo(0, 0);
   if (id === 'scr-budget' && !budgetInit) initBudget();
   if (id === 'scr-funds' && !fundsInit) initFunds();
+  if (id === 'scr-travel' && !travelInit) initTravel();
+  if (id === 'scr-settings') renderSettings();
 }
 const CURSYM = { AUD:'A$', SGD:'S$', IDR:'Rp', JPY:'¥', CNY:'¥', KRW:'₩', THB:'฿', MYR:'RM',
                  VND:'₫', EUR:'€', GBP:'£', USD:'US$', NZD:'NZ$', TWD:'NT$', HKD:'HK$', INR:'₹' };
@@ -800,7 +866,6 @@ function renderBudget(st){
 // ══ FUNDS ═══════════════════════════════════
 let fundsInit = false, fundsState = null, fundsExpanded = { AU:false, SG:false };
 let fundsEdit = { AU:false, SG:false }, fundsExtraGroups = { AU:[], SG:[] };
-const SURPLUS_FUNDS = ['Float', 'Future DreamHouse SG'];   // leftover destinations
 function fundIcon(name){
   const n = name.toLowerCase();
   if (n.includes('float')) return '🌊';
@@ -830,7 +895,7 @@ async function loadFunds(){
   const m = curMonthIso(), next = addMonths(m, 1);
   try {
     const [bal, inc, cat, fb, applied] = await Promise.all([
-      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order, group_name').eq('is_active', true).order('sort_order'),
+      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order, group_name, is_leftover_target').eq('is_active', true).order('sort_order'),
       sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
       sb.from('category_budgets').select('currency, amount').eq('month', m),
       sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
@@ -860,7 +925,7 @@ function renderFunds(st){
   let fundCount = 0;
   st.fb.forEach(r => {
     const f = byId[r.fund_id];
-    if (!f || SURPLUS_FUNDS.includes(f.name)) return;
+    if (!f || f.is_leftover_target) return;   // leftover-target funds ARE the leftover
     sum.funds[f.currency] = (sum.funds[f.currency] || 0) + Number(r.amount);
     fundCount++;
   });
@@ -889,7 +954,10 @@ function renderFunds(st){
     const b = $('incBreak');
     b.style.display = b.style.display === 'none' ? 'block' : 'none';
   };
-  let cap = 'leftover flows to Float 🇦🇺 · Future DreamHouse SG 🇸🇬';
+  const leftoverFunds = st.bal.filter(b => b.is_leftover_target);
+  let cap = leftoverFunds.length
+    ? 'leftover flows to ' + leftoverFunds.map(b => b.name + ' ' + flagOf(b.country)).join(' · ')
+    : 'leftover stays in the pool — mark leftover funds in Settings';
   const btn = $('applyBtn');
   if (st.appliedOn) {
     btn.textContent = 'Applied ✓'; btn.disabled = true; btn.style.opacity = '.55';
@@ -1096,1266 +1164,540 @@ async function applyPlan(){
   loadFunds();
 }
 
-// ══ QUICK-ADD ═══════════════════════════════
-// household context: who we are, our funds, our trips
-let CTX = { hh: null, profiles: [], funds: [], trips: [], cards: [] };
-async function loadContext(){
-  const cached = localStorage.getItem('bh-ctx');
-  if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
-  const [hh, profiles, funds, trips, cards, dCats, tCats] = await Promise.all([
-    sb.from('households').select('id, name').single(),
-    sb.from('profiles').select('id, display_name').order('sort_order'),
-    sb.from('funds').select('id, name, country, currency').eq('is_active', true).order('sort_order'),
-    sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
-    sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order').eq('is_archived', false).order('sort_order'),
-    sb.from('daily_expenses').select('category').order('date', {ascending:false}).limit(300),
-    sb.from('travel_expenses').select('category').order('date', {ascending:false}).limit(120),
-  ]);
-  if (!hh.error) CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
-                         trips: trips.data || [], cards: cards.data || [],
-                         topDaily: topCats(dCats.data, FALLBACK_DAILY),
-                         topTravel: topCats(tCats.data, FALLBACK_TRAVEL) };
-  localStorage.setItem('bh-ctx', JSON.stringify(CTX));
+// ══ SETTINGS ════════════════════════════════
+function capEl(t){ const p = document.createElement('p'); p.className = 'cap'; p.style.marginTop = '8px'; p.textContent = t; return p; }
+function labeled(cap, el){
+  const d = document.createElement('div'); d.style.marginTop = '10px';
+  const p = document.createElement('p'); p.className = 'cap'; p.style.marginBottom = '4px'; p.textContent = cap;
+  d.appendChild(p); d.appendChild(el); return d;
+}
+function selectEl(opts, val, onChange, noneLabel){
+  const s = document.createElement('select'); s.className = 'descinput';
+  s.innerHTML = (noneLabel ? '<option value="">' + esc(noneLabel) + '</option>' : '')
+    + opts.map(([v, l]) => '<option value="' + esc(v) + '">' + esc(l) + '</option>').join('');
+  s.value = val || '';
+  s.onchange = () => onChange(s.value);
+  return s;
+}
+function addRowEl(ph, onAdd){
+  const d = document.createElement('div'); d.style.cssText = 'display:flex;gap:8px;margin-top:10px';
+  d.innerHTML = '<input class="descinput" placeholder="' + esc(ph) + '" style="flex:1"><button class="btn-mini" type="button">Add</button>';
+  d.lastChild.onclick = () => { const v = d.firstChild.value.trim(); if (!v) { toast('type a name first'); return; } onAdd(v); };
+  return d;
+}
+function editInline(row, initial, onSave){
+  const span = row.querySelector('.lbl');
+  const input = document.createElement('input');
+  input.className = 'descinput'; input.value = initial; input.style.flex = '1'; input.style.minWidth = '0';
+  const ok = document.createElement('button'); ok.className = 'btn-mini'; ok.textContent = '✓'; ok.style.padding = '0 14px';
+  span.replaceWith(input);
+  row.querySelector('.edit').replaceWith(ok);
+  input.focus();
+  ok.onclick = () => { const v = input.value.trim(); if (!v) { toast('can’t be empty'); return; } onSave(v); };
 }
 
-// grouped category catalogues — shown when "More" is tapped
-const DAILY_GROUPED = {
-  '🛍️ Daily expenses': ['Dining out','Groceries','Household supplies','Home - Other','Furniture','Sports',
-                         'Clothing','Gifts','Liquor','Entertainment - Other','Electronics','Movies','Games',
-                         'Medical Expenses','Health','Life - Other','Hotel'],
-  '👶 Education':       ['Childcare','Education','Activities'],
-  '🚗 Transportation':  ['Bus/train','Gas/fuel','Car','Parking','Taxi','Bicycle','Transportation - Other'],
-  '💡 Utilities':       ['Water','Electricity','Gas'],
-  '🏠 Home & fixed':    ['Rent','Insurance','TV/Phone/Internet'],
-  '🔁 Transfers':       ['Payment'],
-};
-const TRAVEL_GROUPED = {
-  '✈️ Flights & transport': ['Flights','Airport Transfer','Taxi/Grab','Public Transport','Car Rental','Ferry/Train'],
-  '🏨 Accommodation':       ['Hotel','Airbnb/Hostel'],
-  '🍜 Food & drinks':       ['Dining out','Street Food','Groceries','Drinks'],
-  '🎡 Activities':          ['Tours & Experiences','Attraction Entry'],
-  '🛍️ Shopping':           ['Shopping','Souvenirs'],
-  '💊 Health & comms':      ['Travel Insurance','Medical','SIM Card/Data'],
-  '💱 Money':               ['Currency exchange'],
-  '🗂️ Other':              ['Other'],
-};
-// first-eight fallbacks until your real usage stats load
-const FALLBACK_DAILY  = ['Dining out','Groceries','Bus/train','Home - Other','TV/Phone/Internet','Household supplies','Childcare'];
-const FALLBACK_TRAVEL = ['Dining out','Taxi/Grab','Public Transport','Hotel','Shopping','Currency exchange','Flights'];
-function topCats(rows, fallback){
-  const freq = {};
-  (rows || []).forEach(r => { if (r.category !== 'Payment') freq[r.category] = (freq[r.category] || 0) + 1; });
-  const top = Object.entries(freq).sort((a, b) => b[1] - a[1]).map(([c]) => c);
-  return top.concat(fallback.filter(c => !top.includes(c))).slice(0, 7);
-}
-Object.assign(CAT_ICON, {'Flights':'✈️','Airport Transfer':'🚐','Taxi/Grab':'🚕','Public Transport':'🚆',
-  'Car Rental':'🚙','Ferry/Train':'⛴️','Airbnb/Hostel':'🏘️','Street Food':'🌮','Drinks':'🥤',
-  'Tours & Experiences':'🎡','Attraction Entry':'🎟️','Shopping':'🛍️','Souvenirs':'🎁','Travel Insurance':'🛡️',
-  'Medical':'💊','SIM Card/Data':'📶','Currency exchange':'💱','Other':'🗂️','__MORE__':'➕'});
-
-// cards belong strictly to their payer — Joint is its own person with its own
-// wallet (Cash, Bank - Joint, …), never mixed into Aizat's or Paige's lists.
-function cardOptions(payerName){
-  const p = CTX.profiles.find(x => x.display_name === payerName);
-  const pid = p ? p.id : null;   // null = Joint's cards
-  return (CTX.cards || [])
-    .filter(c => c.profile_id === pid && (!c.travel_only || mode === 'trip'))
-    .sort((a, b) => a.sort_order - b.sort_order);
-}
-function refreshCards(payerName){
-  const opts = cardOptions(payerName);
-  $('cardSel').innerHTML = opts.map(c => '<option>' + esc(c.name) + '</option>').join('')
-    + '<option value="">no card</option>';
-  if (opts.length) $('cardSel').value = opts[0].name;
-}
-
-let amt = '', mode = 'daily', saving = false;
-
-function openSheet(){
-  $('sh-chooser').style.display = 'block';
-  $('sh-form').style.display = 'none';
-  $('sh-apply').style.display = 'none';
-  $('backdrop').classList.add('open');
-  $('sheet').classList.add('open');
-}
-function closeSheet(){
-  $('backdrop').classList.remove('open');
-  $('sheet').classList.remove('open');
-}
-function buildSeg(id, items, selIdx, onPick){
-  const box = $(id); box.innerHTML = '';
-  items.forEach((c, i) => {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = c;
-    if (i === selIdx) b.classList.add('sel');
-    b.onclick = () => { box.querySelectorAll('button').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); if (onPick) onPick(c); };
-    box.appendChild(b);
-  });
-}
-function segSel(id){ const b = document.querySelector('#' + id + ' .sel'); return b ? b.textContent : ''; }
-function buildGrid(spec, selName){
-  // spec = array of names (top-used view) OR grouped object (after "More")
-  const box = $('gridCategory'); box.innerHTML = '';
-  const addTile = name => {
-    const b = document.createElement('button'); b.type = 'button';
-    b.className = 'cat' + (name === selName ? ' sel' : '');
-    b.dataset.name = name;
-    const label = name === '__MORE__' ? 'More' : name;
-    b.innerHTML = '<span class="ci">' + (CAT_ICON[name] || '🛍️') + '</span><span class="cl">' + esc(label) + '</span>';
-    b.onclick = () => {
-      if (name === '__MORE__') { buildGrid(mode === 'trip' ? TRAVEL_GROUPED : DAILY_GROUPED, gridSel()); return; }
-      box.querySelectorAll('.cat').forEach(x => x.classList.remove('sel')); b.classList.add('sel');
+function renderSettings(){
+  const box = $('setRows'); box.innerHTML = '';
+  const sections = [
+    { icon:'👥', label:'People', cap: (CTX.profiles || []).map(p => p.display_name).join(' · ') || '…', render: renderSetPeople },
+    { icon:'💰', label:'Funds', cap: 'rename · archive · travel & leftover funds', render: renderSetFunds },
+    { icon:'💳', label:'Payment cards', cap: 'per-person, archivable', render: renderSetCards },
+    { icon:'💵', label:'Income', cap: monthName(curMonthIso(), true) + '’s sources', render: renderSetIncome },
+    { icon:'⬇️', label:'Export data', cap: 'CSV of everything', render: renderSetExport },
+  ];
+  sections.forEach(s => {
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'setrow';
+    row.innerHTML = '<div class="rowicon">' + s.icon + '</div><div style="min-width:0"><div class="lbl">' + s.label + '</div><div class="cap">' + esc(s.cap) + '</div></div><span class="chev">›</span>';
+    const body = document.createElement('div'); body.className = 'setbody';
+    row.onclick = async () => {
+      const open = body.classList.toggle('open');
+      row.classList.toggle('open', open);
+      if (open) { body.innerHTML = '<p class="cap">loading…</p>'; await s.render(body); }
     };
-    box.appendChild(b);
-  };
-  if (Array.isArray(spec)) spec.forEach(addTile);
-  else Object.entries(spec).forEach(([group, names]) => {
-    const h = document.createElement('p');
-    h.className = 'cap catgroup'; h.textContent = group;
-    box.appendChild(h);
-    names.forEach(addTile);
+    box.appendChild(row); box.appendChild(body);
   });
-}
-function gridSel(){ const b = document.querySelector('#gridCategory .cat.sel'); return b ? b.dataset.name : ''; }
-
-function payerNames(){ return CTX.profiles.map(p => p.display_name).concat('Joint'); }
-
-// ── trip picker (large cards) + per-trip currencies ──
-let selectedTripId = null, tripListOpen = false;
-let SEG2CODE = { 'A$':'AUD', 'S$':'SGD' };
-function tripById(id){ return CTX.trips.find(t => t.id === id); }
-function renderTripPick(){
-  const box = $('tripPick'); box.innerHTML = '';
-  const sel = tripById(selectedTripId) || CTX.trips[0];
-  if (!sel) { box.innerHTML = '<p class="cap">no trips yet — trip creation arrives with the Travel tab (5.6)</p>'; return; }
-  selectedTripId = sel.id;
-  const mk = (t, isHeader) => {
-    const b = document.createElement('button'); b.type = 'button';
-    b.className = 'tripcard' + (!isHeader ? '' : ' sel');
-    const flags = (t.countries || []).map(flagOf).join('') || '✈️';
-    const when = t.start_date
-      ? new Date(t.start_date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'})
-        + (t.end_date ? ' – ' + new Date(t.end_date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'}) : '')
-      : '';
-    b.innerHTML = '<span class="tflags">' + flags + '</span>'
-      + '<span style="min-width:0"><span class="lbl">' + esc(t.name) + '</span><br><span class="cap">' + when + '</span></span>'
-      + (isHeader ? '<span class="chev">' + (tripListOpen ? '▴' : '▾') + '</span>' : '');
-    b.onclick = () => {
-      if (isHeader) { tripListOpen = !tripListOpen; renderTripPick(); }
-      else { selectedTripId = t.id; tripListOpen = false; localStorage.setItem('bh-trip', t.id); renderTripPick(); refreshTripCurrencies(); }
-    };
-    return b;
-  };
-  box.appendChild(mk(sel, true));
-  if (tripListOpen) CTX.trips.filter(t => t.id !== selectedTripId).forEach(t => box.appendChild(mk(t, false)));
-}
-function refreshTripCurrencies(){
-  const t = tripById(selectedTripId);
-  const codes = ['AUD', 'SGD'].concat((t && t.currencies) || []).filter((c, i, a) => a.indexOf(c) === i);
-  SEG2CODE = {};
-  const labels = codes.map(c => {
-    let l = CURSYM[c] || c;
-    if (SEG2CODE[l]) l = c;          // two currencies sharing a symbol (¥) — show the code
-    SEG2CODE[l] = c;
-    return l;
-  });
-  const last = localStorage.getItem('bh-cur') || 'A$';
-  buildSeg('segCurrency', labels, Math.max(labels.indexOf(last), 0));
-}
-
-function openForm(m){
-  mode = m; amt = ''; renderAmt(); saving = false; $('saveBtn').textContent = 'Save';
-  $('descInput').value = ''; $('commentsInput').value = '';
-  $('dateInput').value = isoDate(new Date());
-  $('rowDetails').style.display = 'none';
-  const names = payerNames();
-  const lastPayer = localStorage.getItem('bh-payer') || names[0];
-  const lastCur = localStorage.getItem('bh-cur') || 'A$';
-
-  $('rowTrip').style.display = m === 'trip' ? 'block' : 'none';
-  $('rowFund').style.display = m === 'fund' ? 'block' : 'none';
-  $('rowType').style.display = m === 'fund' ? 'block' : 'none';
-  $('rowCategory').style.display = m === 'fund' ? 'none' : 'block';
-  $('rowPayer').style.display = m === 'fund' ? 'none' : 'block';
-  $('segCurrency').style.display = m === 'fund' ? 'none' : 'inline-flex';
-  $('fundCurLabel').style.display = m === 'fund' ? 'inline' : 'none';
-
-  $('cardSel').style.display = m === 'fund' ? 'none' : 'block';   // funds have no card; date takes the row
-
-  if (m === 'daily') {
-    $('formTitle').textContent = 'Add expense';
-    $('descInput').placeholder = 'description — e.g. Woolworths';
-    SEG2CODE = { 'A$':'AUD', 'S$':'SGD' };
-    buildSeg('segCurrency', ['A$','S$'], lastCur === 'S$' ? 1 : 0);
-    const top = (CTX.topDaily || FALLBACK_DAILY).concat('__MORE__');
-    buildGrid(top, top[0]);
-  } else if (m === 'fund') {
-    $('formTitle').textContent = 'Fund transaction';
-    $('descInput').placeholder = 'remarks — e.g. July top-up';
-    buildSeg('segType', ['Into the fund','Out of the fund'], 0);
-    const au = CTX.funds.filter(f => f.country === 'AU'), sg = CTX.funds.filter(f => f.country === 'SG');
-    $('fundSel').innerHTML =
-      '<optgroup label="AU">' + au.map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('') + '</optgroup>' +
-      '<optgroup label="SG">' + sg.map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('') + '</optgroup>';
-    const lastFund = localStorage.getItem('bh-fund');
-    if (lastFund && CTX.funds.some(f => f.id === lastFund)) $('fundSel').value = lastFund;
-    updateFundCur();
-    $('fundSel').onchange = updateFundCur;
-  } else {
-    $('formTitle').textContent = 'Trip expense';
-    $('descInput').placeholder = 'description — e.g. beach club';
-    const lastTrip = localStorage.getItem('bh-trip');
-    selectedTripId = (lastTrip && tripById(lastTrip)) ? lastTrip : null;
-    tripListOpen = false;
-    renderTripPick();
-    refreshTripCurrencies();
-    const top = (CTX.topTravel || FALLBACK_TRAVEL).concat('__MORE__');
-    buildGrid(top, top[0]);
-  }
-  if (m !== 'fund') {
-    buildSeg('segPayer', names, Math.max(names.indexOf(lastPayer), 0),
-      p => refreshCards(p));
-    refreshCards(lastPayer);
-  }
-  $('sh-chooser').style.display = 'none';
-  $('sh-form').style.display = 'block';
-}
-function updateFundCur(){
-  const f = CTX.funds.find(x => x.id === $('fundSel').value);
-  $('fundCurLabel').textContent = f ? (f.currency === 'SGD' ? 'S$' : 'A$') : '';
-}
-function toggleDetails(){
-  const r = $('rowDetails');
-  r.style.display = r.style.display === 'none' ? 'block' : 'none';
-}
-
-// keypad
-(function(){
-  const pad = $('keypad');
-  ['1','2','3','4','5','6','7','8','9','.','0','⌫'].forEach(k => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'key'; b.textContent = k;
-    b.onclick = () => {
-      if (k === '⌫') amt = amt.slice(0, -1);
-      else if (k === '.') { if (!amt.includes('.')) amt = (amt || '0') + '.'; }
-      else { if (amt.includes('.') && amt.split('.')[1].length >= 2) return; if (amt.replace('.', '').length >= 8) return; amt += k; }
-      renderAmt();
-    };
-    pad.appendChild(b);
-  });
-})();
-function renderAmt(){
-  const d = $('amtDisp');
-  if (!amt) { d.textContent = '0'; return; }
-  const [i, f] = amt.split('.');
-  d.textContent = Number(i || 0).toLocaleString('en-AU') + (f !== undefined ? '.' + f : '');
-}
-
-// who-owes-what rows for one expense (payer +cost, joint −cost)
-function buildSplits(payerName, cost){
-  const joint = { profile_id: null, amount: -cost };
-  if (payerName === 'Joint') return [joint];
-  const p = CTX.profiles.find(x => x.display_name === payerName);
-  return p ? [{ profile_id: p.id, amount: cost }, joint] : [joint];
-}
-
-async function saveEntry(){
-  if (saving) return;
-  const cost = parseFloat(amt);
-  if (!(cost > 0)) { toast('enter an amount first'); return; }
-  const desc = $('descInput').value.trim();
-  if (mode !== 'fund' && !desc) { toast('add a description — the shop or what it was'); return; }
-  if (!CTX.hh) { toast('still connecting — try again in a second'); await loadContext(); return; }
-
-  saving = true; $('saveBtn').innerHTML = '<span class="spin"></span>';
-  const done = (ok, msg) => { saving = false; $('saveBtn').textContent = 'Save';
-    if (ok) { closeSheet(); toast(msg); loadHome(); } else { toast('couldn’t save: ' + msg); } };
-
-  const date = $('dateInput').value || isoDate(new Date());
-  try {
-    if (mode === 'fund') {
-      const fundId = $('fundSel').value;
-      const { error } = await sb.from('fund_transactions').insert({
-        household_id: CTX.hh.id, fund_id: fundId,
-        type: segSel('segType') === 'Into the fund' ? 'income' : 'expense',
-        date, amount: cost, remarks: desc, origin: 'manual',
-      });
-      if (error) throw error;
-      localStorage.setItem('bh-fund', fundId);
-      const f = CTX.funds.find(x => x.id === fundId);
-      done(true, 'saved — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
-      return;
-    }
-    const currency = SEG2CODE[segSel('segCurrency')] || 'AUD';
-    const payer = segSel('segPayer');
-    const cat = gridSel();
-    if (!cat) { done(false, 'pick a category'); return; }
-    const pid = (CTX.profiles.find(x => x.display_name === payer) || {}).id || null;
-    const base = {
-      household_id: CTX.hh.id, date, description: desc, category: cat, amount: cost,
-      currency, payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
-    };
-    const table = mode === 'trip' ? 'travel_expenses' : 'daily_expenses';
-    if (mode === 'trip') {
-      if (!selectedTripId) { done(false, 'pick a trip first'); return; }
-      base.trip_id = selectedTripId;
-    }
-    const { data: row, error } = await sb.from(table).insert(base).select('id').single();
-    if (error) throw error;
-    const splits = buildSplits(payer, cost).map(s => ({ household_id: CTX.hh.id, expense_id: row.id, ...s }));
-    const { error: e2 } = await sb.from(mode === 'trip' ? 'travel_expense_splits' : 'daily_expense_splits').insert(splits);
-    if (e2) throw e2;
-    localStorage.setItem('bh-payer', payer);
-    localStorage.setItem('bh-cur', segSel('segCurrency'));
-    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + (mode === 'trip' ? ' · trip' : ''));
-  } catch (err) {
-    done(false, err.message || String(err));
-  }
-}
-
-// stay signed in across visits
-sb.auth.getSession().then(({ data }) => { if (data.session) enterApp(); });
-</script>
-</body>
-</html>
-.donutwrap{display:flex;align-items:center;gap:18px;margin-top:14px}
-.legend{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
-.legend .li{display:flex;align-items:center;gap:8px;font-size:12px;line-height:16px;color:var(--ink-soft)}
-.legend .li span:first-of-type{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.legend .dot{width:8px;height:8px;border-radius:99px;flex-shrink:0}
-.legend .amt{margin-left:auto;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;font-size:12px}
-
-/* ── budget page ───────────────────────────── */
-.pill{display:inline-flex;font-size:12px;font-weight:500;border-radius:999px;padding:3px 12px;background:var(--accent-soft);color:var(--primary)}
-.monthrotor{display:flex;align-items:center;gap:8px}
-.mr-arrow{width:36px;height:36px;border-radius:12px;background:var(--accent-soft);color:var(--primary);border:none;font-size:18px;cursor:pointer;flex-shrink:0;font-family:inherit;display:flex;align-items:center;justify-content:center}
-.mr-arrow:disabled{opacity:.3;cursor:default}
-.mr-side{flex:1;background:none;border:none;font-family:inherit;font-size:12px;color:var(--ink-soft);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0;min-width:0}
-.mr-side:disabled{opacity:0;cursor:default}
-.mr-current{flex:1.5;text-align:center;font-size:15px;font-weight:600;color:var(--primary);white-space:nowrap}
-.legend2{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
-.legend2 .li{display:flex;align-items:center;gap:6px;font-size:11px;line-height:14px;color:var(--ink-soft)}
-.legend2 .dot{width:8px;height:8px;border-radius:99px;flex-shrink:0}
-.legend2 .dash{width:14px;border-top:2px dashed var(--ink);flex-shrink:0}
-.pace{height:8px;border-radius:999px;background:var(--muted);overflow:hidden;display:flex;margin-top:8px}
-.pace i{display:block;height:100%;background:var(--primary)}
-.pace i.over{background:var(--bad-bar)}
-.pacecard{cursor:pointer}
-.drill{display:none;margin-top:12px;border-top:1px solid var(--muted);padding-top:6px}
-.drill.open{display:block}
-.drow{display:flex;gap:10px;align-items:baseline;padding:5px 0;font-size:13px;line-height:20px}
-.drow .dd{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.drow .amt{color:var(--bad);font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
-
-/* ── funds page ────────────────────────────── */
-.flowrow{display:flex;align-items:baseline;padding:3px 0}
-.flowrow .cap{flex:1}
-.flowrow .num{display:inline-block;min-width:86px;text-align:right;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums}
-.fundrow{display:flex;align-items:center;gap:14px;min-height:56px;padding:6px 0;width:100%;background:none;border:none;font-family:inherit;font-size:15px;color:var(--ink);cursor:pointer;text-align:left}
-.fundrow+.fundrow,.funddrill+.fundrow{border-top:1px solid var(--muted)}
-.fundrow .amt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
-.funddrill{padding:0 0 10px 54px}
-.applyrow{display:flex;align-items:center;gap:12px;width:100%;background:var(--field);border:none;border-radius:14px;padding:10px 14px;margin-top:8px;font-family:inherit;font-size:14px;color:var(--ink);cursor:pointer;text-align:left}
-.applyrow .amt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;color:var(--good)}
-.applyrow.off{opacity:.35}
-.applyrow.off .amt{text-decoration:line-through}
-.fgroup{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:12px 0 2px}
-.fgroup:first-child{margin-top:2px}
-
-/* ── quick-add sheet ───────────────────────── */
-.backdrop{position:fixed;inset:0;background:rgba(26,43,68,.35);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
-.backdrop.open{opacity:1;pointer-events:auto}
-.sheet{position:fixed;left:50%;transform:translate(-50%,105%);bottom:0;width:100%;max-width:520px;background:#fff;border-radius:24px 24px 0 0;box-shadow:var(--shadow-lift);padding:18px 20px calc(22px + env(safe-area-inset-bottom));transition:transform .25s cubic-bezier(.4,0,.2,1);z-index:21;max-height:93dvh;overflow-y:auto}
-.sheet.open{transform:translate(-50%,0)}
-.grab{width:36px;height:4px;border-radius:999px;background:var(--muted);margin:0 auto 14px}
-.sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.choice{display:flex;align-items:center;gap:14px;width:100%;background:var(--field);border:none;border-radius:16px;padding:14px 16px;margin-top:10px;cursor:pointer;font-family:inherit;font-size:15px;text-align:left;color:var(--ink)}
-.choice:hover{background:var(--accent-soft)}
-.descinput{width:100%;font-family:inherit;font-size:14px;background:var(--field);border:2px solid transparent;border-radius:14px;padding:10px 14px;outline:none;color:var(--ink);transition:border .15s}
-.descinput:focus{border-color:var(--accent);background:#fff}
-.descinput::placeholder{color:var(--ink-soft)}
-select.descinput{appearance:none;-webkit-appearance:none}
-.amount-line{display:flex;align-items:center;gap:12px;margin:8px 0 2px;min-height:44px}
-.amount-line .disp{margin-left:auto}
-.seg{display:inline-flex;background:var(--field);border-radius:999px;padding:3px;gap:2px}
-.seg button{border:none;background:none;font-family:inherit;font-size:13px;font-weight:500;color:var(--ink-soft);border-radius:999px;padding:6px 14px;cursor:pointer;transition:all .15s}
-.seg button.sel{background:var(--primary);color:#fff}
-.seg.grow{display:flex}
-.seg.grow button{flex:1}
-#segType button:first-child.sel{background:var(--good)}
-#segType button:last-child.sel{background:var(--bad)}
-.catgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.cat{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;font-family:inherit;cursor:pointer;padding:0}
-.cat .ci{width:40px;height:40px;border-radius:13px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:18px;transition:all .15s}
-.cat .cl{font-size:10px;line-height:12px;color:var(--ink-soft);font-weight:500;white-space:nowrap;max-width:74px;overflow:hidden;text-overflow:ellipsis}
-.cat.sel .ci{background:var(--primary)}
-.cat.sel .cl{color:var(--primary)}
-.catgroup{grid-column:1/-1;margin:8px 0 -2px;font-weight:500}
-.tripcard{display:flex;align-items:center;gap:12px;width:100%;background:var(--field);border:2px solid transparent;border-radius:16px;padding:10px 14px;font-family:inherit;cursor:pointer;text-align:left;color:var(--ink);margin-top:6px;font-size:15px}
-.tripcard:first-child{margin-top:0}
-.tripcard.sel{border-color:var(--primary);background:var(--accent-soft)}
-.tripcard .tflags{font-size:22px;flex-shrink:0;line-height:1}
-.tripcard .chev{margin-left:auto;color:var(--ink-soft)}
-.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
-.key{height:40px;border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:17px;font-weight:500;color:var(--ink);cursor:pointer}
-.key:active{background:var(--accent-soft)}
-.f-sec{margin-top:10px}
-
-/* tab bar */
-.tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--muted);display:flex;justify-content:space-around;align-items:center;height:calc(72px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);max-width:520px;margin:0 auto;z-index:10}
-.tab{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;line-height:14px;color:var(--ink-soft);width:64px;background:none;border:none;cursor:pointer;padding:6px 0;font-family:inherit}
-.tab .ti{font-size:16px;line-height:18px}
-.tab.active{color:var(--primary);font-weight:500}
-.fab{width:56px;height:56px;border-radius:999px;background:var(--primary);color:#fff;font-size:26px;border:none;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-lift);margin-top:-32px;cursor:pointer}
-
-/* toast */
-.toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,16px);background:var(--ink);color:#fff;font-size:13px;font-weight:500;line-height:18px;border-radius:999px;padding:10px 20px;opacity:0;transition:all .25s;z-index:30;pointer-events:none;white-space:nowrap;max-width:88%;overflow:hidden;text-overflow:ellipsis}
-.toast.show{opacity:1;transform:translate(-50%,0)}
-.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:99px;animation:sp .7s linear infinite;vertical-align:-3px}
-@keyframes sp{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-</style>
-</head>
-<body>
-
-<!-- ══ LOGIN ══ -->
-<div id="login">
-  <div class="login-card">
-    <div class="logo">🐻</div>
-    <div style="text-align:center">
-      <h1 class="h1">BearHaus</h1>
-      <p class="cap" style="margin-top:4px">one login for the whole household</p>
-    </div>
-    <form id="loginForm">
-      <input class="field" id="email" type="email" placeholder="email" autocomplete="username" required>
-      <input class="field" id="password" type="password" placeholder="password" autocomplete="current-password" required>
-      <button class="btn btn-primary" id="loginBtn" type="submit">Sign in</button>
-      <p id="loginError"></p>
-    </form>
-  </div>
-</div>
-
-<!-- ══ APP ══ -->
-<div id="app">
-  <div class="screens">
-
-    <section class="screen active" id="scr-home">
-      <div class="scr-head">
-        <div style="display:flex;gap:12px;align-items:center">
-          <div class="rowicon" style="font-size:20px">🐻</div>
-          <div>
-            <p class="cap" id="todayLabel">…</p>
-            <h2 class="h1" id="monthLabel" style="margin-top:2px">…</h2>
-          </div>
-        </div>
-        <button class="iconbtn" onclick="go('scr-settings')" aria-label="Settings">⚙</button>
-      </div>
-
-      <div class="card" id="errorCard" style="display:none;background:var(--bad-bar)">
-        <p class="lbl" id="errorMsg">something went wrong</p>
-        <button class="btn btn-primary" style="height:40px;padding:0 20px;font-size:13px;margin-top:10px" onclick="retryLoad()">Try again</button>
-      </div>
-
-      <div class="card">
-        <p class="lbl" style="color:var(--ink-soft)">Spent this week</p>
-        <p class="disp num" id="weekTotal" style="color:var(--primary);margin-top:4px">…</p>
-        <p class="cap num" id="weekTotalSG" style="margin-top:2px"></p>
-        <div class="bars" id="weekBars"></div>
-        <div class="daylbl" id="weekLabels"></div>
-      </div>
-
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <span class="h2">Recent</span>
-          <button class="btn-tert" onclick="toast('the full, filterable list arrives with quick-add in 5.3 🐻')">View all</button>
-        </div>
-        <div id="recentList"><p class="cap" style="padding:12px 0">loading…</p></div>
-      </div>
-
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="h2" id="donutTitle">This month by category</span>
-          <span style="display:inline-flex;font-size:12px;font-weight:500;border-radius:999px;padding:3px 12px;background:var(--accent-soft);color:var(--primary)">A$</span>
-        </div>
-        <div class="donutwrap" id="donutWrap"><p class="cap">loading…</p></div>
-      </div>
-    </section>
-
-    <section class="screen" id="scr-budget">
-      <div><p class="cap">Budget</p><h2 class="h1" style="margin-top:2px">Am I on pace?</h2></div>
-      <div class="monthrotor">
-        <button class="mr-arrow" id="mrPrev" aria-label="Earlier month">‹</button>
-        <button class="mr-side" id="mrPrevLabel"></button>
-        <span class="mr-current" id="mrCurrent">…</span>
-        <button class="mr-side" id="mrNextLabel" style="text-align:right"></button>
-        <button class="mr-arrow" id="mrNext" aria-label="Later month">›</button>
-      </div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="h2">Last 6 months</span><span class="pill">A$</span>
-        </div>
-        <div id="budChart" style="margin-top:10px"><p class="cap">loading…</p></div>
-        <div class="legend2">
-          <span class="li"><span class="dot" style="background:#004A98"></span>Rent</span>
-          <span class="li"><span class="dot" style="background:#5A8AC7"></span>Daily</span>
-          <span class="li"><span class="dot" style="background:#B4CEFF"></span>Education</span>
-          <span class="li"><span class="dot" style="background:#E4EEFF"></span>Transport</span>
-          <span class="li"><span class="dot" style="background:#E6E5E5"></span>Other</span>
-          <span class="li"><span class="dash"></span>budget</span>
-        </div>
-      </div>
-      <div class="total-card">
-        <p class="cap" id="budTotalLabel">…</p>
-        <p class="disp num" id="budTotalMain" style="margin-top:2px;font-size:28px;line-height:36px">…</p>
-        <p class="cap num" id="budTotalSub" style="margin-top:2px"></p>
-      </div>
-      <div class="card" id="floatCard" style="display:none">
-        <div style="display:flex;gap:12px;align-items:center">
-          <div class="rowicon">🌊</div>
-          <div style="flex:1;min-width:0">
-            <div class="lbl">Float</div>
-            <div class="cap">the buffer that rides out an over-budget month</div>
-          </div>
-          <div class="lbl num" id="floatBal" style="font-size:16px;color:var(--primary)"></div>
-        </div>
-      </div>
-      <div id="paceCards" style="display:flex;flex-direction:column;gap:16px"></div>
-    </section>
-
-    <section class="screen" id="scr-travel">
-      <div><p class="cap">Travel</p><h2 class="h1" style="margin-top:2px">Trips</h2></div>
-      <div class="card placeholder">building in step 5.6 🐻</div>
-    </section>
-
-    <section class="screen" id="scr-funds">
-      <div><p class="cap">Funds</p><h2 class="h1" style="margin-top:2px">How much do we have?</h2></div>
-      <div class="duo">
-        <div class="total-card">
-          <p class="cap">AU funds</p>
-          <p class="disp num" id="fTotAU" style="margin-top:2px;font-size:19px;line-height:28px">…</p>
-          <p class="cap num" id="fTotAUn" style="margin-top:2px"></p>
-        </div>
-        <div class="total-card" style="background:#003A78">
-          <p class="cap">SG funds</p>
-          <p class="disp num" id="fTotSG" style="margin-top:2px;font-size:19px;line-height:28px">…</p>
-          <p class="cap num" id="fTotSGn" style="margin-top:2px"></p>
-        </div>
-      </div>
-      <div class="card" id="planCard" style="background:var(--accent-soft);box-shadow:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
-          <p class="lbl" style="color:var(--primary)" id="planTitle">This month's plan</p>
-          <button class="btn btn-primary" style="height:40px;padding:0 18px;font-size:13px;flex-shrink:0" id="applyBtn" onclick="openApplySheet()">Review &amp; apply</button>
-        </div>
-        <div id="flowRows"><p class="cap">loading…</p></div>
-        <p class="cap" style="margin-top:8px" id="planCaption"></p>
-      </div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <span class="h2">AU</span>
-          <button class="btn-tert" id="fAUmore" style="display:none"></button>
-        </div>
-        <div id="fundsAU"></div>
-      </div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <span class="h2">SG</span>
-          <button class="btn-tert" id="fSGmore" style="display:none"></button>
-        </div>
-        <div id="fundsSG"></div>
-      </div>
-    </section>
-
-    <section class="screen" id="scr-settings">
-      <div>
-        <button class="btn-tert" style="padding-left:0" onclick="go('scr-home')">‹ Home</button>
-        <h2 class="h1" style="margin-top:6px">Settings</h2>
-        <p class="cap" id="hhLabel">🐻 …</p>
-      </div>
-      <div class="card placeholder">full settings arrive in step 5.7 🐻</div>
-      <button class="btn-tert" style="align-self:center" onclick="signOut()">Sign out</button>
-    </section>
-  </div>
-
-  <nav class="tabbar">
-    <button class="tab active" data-scr="scr-home" onclick="go('scr-home')"><span class="ti">●</span>Home</button>
-    <button class="tab" data-scr="scr-budget" onclick="go('scr-budget')"><span class="ti">◐</span>Budget</button>
-    <button class="fab" onclick="openSheet()" aria-label="Add">+</button>
-    <button class="tab" data-scr="scr-travel" onclick="go('scr-travel')"><span class="ti">◈</span>Travel</button>
-    <button class="tab" data-scr="scr-funds" onclick="go('scr-funds')"><span class="ti">◇</span>Funds</button>
-  </nav>
-</div>
-
-<!-- ══ QUICK-ADD SHEET ══ -->
-<div class="backdrop" id="backdrop" onclick="closeSheet()"></div>
-<div class="sheet" id="sheet" role="dialog" aria-modal="true">
-  <div class="grab"></div>
-
-  <div id="sh-chooser">
-    <div class="sheet-head"><span class="h2">Add</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
-    <button class="choice" onclick="openForm('daily')"><div class="rowicon">🛒</div><span class="lbl">Daily expense</span></button>
-    <button class="choice" onclick="openForm('fund')"><div class="rowicon">💰</div><span class="lbl">Fund transaction</span></button>
-    <button class="choice" onclick="openForm('trip')"><div class="rowicon">✈️</div><span class="lbl">Trip expense</span></button>
-  </div>
-
-  <div id="sh-form" style="display:none">
-    <div class="sheet-head"><span class="h2" id="formTitle">Add expense</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
-    <div class="f-sec" style="margin-top:0"><input class="descinput" id="descInput" placeholder="description" autocomplete="off"></div>
-    <div class="f-sec" id="rowTrip" style="display:none"><div id="tripPick"></div></div>
-    <div class="f-sec" id="rowFund" style="display:none"><select class="descinput" id="fundSel"></select></div>
-    <div class="amount-line">
-      <div class="seg" id="segCurrency"></div>
-      <span class="lbl" id="fundCurLabel" style="display:none;color:var(--ink-soft)"></span>
-      <span class="disp num" id="amtDisp" style="color:var(--primary)">0</span>
-    </div>
-    <div class="f-sec" id="rowType" style="display:none"><div class="seg grow" id="segType"></div></div>
-    <div class="f-sec" id="rowCategory"><div class="catgrid" id="gridCategory"></div></div>
-    <div class="f-sec" id="rowPayer"><div class="seg grow" id="segPayer"></div></div>
-    <div class="f-sec" id="rowDetails" style="display:none">
-      <div style="display:flex;gap:8px">
-        <input class="descinput" id="dateInput" type="date" style="flex:1">
-        <select class="descinput" id="cardSel" style="flex:1"></select>
-      </div>
-      <input class="descinput" id="commentsInput" placeholder="note (optional)" style="margin-top:8px">
-    </div>
-    <div class="keypad" id="keypad"></div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
-      <button class="btn btn-primary" style="flex:1" id="saveBtn" onclick="saveEntry()">Save</button>
-      <button class="btn-tert" onclick="toggleDetails()">+ details</button>
-    </div>
-  </div>
-
-  <div id="sh-apply" style="display:none">
-    <div class="sheet-head"><span class="h2" id="applyTitle">Review &amp; apply</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
-    <div id="applyRows"></div>
-    <p class="cap num" id="applySummary" style="margin-top:10px"></p>
-    <button class="btn btn-primary" style="width:100%;margin-top:12px" id="applyGo" onclick="applyPlan()">Apply</button>
-  </div>
-</div>
-
-<div class="toast" id="toastEl"></div>
-
-<script>
-// ── connection ───────────────────────────────
-const SUPABASE_URL = 'https://diqaezhdxloqhglndqrq.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_K-fUtwnuZAJLTNquqDN87Q_yBkEEGhZ';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// ── tiny helpers ─────────────────────────────
-const $ = id => document.getElementById(id);
-let toastTimer = null;
-function toast(msg){
-  const t = $('toastEl');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
-}
-function go(id){
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  $(id).classList.add('active');
-  const tabFor = {'scr-home':'scr-home','scr-settings':'scr-home','scr-budget':'scr-budget','scr-travel':'scr-travel','scr-funds':'scr-funds'};
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.scr === tabFor[id]));
-  window.scrollTo(0, 0);
-  if (id === 'scr-budget' && !budgetInit) initBudget();
-  if (id === 'scr-funds' && !fundsInit) initFunds();
-}
-const CURSYM = { AUD:'A$', SGD:'S$', IDR:'Rp', JPY:'¥', CNY:'¥', KRW:'₩', THB:'฿', MYR:'RM',
-                 VND:'₫', EUR:'€', GBP:'£', USD:'US$', NZD:'NZ$', TWD:'NT$', HKD:'HK$', INR:'₹' };
-function fmtMoney(v, cur){
-  const sym = CURSYM[cur] || (cur ? cur + ' ' : 'A$');
-  return sym + Number(v).toLocaleString('en-AU', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-// 'SG' -> 🇸🇬 (country code to flag emoji)
-const flagOf = cc => /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
-
-// ── auth flow ────────────────────────────────
-$('loginForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const btn = $('loginBtn');
-  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
-  $('loginError').textContent = '';
-  const { error } = await sb.auth.signInWithPassword({
-    email: $('email').value.trim(),
-    password: $('password').value,
-  });
-  btn.disabled = false; btn.textContent = 'Sign in';
-  if (error) {
-    $('loginError').textContent = error.message === 'Invalid login credentials'
-      ? 'email or password didn’t match — try again'
-      : 'couldn’t sign in: ' + error.message;
-    return;
-  }
-  enterApp();
-});
-
-async function signOut(){
-  await sb.auth.signOut();
-  location.reload();
-}
-
-// ── category knowledge ───────────────────────
-// 'Payment' rows are settle-up transfers between you two, not spending —
-// they are excluded from every total on this screen.
-const GROUP_OF = {};
-const GROUPS = {
-  'Rent':               ['Rent'],
-  'Daily Expenses':     ['Dining out','Groceries','Furniture','Home - Other','Household supplies',
-                         'Sports','Clothing','Gifts','Life - Other','Medical Expenses','Liquor',
-                         'Entertainment - Other','Electronics','Movies','Games','Health','Hotel'],
-  'Education':          ['Childcare','Education','Activities'],
-  'Transportation':     ['Bus/train','Gas/fuel','Car','Parking','Taxi','Bicycle','Transportation - Other'],
-  'Utilities':          ['Water','Electricity','Gas'],
-  'Insurance':          ['Insurance'],
-  'TV/Phone/Internet':  ['TV/Phone/Internet'],
-};
-Object.entries(GROUPS).forEach(([g, cats]) => cats.forEach(c => GROUP_OF[c] = g));
-const CAT_ICON = {
-  'Groceries':'🛒','Dining out':'🍜','Bus/train':'🚆','Taxi':'🚕','Parking':'🅿️','Gas/fuel':'⛽',
-  'Car':'🚗','Bicycle':'🚲','Rent':'🏠','Electricity':'💡','Water':'🚿','Gas':'🔥',
-  'TV/Phone/Internet':'📱','Insurance':'🛡️','Childcare':'👶','Education':'🎓','Activities':'🎨',
-  'Furniture':'🛋️','Home - Other':'🏡','Household supplies':'🧻','Sports':'⚽','Clothing':'👕',
-  'Gifts':'🎁','Medical Expenses':'💊','Health':'💊','Liquor':'🍺','Movies':'🎬','Games':'🎮',
-  'Electronics':'🔌','Hotel':'🏨','Payment':'🔁',
-};
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-// local calendar date, NOT toISOString() — that detours through UTC and,
-// being 10h behind Sydney, drags the previous day into every range
-const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-
-// ── app boot ─────────────────────────────────
-async function enterApp(){
-  $('login').style.display = 'none';
-  $('app').style.display = 'flex';
-
-  const now = new Date();
-  $('todayLabel').textContent = now.toLocaleDateString('en-AU', {weekday:'long', day:'numeric', month:'long'});
-  $('monthLabel').textContent = now.toLocaleDateString('en-AU', {month:'long'});
-  $('donutTitle').textContent = now.toLocaleDateString('en-AU', {month:'long'}) + ' by category';
-
-  // instant paint from the last visit, then refresh live
-  const cached = localStorage.getItem('bh-home');
-  if (cached) { try { renderHome(JSON.parse(cached)); } catch(e){} }
-  loadHome();
-  loadContext().then(() => {
-    if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
+  [['🏷️','Categories','category editing arrives with onboarding (Phase 6) — meanwhile the top tiles follow your real usage'],
+   ['🎯','Budgets & plan','per-month budget editing arrives with the plan ritual (Phase 6)']].forEach(([ic, lb, msg]) => {
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'setrow';
+    row.innerHTML = '<div class="rowicon">' + ic + '</div><div style="min-width:0"><div class="lbl">' + lb + '</div><div class="cap">coming soon</div></div><span class="chev">›</span>';
+    row.onclick = () => toast(msg);
+    box.appendChild(row);
   });
 }
 
-// ── error surfacing + self-heal ──────────────
-function showError(msg){
-  $('errorMsg').textContent = msg;
-  $('errorCard').style.display = 'block';
-}
-async function retryLoad(){
-  $('errorCard').style.display = 'none';
-  await sb.auth.refreshSession();   // get a fresh token if the old one expired
-  loadHome();
-}
-window.addEventListener('unhandledrejection', e =>
-  showError('unexpected error: ' + (e.reason && e.reason.message || e.reason)));
-
-// ── HOME: fetch tiny, pre-scoped slices ──────
-let homeRetried = false;
-async function loadHome(){
-  try {
-    const now = new Date();
-    const weekStart = new Date(now); weekStart.setDate(now.getDate() - 6);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [week, recent, month] = await Promise.all([
-      sb.from('daily_expenses').select('date, amount, currency, category')
-        .gte('date', isoDate(weekStart)).neq('category', 'Payment'),
-      sb.from('daily_expenses')
-        .select('date, description, category, amount, currency, profiles(display_name)')
-        .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(5),
-      sb.from('daily_expenses').select('category, amount, currency')
-        .gte('date', isoDate(monthStart)).neq('category', 'Payment'),
-    ]);
-    if (week.error) throw week.error;
-    if (recent.error) throw recent.error;
-    if (month.error) throw month.error;
-
-    const state = { week: week.data, recent: recent.data, month: month.data, today: isoDate(now) };
-    localStorage.setItem('bh-home', JSON.stringify(state));
-    $('errorCard').style.display = 'none';
-    renderHome(state);
-  } catch (err) {
-    const msg = String(err.message || err);
-    // expired login token? refresh it once and retry automatically
-    if (!homeRetried && /jwt|token|expired|401/i.test(msg)) {
-      homeRetried = true;
-      const { error } = await sb.auth.refreshSession();
-      if (!error) return loadHome();
-      await sb.auth.signOut();
-      location.reload();            // refresh failed → back to login, cleanly
-      return;
-    }
-    showError('couldn’t load your data: ' + msg);
-  }
-}
-
-function renderHome(state){
-  const now = new Date();
-  // hero + bars: last 7 days, A$ (S$ shown separately, never blended)
-  const days = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now); d.setDate(now.getDate() - i);
-    days.push({ iso: isoDate(d), label: i === 0 ? 'Today' : d.toLocaleDateString('en-AU', {weekday:'short'}), au: 0 });
-  }
-  let weekAU = 0, weekSG = 0;
-  (state.week || []).forEach(r => {
-    const amt = Number(r.amount);
-    if (r.currency === 'SGD') { weekSG += amt; return; }
-    weekAU += amt;
-    const day = days.find(d => d.iso === r.date);
-    if (day) day.au += amt;
-  });
-  $('weekTotal').textContent = fmtMoney(weekAU, 'AUD');
-  $('weekTotalSG').textContent = weekSG > 0 ? '+ ' + fmtMoney(weekSG, 'SGD') + ' in SG' : '';
-  const max = Math.max(...days.map(d => d.au), 1);
-  $('weekBars').innerHTML = days.map((d, i) =>
-    `<i class="${i === 6 ? 'today' : ''}" style="height:${Math.max(Math.round(d.au / max * 100), 4)}%"></i>`).join('');
-  $('weekLabels').innerHTML = days.map((d, i) =>
-    `<span class="${i === 6 ? 'today' : ''}">${d.label}</span>`).join('');
-
-  // recent
-  $('recentList').innerHTML = (state.recent || []).map(r => {
-    const icon = CAT_ICON[r.category] || '🛍️';
-    const who = r.profiles ? r.profiles.display_name : 'Joint';
-    const d = new Date(r.date + 'T00:00:00');
-    const daysAgo = Math.round((new Date(state.today + 'T00:00:00') - d) / 86400000);
-    const when = daysAgo <= 0 ? 'today' : daysAgo === 1 ? 'yesterday'
-               : daysAgo < 7 ? d.toLocaleDateString('en-AU', {weekday:'long'})
-               : d.toLocaleDateString('en-AU', {day:'numeric', month:'short'});
-    return `<div class="row"><div class="rowicon">${icon}</div>
-      <div style="min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.description)}</div>
-      <div class="cap">${esc(r.category)} · ${esc(who)} · ${when}</div></div>
-      <div class="amt num">−${fmtMoney(r.amount, r.currency)}</div></div>`;
-  }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet this week 🐻</p>';
-
-  // donut: this month, A$, grouped
-  const byGroup = {};
-  let monthAU = 0;
-  (state.month || []).forEach(r => {
-    if (r.currency === 'SGD' || r.category === 'Payment') return;
-    const g = GROUP_OF[r.category] || 'Other';
-    byGroup[g] = (byGroup[g] || 0) + Number(r.amount);
-    monthAU += Number(r.amount);
-  });
-  const sorted = Object.entries(byGroup).sort((a, b) => b[1] - a[1]);
-  const top = sorted.slice(0, 4);
-  const restVal = sorted.slice(4).reduce((s, [, v]) => s + v, 0);
-  if (restVal > 0) {
-    const other = top.find(([g]) => g === 'Other');
-    if (other) other[1] += restVal; else top.push(['Other', restVal]);
-  }
-  const COLORS = ['#004A98', '#5A8AC7', '#B4CEFF', '#E4EEFF', '#E6E5E5'];
-  const C = 2 * Math.PI * 45;
-  let offset = 0;
-  const segs = top.map(([g, v], i) => {
-    const len = monthAU > 0 ? v / monthAU * C : 0;
-    const seg = `<circle cx="60" cy="60" r="45" fill="none" stroke="${COLORS[i]}" stroke-width="13"
-      stroke-dasharray="${len.toFixed(1)} ${(C - len).toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 60 60)"/>`;
-    offset += len;
-    return seg;
-  }).join('');
-  $('donutWrap').innerHTML = `
-    <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Spending by category">
-      <circle cx="60" cy="60" r="45" fill="none" stroke="#E6E5E5" stroke-width="13"/>${segs}
-      <text x="60" y="57" text-anchor="middle" font-size="14" font-weight="600" fill="#1A2B44" font-family="Poppins,sans-serif">A$${Math.round(monthAU).toLocaleString('en-AU')}</text>
-      <text x="60" y="73" text-anchor="middle" font-size="10" fill="#6B7A90" font-family="Poppins,sans-serif">so far</text>
-    </svg>
-    <div class="legend">${top.map(([g, v], i) =>
-      `<div class="li"><span class="dot" style="background:${COLORS[i]}"></span><span>${esc(g)}</span><span class="amt">${Math.round(v).toLocaleString('en-AU')}</span></div>`).join('')
-      || '<p class="cap">no spending yet this month</p>'}</div>`;
-}
-
-// ══ BUDGET ══════════════════════════════════
-const BUDGET_ROWS = [
-  { icon:'🏠', group:'Rent',              blabel:'Rental' },
-  { icon:'🛍️', group:'Daily Expenses',    blabel:'Daily Expenses' },
-  { icon:'👶', group:'Education',         blabel:'Education' },
-  { icon:'🚗', group:'Transportation',    blabel:'Transport' },
-  { icon:'💡', group:'Utilities',         blabel:'Utilities' },
-  { icon:'📱', group:'TV/Phone/Internet', blabel:'Phone Bill/Internet' },
-  { icon:'🛡️', group:'Insurance',         blabel:'Insurance' },
-];
-const CHART_GROUPS = ['Rent','Daily Expenses','Education','Transportation'];   // rest = Other
-const CHART_COLORS = ['#004A98','#5A8AC7','#B4CEFF','#E4EEFF','#E6E5E5'];
-let budgetMonth = null, budgetInit = false;
-
-const curMonthIso = () => { const n = new Date(); return isoDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
-function addMonths(iso, n){
-  const d = new Date(iso + 'T00:00:00');
-  return isoDate(new Date(d.getFullYear(), d.getMonth() + n, 1));
-}
-function monthName(iso, long){
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', long ? {month:'long', year:'numeric'} : {month:'short', year:'numeric'});
-}
-const BUD_MIN = '2024-02-01';              // first month of your data
-function updateRotor(){
-  const prev = addMonths(budgetMonth, -1), next = addMonths(budgetMonth, 1);
-  const canPrev = prev >= BUD_MIN, canNext = next <= curMonthIso();
-  $('mrCurrent').textContent = monthName(budgetMonth, true);
-  $('mrPrevLabel').textContent = canPrev ? monthName(prev) : '';
-  $('mrNextLabel').textContent = canNext ? monthName(next) : '';
-  $('mrPrevLabel').disabled = $('mrPrev').disabled = !canPrev;
-  $('mrNextLabel').disabled = $('mrNext').disabled = !canNext;
-}
-function initBudget(){
-  budgetInit = true;
-  budgetMonth = curMonthIso();
-  const step = n => () => {
-    const m = addMonths(budgetMonth, n);
-    if (m >= BUD_MIN && m <= curMonthIso()) selectBudgetMonth(m);
-  };
-  $('mrPrev').onclick = $('mrPrevLabel').onclick = step(-1);
-  $('mrNext').onclick = $('mrNextLabel').onclick = step(1);
-  const cached = localStorage.getItem('bh-budget');
-  if (cached) { try { renderBudget(JSON.parse(cached)); } catch(e){} }
-  selectBudgetMonth(budgetMonth);
-}
-async function selectBudgetMonth(m){
-  budgetMonth = m;
-  updateRotor();
-  const chartStart = addMonths(m, -5), next = addMonths(m, 1);
-  try {
-    const [exp, bud, flt] = await Promise.all([
-      sb.from('daily_expenses').select('date, description, category, amount, currency')
-        .gte('date', chartStart).lt('date', next).neq('category', 'Payment'),
-      sb.from('category_budgets').select('month, category_group, amount')
-        .gte('month', chartStart).lte('month', m).eq('currency', 'AUD'),
-      sb.from('fund_balances').select('balance').eq('name', 'Float').maybeSingle(),
-    ]);
-    if (exp.error) throw exp.error;
-    if (bud.error) throw bud.error;
-    const state = { month: m, chartStart, exp: exp.data, bud: bud.data,
-                    float: flt.data ? Number(flt.data.balance) : null };
-    localStorage.setItem('bh-budget', JSON.stringify(state));
-    renderBudget(state);
-  } catch (err) { toast('couldn’t load budget: ' + err.message); }
-}
-
-function renderBudget(st){
-  const months = []; for (let i = 5; i >= 0; i--) months.push(addMonths(st.month, -i));
-  // sums[month] = {group: amount}, totals + budgets per month
-  const sums = {}, budTot = {}, budByLabel = {};
-  months.forEach(m => { sums[m] = {}; budTot[m] = 0; });
-  (st.exp || []).forEach(r => {
-    if (r.currency !== 'AUD') return;
-    const m = r.date.slice(0, 7) + '-01';
-    if (!sums[m]) return;
-    const g = GROUP_OF[r.category] || 'Other';
-    sums[m][g] = (sums[m][g] || 0) + Number(r.amount);
-  });
-  (st.bud || []).forEach(r => {
-    if (budTot[r.month] === undefined) return;
-    budTot[r.month] += Number(r.amount);
-    if (r.month === st.month) budByLabel[r.category_group] = Number(r.amount);
-  });
-  const totalOf = m => Object.values(sums[m]).reduce((s, v) => s + v, 0);
-
-  // chart
-  const maxV = Math.max(...months.map(m => Math.max(totalOf(m), budTot[m])), 1);
-  const k = 110 / maxV, baseY = 120;
-  let svg = '';
-  months.forEach((m, i) => {
-    const x = 20 + i * 50;
-    let y = baseY;
-    const chartVals = CHART_GROUPS.map(g => sums[m][g] || 0);
-    const other = totalOf(m) - chartVals.reduce((s, v) => s + v, 0);
-    chartVals.concat(other).forEach((v, gi) => {
-      const h = v * k; if (h < 0.5) return;
-      y -= h;
-      svg += `<rect x="${x}" y="${y.toFixed(1)}" width="30" height="${h.toFixed(1)}" fill="${CHART_COLORS[gi]}"/>`;
+async function renderSetPeople(box){
+  box.innerHTML = '';
+  (CTX.profiles || []).forEach(p => {
+    const d = document.createElement('div'); d.className = 'srow';
+    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">👤</div><span class="lbl" style="flex:1;min-width:0">' + esc(p.display_name) + '</span><button class="edit" aria-label="Rename">✎</button>';
+    d.querySelector('.edit').onclick = () => editInline(d, p.display_name, async v => {
+      const r = await sb.from('profiles').update({ display_name: v }).eq('id', p.id);
+      if (r.error) { toast('couldn’t rename: ' + r.error.message); return; }
+      await loadContext(); renderSetPeople(box); renderSettings(); toast('renamed 🐻');
     });
-    const over = budTot[m] > 0 && totalOf(m) > budTot[m];
-    if (over) {
-      // everything above the budget line turns red — the block's height IS the overspend
-      const overH = (totalOf(m) - budTot[m]) * k;
-      svg += `<rect x="${x}" y="${y.toFixed(1)}" width="30" height="${overH.toFixed(1)}" fill="#D25353"/>`;
-      svg += `<text x="${x + 15}" y="${Math.max(y - 3, 7).toFixed(1)}" text-anchor="middle" font-size="8"
-        font-weight="600" fill="#D25353" font-family="Poppins,sans-serif">+${Math.round(totalOf(m) - budTot[m]).toLocaleString('en-AU')}</text>`;
-    }
-    if (budTot[m] > 0) {
-      const by = baseY - budTot[m] * k;
-      svg += `<line x1="${x - 5}" y1="${by.toFixed(1)}" x2="${x + 35}" y2="${by.toFixed(1)}" stroke="#1A2B44" stroke-width="1.5" stroke-dasharray="3 3"/>`;
-    }
-    const sel = m === st.month;
-    svg += `<text x="${x + 15}" y="137" text-anchor="middle" font-size="9" font-family="Poppins,sans-serif"
-      font-weight="${sel ? 600 : 400}" fill="${over ? '#D25353' : sel ? '#004A98' : '#6B7A90'}">${monthName(m).split(' ')[0]}</text>`;
+    box.appendChild(d);
   });
-  $('budChart').innerHTML = `<svg viewBox="0 0 320 150" style="display:block;width:100%;height:auto" role="img" aria-label="Six months of spending vs budget">${svg}</svg>`;
+  box.appendChild(addRowEl('new person’s name', async v => {
+    const r = await sb.from('profiles').insert({ household_id: CTX.hh.id, display_name: v, sort_order: CTX.profiles.length });
+    if (r.error) { toast('couldn’t add: ' + r.error.message); return; }
+    await loadContext(); renderSetPeople(box); toast(v + ' added 🐻');
+  }));
+  box.appendChild(capEl('people are labels for splitting — renaming keeps every past expense linked'));
+}
 
-  // total card
-  const spent = totalOf(st.month), budget = budTot[st.month];
-  const isCur = st.month === curMonthIso();
-  $('budTotalLabel').textContent = monthName(st.month, true) + (isCur ? ' so far' : '');
-  $('budTotalMain').innerHTML = fmtMoney(spent, 'AUD')
-    + (budget > 0 ? ' <span style="font-size:15px;font-weight:400;color:var(--accent)">of ' + fmtMoney(budget, 'AUD') + '</span>' : '');
-  const sub = $('budTotalSub');
-  if (!budget) { sub.textContent = 'no budget set for this month'; sub.style.color = ''; }
-  else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, 'AUD') + ' still available'; sub.style.color = ''; }
-  else { sub.textContent = fmtMoney(spent - budget, 'AUD') + ' over budget'; sub.style.color = '#F0A8A8'; }
+async function renderSetFunds(box){
+  const r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, sort_order').order('sort_order');
+  if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
+  const funds = r.data || [], active = funds.filter(f => f.is_active);
+  box.innerHTML = '';
+  box.appendChild(labeled('trips settle into',
+    selectEl(active.map(f => [f.id, f.name + ' (' + (CURSYM[f.currency] || f.currency) + ')']), CTX.hh.travel_fund_id, async v => {
+      const u = await sb.from('households').update({ travel_fund_id: v || null }).eq('id', CTX.hh.id);
+      if (u.error) { toast('couldn’t set: ' + u.error.message); return; }
+      await loadContext(); toast('travel fund updated 🐻');
+    }, '— none —')));
+  ['AU', 'SG'].forEach(cc => {
+    const cur = (funds.find(f => f.country === cc && f.is_leftover_target) || {}).id || '';
+    box.appendChild(labeled(cc + ' leftover flows to',
+      selectEl(active.filter(f => f.country === cc).map(f => [f.id, f.name]), cur, async v => {
+        const c1 = await sb.from('funds').update({ is_leftover_target: false }).eq('country', cc);
+        if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
+        if (v) {
+          const c2 = await sb.from('funds').update({ is_leftover_target: true }).eq('id', v);
+          if (c2.error) { toast('couldn’t update: ' + c2.error.message); return; }
+        }
+        if (fundsInit) loadFunds();
+        toast(cc + ' leftover fund updated 🐻');
+      }, '— none —')));
+  });
+  const list = document.createElement('div'); list.style.marginTop = '12px';
+  funds.forEach(f => {
+    const d = document.createElement('div'); d.className = 'srow';
+    if (!f.is_active) d.style.opacity = '.45';
+    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(f.name) + '</div>'
+      + '<span class="lbl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>'
+      + (f.is_leftover_target ? '<span class="tag blue">leftover</span>' : '')
+      + (!f.is_active ? '<span class="tag">archived</span>' : '')
+      + '<button class="edit" aria-label="Rename">✎</button>';
+    const arch = document.createElement('button');
+    arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
+    arch.textContent = f.is_active ? 'Archive' : 'Restore';
+    arch.onclick = async () => {
+      const u = await sb.from('funds').update({ is_active: !f.is_active }).eq('id', f.id);
+      if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+      await loadContext(); if (fundsInit) loadFunds();
+      renderSetFunds(box); toast(f.name + (f.is_active ? ' archived' : ' restored') + ' 🐻');
+    };
+    d.querySelector('.edit').onclick = () => editInline(d, f.name, async v => {
+      const u = await sb.from('funds').update({ name: v }).eq('id', f.id);
+      if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+      await loadContext(); if (fundsInit) loadFunds();
+      renderSetFunds(box); toast('renamed 🐻');
+    });
+    d.appendChild(arch);
+    list.appendChild(d);
+  });
+  box.appendChild(list);
+  const af = document.createElement('div'); af.style.cssText = 'display:flex;gap:8px;margin-top:12px;align-items:center';
+  af.innerHTML = '<input class="descinput" placeholder="new fund name" style="flex:1;min-width:0"><div class="seg" id="afSeg"></div><button class="btn-mini" type="button">Add</button>';
+  box.appendChild(af);
+  buildSeg('afSeg', ['AU', 'SG'], 0);
+  af.lastChild.onclick = async () => {
+    const v = af.firstChild.value.trim();
+    if (!v) { toast('type a name first'); return; }
+    const cc = segSel('afSeg');
+    const i = await sb.from('funds').insert({ household_id: CTX.hh.id, name: v, country: cc, currency: cc === 'SG' ? 'SGD' : 'AUD', sort_order: funds.length });
+    if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
+    await loadContext(); if (fundsInit) loadFunds();
+    renderSetFunds(box); toast(v + ' added 🐻');
+  };
+  box.appendChild(capEl('archiving hides a fund (and its balance) from lists without touching history — best for funds already at zero'));
+}
 
-  // float buffer card
-  if (st.float !== null && st.float !== undefined) {
-    $('floatCard').style.display = 'block';
-    $('floatBal').textContent = fmtMoney(st.float, 'AUD');
-    $('floatBal').style.color = st.float < 0 ? 'var(--bad)' : 'var(--primary)';
-  }
+async function renderSetCards(box){
+  const r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order').order('sort_order');
+  if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
+  const cards = r.data || [];
+  box.innerHTML = '';
+  cards.forEach(c => {
+    const owner = c.profile_id ? ((CTX.profiles.find(p => p.id === c.profile_id) || {}).display_name || '?') : 'Joint';
+    const d = document.createElement('div'); d.className = 'srow';
+    if (c.is_archived) d.style.opacity = '.45';
+    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">💳</div>'
+      + '<div style="flex:1;min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div>'
+      + '<div class="cap">' + esc(owner) + (c.travel_only ? ' · travel only' : '') + '</div></div>'
+      + (c.is_archived ? '<span class="tag">archived</span>' : '');
+    const arch = document.createElement('button');
+    arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
+    arch.textContent = c.is_archived ? 'Restore' : 'Archive';
+    arch.onclick = async () => {
+      const u = await sb.from('payment_methods').update({ is_archived: !c.is_archived }).eq('id', c.id);
+      if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+      await loadContext(); renderSetCards(box);
+      toast(c.name + (c.is_archived ? ' restored' : ' archived') + ' 🐻');
+    };
+    d.appendChild(arch);
+    box.appendChild(d);
+  });
+  const af = document.createElement('div'); af.style.cssText = 'margin-top:12px';
+  af.innerHTML = '<input class="descinput" placeholder="new card name — e.g. Amex - Aizat" style="width:100%">'
+    + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center"><div class="seg grow" id="acSeg" style="flex:1"></div>'
+    + '<button class="chip" id="acTravel" type="button">travel only</button><button class="btn-mini" type="button" id="acAdd">Add</button></div>';
+  box.appendChild(af);
+  buildSeg('acSeg', payerNames(), 0);
+  $('acTravel').onclick = () => $('acTravel').classList.toggle('sel');
+  $('acAdd').onclick = async () => {
+    const v = af.firstChild.value.trim();
+    if (!v) { toast('type a name first'); return; }
+    const owner = segSel('acSeg');
+    const pid = (CTX.profiles.find(p => p.display_name === owner) || {}).id || null;
+    const i = await sb.from('payment_methods').insert({
+      household_id: CTX.hh.id, name: v, profile_id: pid,
+      travel_only: $('acTravel').classList.contains('sel'),
+      sort_order: cards.filter(c => c.profile_id === pid).length,
+    });
+    if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
+    await loadContext(); renderSetCards(box); toast(v + ' added 🐻');
+  };
+}
 
-  // pace cards with drill-down
-  const box = $('paceCards'); box.innerHTML = '';
-  BUDGET_ROWS.forEach(row => {
-    const s = sums[st.month][row.group] || 0, b = budByLabel[row.blabel] || 0;
-    if (!s && !b) return;
-    const over = b > 0 && s > b;
-    const wMain = b <= 0 ? (s > 0 ? 100 : 0) : Math.min(s / b, 1) * (over ? b / s : 1) * 100;
-    const wOver = over ? (1 - b / s) * 100 : 0;
-    const status = b <= 0 ? ''
-      : over ? '<div class="lbl num" style="color:var(--bad)">' + fmtMoney(s - b, 'AUD') + ' over</div>'
-      : b - s < 0.005 ? '<div class="lbl num" style="color:var(--good)">on budget</div>'
-             : '<div class="lbl num" style="color:var(--good)">' + fmtMoney(b - s, 'AUD') + ' left</div>';
-    const capTxt = b > 0 ? fmtMoney(s, 'AUD') + ' of ' + fmtMoney(b, 'AUD')
-                         : fmtMoney(s, 'AUD') + ' · no budget';
-    const rows = (st.exp || [])
-      .filter(r => r.currency === 'AUD' && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group)
-      .sort((a, c) => c.date < a.date ? -1 : 1)
-      .map(r => `<div class="drow"><span class="dd">${esc(r.description)}</span>
-        <span class="cap">${new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})}</span>
-        <span class="amt">−${fmtMoney(r.amount, 'AUD')}</span></div>`).join('')
-      || '<p class="cap" style="padding:4px 0">nothing this month</p>';
+async function renderSetIncome(box){
+  const m = curMonthIso();
+  const r = await sb.from('income_budgets').select('id, source_name, currency, amount').eq('month', m).order('source_name');
+  if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
+  const rows = r.data || [];
+  box.innerHTML = '';
+  rows.forEach(inc => {
+    const d = document.createElement('div'); d.className = 'srow';
+    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">💵</div>'
+      + '<span class="lbl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(inc.source_name) + '</span>'
+      + '<span class="lbl num" style="color:var(--good)">+' + fmtMoney(inc.amount, inc.currency) + '</span>'
+      + '<button class="edit" aria-label="Edit amount">✎</button>';
+    d.querySelector('.edit').onclick = () => {
+      const input = document.createElement('input');
+      input.className = 'descinput'; input.type = 'number'; input.step = '0.01';
+      input.value = Number(inc.amount); input.style.cssText = 'width:110px;flex-shrink:0';
+      const ok = document.createElement('button'); ok.className = 'btn-mini'; ok.textContent = '✓'; ok.style.padding = '0 14px';
+      d.querySelector('.lbl.num').replaceWith(input);
+      d.querySelector('.edit').replaceWith(ok);
+      input.focus();
+      ok.onclick = async () => {
+        const v = parseFloat(input.value);
+        if (!(v >= 0)) { toast('enter a valid amount'); return; }
+        const u = await sb.from('income_budgets').update({ amount: v }).eq('id', inc.id);
+        if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+        if (fundsInit) loadFunds();
+        renderSetIncome(box); toast('updated 🐻');
+      };
+    };
+    box.appendChild(d);
+  });
+  const af = document.createElement('div'); af.style.cssText = 'display:flex;gap:8px;margin-top:12px;align-items:center';
+  af.innerHTML = '<input class="descinput" placeholder="source name" style="flex:1;min-width:0"><input class="descinput" type="number" step="0.01" placeholder="0.00" style="width:90px"><div class="seg" id="aiSeg"></div><button class="btn-mini" type="button">Add</button>';
+  box.appendChild(af);
+  buildSeg('aiSeg', ['A$', 'S$'], 0);
+  af.lastChild.onclick = async () => {
+    const name = af.children[0].value.trim(), amt2 = parseFloat(af.children[1].value);
+    if (!name || !(amt2 > 0)) { toast('name and amount needed'); return; }
+    const i = await sb.from('income_budgets').insert({
+      household_id: CTX.hh.id, month: m, source_name: name,
+      currency: segSel('aiSeg') === 'S$' ? 'SGD' : 'AUD', amount: amt2,
+    });
+    if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
+    if (fundsInit) loadFunds();
+    renderSetIncome(box); toast(name + ' added 🐻');
+  };
+  box.appendChild(capEl('these apply to ' + monthName(m, true) + ' — monthly copy-forward arrives with the plan ritual'));
+}
+
+async function renderSetExport(box){
+  box.innerHTML = '';
+  const jobs = [
+    ['🛒', 'Daily expenses', 'daily_expenses', 'daily-expenses.csv', null],
+    ['💰', 'Fund transactions', 'fund_transactions', 'fund-transactions.csv', 'funds(name)'],
+    ['✈️', 'Travel expenses', 'travel_expenses', 'travel-expenses.csv', 'trips(name)'],
+  ];
+  jobs.forEach(([icon, label, table, filename, embed]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'choice';
+    b.innerHTML = '<div class="rowicon">' + icon + '</div><span class="lbl">' + label + '</span>';
+    b.onclick = async () => {
+      toast('preparing ' + filename + '…');
+      const sel = '*' + (embed ? ', ' + embed : '');
+      const { data, error } = await sb.from(table).select(sel).order('date', { ascending: true });
+      if (error) { toast('couldn’t export: ' + error.message); return; }
+      const rows = (data || []).map(r => {
+        const o = { ...r };
+        if (o.funds) { o.fund_name = o.funds.name; delete o.funds; }
+        if (o.trips) { o.trip_name = o.trips.name; delete o.trips; }
+        return o;
+      });
+      if (!rows.length) { toast('nothing to export'); return; }
+      const cols = Object.keys(rows[0]);
+      const cell = v => v === null || v === undefined ? '' : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+      const csv = cols.join(',') + '\n' + rows.map(r => cols.map(c => cell(r[c])).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = filename; a.click();
+      URL.revokeObjectURL(a.href);
+      toast(filename + ' downloaded 🐻');
+    };
+    box.appendChild(b);
+  });
+  box.appendChild(capEl('your data is yours — plain CSV files, openable in any spreadsheet'));
+}
+
+// ══ TRAVEL ══════════════════════════════════
+let travelInit = false, travelState = null, curTripId = null, tripCurFilter = 'All';
+
+function tripDates(t){
+  if (!t.start_date) return '';
+  const s = new Date(t.start_date + 'T00:00:00'), e = t.end_date ? new Date(t.end_date + 'T00:00:00') : null;
+  return s.toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'})
+    + (e ? ' – ' + e.toLocaleDateString('en-AU', {day:'numeric', month:'short'}) : '');
+}
+function tripAgg(exps){
+  const byCur = {};
+  let allSent = exps.length > 0;
+  exps.forEach(e => {
+    const c = byCur[e.currency] = byCur[e.currency] || { total:0, paid:{} };
+    c.total += Number(e.amount);
+    (e.travel_expense_splits || []).forEach(s => {
+      if (s.profile_id && Number(s.amount) > 0)
+        c.paid[s.profile_id] = (c.paid[s.profile_id] || 0) + Number(s.amount);
+    });
+    if (!e.sent_to_fund) allSent = false;
+  });
+  return { byCur, allSent };
+}
+// the joint pot owes back whoever fronted money — outstanding (unsent) expenses only
+function owedByPerson(exps){
+  const map = {};
+  exps.filter(e => !e.sent_to_fund).forEach(e => (e.travel_expense_splits || []).forEach(s => {
+    if (s.profile_id && Number(s.amount) > 0) {
+      const m = map[s.profile_id] = map[s.profile_id] || {};
+      m[e.currency] = (m[e.currency] || 0) + Number(s.amount);
+    }
+  }));
+  return CTX.profiles.filter(p => map[p.id]).map(p => ({
+    name: p.display_name,
+    amounts: Object.entries(map[p.id]).map(([c, v]) => fmtMoney(v, c)).join(' · '),
+  }));
+}
+async function initTravel(){
+  travelInit = true;
+  if (!CTX.trips.length) await loadContext();
+  const cached = localStorage.getItem('bh-travel');
+  if (cached) { try { travelState = JSON.parse(cached); renderTravel(); } catch(e){} }
+  loadTravel();
+}
+async function loadTravel(keepDetail){
+  try {
+    const { data, error } = await sb.from('travel_expenses')
+      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, travel_expense_splits(profile_id, amount)')
+      .order('date', {ascending: false});
+    if (error) throw error;
+    travelState = { exps: data || [] };
+    localStorage.setItem('bh-travel', JSON.stringify(travelState));
+    renderTravel();
+    if (keepDetail && curTripId) renderTripDetail();
+  } catch (err) { toast('couldn’t load trips: ' + err.message); }
+}
+function renderTravel(){
+  const box = $('tripCards'); box.innerHTML = '';
+  if (!CTX.trips.length) { box.innerHTML = '<p class="cap">no trips yet — tap + to create one 🐻</p>'; return; }
+  CTX.trips.forEach(t => {
+    const exps = (travelState ? travelState.exps : []).filter(e => e.trip_id === t.id);
+    const { byCur, allSent } = tripAgg(exps);
+    const settled = allSent && exps.length > 0;   // settled = everything has gone to the fund
+    const flags = (t.countries || []).map(flagOf).join('') || '✈️';
     const card = document.createElement('div');
-    card.className = 'card pacecard';
-    card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
-        <div class="rowicon">${row.icon}</div>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-end">
-            <span class="lbl">${esc(row.group)}</span>
-            <span style="text-align:right">${status}<div class="cap num">${capTxt}</div></span>
-          </div>
-          <div class="pace"><i style="width:${wMain.toFixed(1)}%"></i>${over ? '<i class="over" style="width:' + wOver.toFixed(1) + '%"></i>' : ''}</div>
-        </div>
-      </div>
-      <div class="drill">${rows}</div>`;
-    card.onclick = () => card.querySelector('.drill').classList.toggle('open');
+    card.className = 'card' + (settled ? ' settled' : '');
+    let body;
+    if (!exps.length) body = '<p class="cap" style="margin-top:8px">no expenses yet 🐻</p>';
+    else if (settled) body = '<p class="h2" style="margin-top:10px">Settled</p>';
+    else {
+      const totals = Object.entries(byCur).map(([c, d]) => fmtMoney(d.total, c)).join(' + ');
+      const owed = owedByPerson(exps);
+      const settleHtml = owed.map(o => '<div class="lbl num">Joint owes ' + esc(o.name) + ' ' + o.amounts + '</div>').join('');
+      body = '<p class="disp num" style="font-size:22px;line-height:30px;margin-top:10px">' + totals + '</p>'
+        + (settleHtml ? '<div class="settlebox">' + settleHtml + '</div>' : '');
+    }
+    const right = settled
+      ? '<span class="tick" title="sent to the travel fund">✓</span>'
+      : '<span class="pill">' + (CURSYM[t.currency] || t.currency || 'A$') + '</span>';
+    card.innerHTML = '<button class="tripbtn"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      + '<div style="min-width:0"><p class="h2">' + flags + ' ' + esc(t.name) + '</p>'
+      + '<p class="cap">' + tripDates(t) + '</p></div>' + right + '</div>'
+      + body + '<p class="cap" style="margin-top:8px;color:var(--primary);font-weight:500">tap to open ›</p></button>';
+    card.querySelector('.tripbtn').onclick = () => openTripDetail(t.id);
     box.appendChild(card);
   });
 }
-
-// ══ FUNDS ═══════════════════════════════════
-let fundsInit = false, fundsState = null, fundsExpanded = { AU:false, SG:false };
-const SURPLUS_FUNDS = ['Float', 'Future DreamHouse SG'];   // leftover destinations
-function fundIcon(name){
-  const n = name.toLowerCase();
-  if (n.includes('float')) return '🌊';
-  if (n.includes('car')) return '🚗';
-  if (n.includes('travel')) return '✈️';
-  if (n.includes('edu')) return '🎓';
-  if (n.includes('rainy')) return '☂️';
-  if (n.includes('emergency')) return '🚨';
-  if (n.includes('invest') || n.includes('stashaway')) return '📈';
-  if (n.includes('dream') || n.includes('house') || n.includes('property')) return '🏠';
-  if (n.includes('tax')) return '🧾';
-  if (n.includes('monthly')) return '📅';
-  if (n.includes('savings')) return '🐷';
-  if (n.includes('dry powder')) return '🎯';
-  if (n.includes('boc')) return '🏦';
-  if (n.includes('google')) return '☁️';
-  if (['medishield','protect','axa','pru','aia','fwd','treasure','saver','hsbc'].some(k => n.includes(k))) return '🛡️';
-  return '💰';
+function openTripDetail(id){
+  curTripId = id; tripCurFilter = 'All';
+  renderTripDetail();
+  go('scr-trip');
 }
-function initFunds(){
-  fundsInit = true;
-  const cached = localStorage.getItem('bh-funds');
-  if (cached) { try { fundsState = JSON.parse(cached); renderFunds(fundsState); } catch(e){} }
-  loadFunds();
-}
-async function loadFunds(){
-  const m = curMonthIso(), next = addMonths(m, 1);
-  try {
-    const [bal, inc, cat, fb, applied] = await Promise.all([
-      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order, group_name').eq('is_active', true).order('sort_order'),
-      sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
-      sb.from('category_budgets').select('currency, amount').eq('month', m),
-      sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
-      sb.from('fund_transactions').select('date').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
-    ]);
-    for (const r of [bal, inc, cat, fb, applied]) if (r.error) throw r.error;
-    fundsState = { month: m, bal: bal.data, inc: inc.data, cat: cat.data, fb: fb.data,
-                   appliedOn: applied.data.length ? applied.data[0].date : null };
-    localStorage.setItem('bh-funds', JSON.stringify(fundsState));
-    renderFunds(fundsState);
-  } catch (err) { toast('couldn’t load funds: ' + err.message); }
-}
-function renderFunds(st){
-  const tot = { AUD:0, SGD:0 }, cnt = { AUD:0, SGD:0 };
-  st.bal.forEach(b => { tot[b.currency] = (tot[b.currency] || 0) + Number(b.balance); cnt[b.currency] = (cnt[b.currency] || 0) + 1; });
-  $('fTotAU').textContent = fmtMoney(tot.AUD || 0, 'AUD');
-  $('fTotSG').textContent = fmtMoney(tot.SGD || 0, 'SGD');
-  $('fTotAUn').textContent = 'across ' + (cnt.AUD || 0) + ' funds';
-  $('fTotSGn').textContent = 'across ' + (cnt.SGD || 0) + ' funds';
-
-  // money flow: income − spending budget − contributions = leftover
-  $('planTitle').textContent = monthName(st.month, true).split(' ')[0] + '’s plan';
-  const byId = {}; st.bal.forEach(b => byId[b.fund_id] = b);
-  const sum = { inc:{}, cat:{}, funds:{} };
-  st.inc.forEach(r => sum.inc[r.currency] = (sum.inc[r.currency] || 0) + Number(r.amount));
-  st.cat.forEach(r => sum.cat[r.currency] = (sum.cat[r.currency] || 0) + Number(r.amount));
-  let fundCount = 0;
-  st.fb.forEach(r => {
-    const f = byId[r.fund_id];
-    if (!f || SURPLUS_FUNDS.includes(f.name)) return;
-    sum.funds[f.currency] = (sum.funds[f.currency] || 0) + Number(r.amount);
-    fundCount++;
+function renderTripDetail(){
+  const t = tripById(curTripId);
+  if (!t) { go('scr-travel'); return; }
+  const exps = (travelState ? travelState.exps : []).filter(e => e.trip_id === curTripId);
+  const { byCur, allSent } = tripAgg(exps);
+  $('tripDetName').textContent = ((t.countries || []).map(flagOf).join('') || '✈️') + ' ' + t.name;
+  $('tripDetCap').textContent = tripDates(t) + (allSent && exps.length ? ' · settled' : '');
+  $('tripDetTick').style.display = allSent && exps.length ? 'flex' : 'none';
+  // currency filter
+  const curs = Object.keys(byCur);
+  $('tripCurChips').innerHTML = '';
+  ['All'].concat(curs).forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (tripCurFilter === c ? ' sel' : '');
+    b.textContent = c === 'All' ? 'All' : (CURSYM[c] || c);
+    b.onclick = () => { tripCurFilter = c; renderTripDetail(); };
+    $('tripCurChips').appendChild(b);
   });
-  const cell = (v, c, posColor, negColor) => {
-    if (!v || Math.abs(v) < 0.005) return '<span class="num" style="color:var(--ink-soft)">—</span>';
-    return '<span class="num" style="color:' + (v > 0 ? posColor : negColor) + '">'
-      + (v > 0 ? '+' : '−') + fmtMoney(Math.abs(v), c) + '</span>';
-  };
-  const row = (label, a, s, style) => '<div class="flowrow"' + (style ? ' style="' + style + '"' : '') + '><span class="cap">' + label + '</span>' + a + s + '</div>';
-  const leftA = (sum.inc.AUD || 0) - (sum.cat.AUD || 0) - (sum.funds.AUD || 0);
-  const leftS = (sum.inc.SGD || 0) - (sum.cat.SGD || 0) - (sum.funds.SGD || 0);
-  const blank = '<span class="num"></span>';
-  const incBreak = (st.inc || []).map(r =>
-    row('<span style="padding-left:12px">↳ ' + esc(r.source_name || 'Income') + '</span>',
-        r.currency === 'AUD' ? cell(Number(r.amount), 'AUD', 'var(--good)', 'var(--bad)') : blank,
-        r.currency === 'SGD' ? cell(Number(r.amount), 'SGD', 'var(--good)', 'var(--bad)') : blank)).join('');
-  $('flowRows').innerHTML =
-    '<div id="incHead" style="cursor:pointer">'
-      + row('Income · ' + (st.inc || []).length + ' sources ▾', cell(sum.inc.AUD || 0, 'AUD', 'var(--good)', 'var(--bad)'), cell(sum.inc.SGD || 0, 'SGD', 'var(--good)', 'var(--bad)'))
-    + '</div><div id="incBreak" style="display:none">' + incBreak + '</div>'
-    + row('Spending budget', cell(-(sum.cat.AUD || 0), 'AUD', 'var(--ink)', 'var(--ink)'), cell(-(sum.cat.SGD || 0), 'SGD', 'var(--ink)', 'var(--ink)'))
-    + row('Into funds · ' + fundCount, cell(-(sum.funds.AUD || 0), 'AUD', 'var(--ink)', 'var(--ink)'), cell(-(sum.funds.SGD || 0), 'SGD', 'var(--ink)', 'var(--ink)'))
-    + row('Leftover', cell(leftA, 'AUD', 'var(--good)', 'var(--bad)'), cell(leftS, 'SGD', 'var(--good)', 'var(--bad)'),
-          'border-top:1px solid rgba(0,74,152,.15);margin-top:4px;padding-top:8px');
-  $('incHead').onclick = () => {
-    const b = $('incBreak');
-    b.style.display = b.style.display === 'none' ? 'block' : 'none';
-  };
-  let cap = 'leftover flows to Float 🇦🇺 · Future DreamHouse SG 🇸🇬';
-  const btn = $('applyBtn');
-  if (st.appliedOn) {
-    btn.textContent = 'Applied ✓'; btn.disabled = true; btn.style.opacity = '.55';
-    cap += ' · applied ' + new Date(st.appliedOn + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
-  } else if (!st.fb.length) {
-    btn.textContent = 'No plan'; btn.disabled = true; btn.style.opacity = '.55';
-  } else {
-    btn.textContent = 'Review & apply'; btn.disabled = false; btn.style.opacity = '1';
-  }
-  $('planCaption').textContent = cap;
-  renderFundList('AU', st);
-  renderFundList('SG', st);
-}
-function renderFundList(country, st){
-  const box = $(country === 'AU' ? 'fundsAU' : 'fundsSG');
-  const more = $(country === 'AU' ? 'fAUmore' : 'fSGmore');
-  const all = st.bal.filter(b => b.country === country);
-  const expanded = fundsExpanded[country];
-  const visible = expanded ? all : all.filter(b => Math.abs(Number(b.balance)) >= 0.005);
-  // second-level grouping, ordered by each group's first fund
+  // grouped accordion
+  const catGroup = {};
+  Object.entries(TRAVEL_GROUPED).forEach(([g, cats]) => cats.forEach(c => catGroup[c] = g));
+  const shown = exps.filter(e => tripCurFilter === 'All' || e.currency === tripCurFilter);
   const groups = {};
-  visible.forEach(b => { const g = b.group_name || 'Other'; (groups[g] = groups[g] || []).push(b); });
-  const order = Object.keys(groups).sort((a, b) =>
-    Math.min(...groups[a].map(x => x.sort_order)) - Math.min(...groups[b].map(x => x.sort_order)));
-  box.innerHTML = '';
-  order.forEach(g => {
-    const list = groups[g];
-    const sub = list.reduce((s, b) => s + Number(b.balance), 0);
-    const h = document.createElement('div');
-    h.className = 'fgroup';
-    h.innerHTML = '<span class="cap" style="letter-spacing:.05em;text-transform:uppercase">' + esc(g) + '</span>'
-      + '<span class="lbl num" style="color:' + (sub < 0 ? 'var(--bad)' : 'var(--ink-soft)') + '">' + fmtMoney(sub, list[0].currency) + '</span>';
-    box.appendChild(h);
-    list.forEach(b => {
-      const btn = document.createElement('button');
-      btn.type = 'button'; btn.className = 'fundrow';
-      btn.innerHTML = '<div class="rowicon">' + fundIcon(b.name) + '</div>'
-        + '<div class="lbl" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
-        + '<div class="amt num" style="color:' + (Number(b.balance) < 0 ? 'var(--bad)' : 'var(--ink)') + '">' + fmtMoney(b.balance, b.currency) + '</div>';
-      btn.onclick = () => toggleFundDrill(btn, b);
-      box.appendChild(btn);
+  shown.forEach(e => { const g = catGroup[e.category] || '🗂️ Other'; (groups[g] = groups[g] || []).push(e); });
+  const gbox = $('tripGroups'); gbox.innerHTML = '';
+  Object.keys(TRAVEL_GROUPED).concat('🗂️ Other').filter((g, i, a) => a.indexOf(g) === i).forEach(g => {
+    const list = groups[g]; if (!list || !list.length) return;
+    const tot = {};
+    list.forEach(e => tot[e.currency] = (tot[e.currency] || 0) + Number(e.amount));
+    const d = document.createElement('details'); d.className = 'grp';
+    d.innerHTML = '<summary><span class="arr">›</span> ' + esc(g)
+      + ' <span class="gamt">' + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join('<br>') + '</span></summary>';
+    list.forEach(e => {
+      const who = e.payer_profile_id
+        ? ((CTX.profiles.find(p => p.id === e.payer_profile_id) || {}).display_name || '?') : 'Joint';
+      const row = document.createElement('div'); row.className = 'trow';
+      row.innerHTML = '<div class="td"><span>' + esc(e.description) + '</span>'
+        + '<span class="cap">' + esc(who) + ' · ' + new Date(e.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})
+        + (e.sent_to_fund ? ' · sent ✓' : '') + '</span></div>'
+        + '<span class="amt">−' + fmtMoney(e.amount, e.currency) + '</span>'
+        + '<button class="edit" aria-label="Edit">✎</button>';
+      row.querySelector('.edit').onclick = () => openEditExpense(e);
+      d.appendChild(row);
     });
+    gbox.appendChild(d);
   });
-  if (!visible.length) box.innerHTML = '<p class="cap" style="padding:8px 0">nothing here yet</p>';
-  const hidden = all.length - visible.length;
-  if (expanded || hidden > 0) {
-    more.style.display = 'inline';
-    more.textContent = expanded ? 'Show less' : 'View all ' + all.length;
-    more.onclick = () => { fundsExpanded[country] = !expanded; renderFundList(country, st); };
-  } else more.style.display = 'none';
+  if (!shown.length) gbox.innerHTML = '<p class="cap" style="padding:8px 0">no expenses' + (tripCurFilter !== 'All' ? ' in this currency' : ' yet 🐻') + '</p>';
+  // settle card — the joint pot (ultimately the household's travel fund) pays back whoever fronted money
+  const tf = travelFund();
+  const unsentInFund = tf ? exps.filter(e => !e.sent_to_fund && e.currency === tf.currency) : [];
+  const unsentTotal = unsentInFund.reduce((s, e) => s + Number(e.amount), 0);
+  const owed = owedByPerson(exps);
+  let html = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
+    + '<p class="h2">Settle up</p><span class="cap">paid back from the joint pot</span></div>';
+  if (!exps.length) html += '<p class="cap" style="margin-top:8px">nothing to settle yet</p>';
+  else if (allSent) html += '<div class="settlebox"><span class="lbl">Sent to ' + esc(tf ? tf.name : 'the travel fund') + ' ✓</span></div>';
+  else {
+    html += '<div style="margin-top:10px">'
+      + (owed.length
+        ? owed.map(o => '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:6px">'
+            + '<span class="cap">Joint owes ' + esc(o.name) + '</span>'
+            + '<span class="lbl num">' + o.amounts + '</span></div>').join('')
+        : '<p class="cap" style="color:var(--good)">everything so far was paid from the joint pot ✓</p>')
+      + '</div>';
+    if (!tf)
+      html += '<p class="cap" style="margin-top:12px">no travel fund set for this household yet — choose one in Settings (arriving in 5.7)</p>';
+    else if (unsentTotal > 0.005)
+      html += '<button class="btn btn-primary" id="sendFundBtn" style="width:100%;margin-top:14px;height:auto;padding:10px 20px;display:flex;flex-direction:column;align-items:center;gap:0" onclick="sendToTravelFund()">'
+        + '<span class="num" style="font-size:20px;line-height:28px;font-weight:600">Send ' + fmtMoney(unsentTotal, tf.currency) + '</span>'
+        + '<span style="font-size:11px;line-height:16px;font-weight:400;color:var(--accent)">to ' + esc(tf.name) + '</span></button>';
+  }
+  $('tripSettle').innerHTML = html;
 }
-async function toggleFundDrill(btn, fund){
-  const nxt = btn.nextElementSibling;
-  if (nxt && nxt.classList.contains('funddrill')) { nxt.remove(); return; }
-  document.querySelectorAll('.funddrill').forEach(d => d.remove());
-  const d = document.createElement('div');
-  d.className = 'funddrill';
-  d.innerHTML = '<p class="cap">loading…</p>';
-  btn.after(d);
-  const { data, error } = await sb.from('fund_transactions')
-    .select('date, type, amount, remarks, origin')
-    .eq('fund_id', fund.fund_id)
-    .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(8);
-  if (error) { d.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
-  d.innerHTML = (data || []).map(t => {
-    const inc = t.type === 'income';
-    return '<div class="drow"><span class="dd">' + esc(t.remarks || (inc ? 'money in' : 'money out'))
-      + (t.origin === 'planned' ? ' <span class="cap">· plan</span>' : '') + '</span>'
-      + '<span class="cap">' + new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'}) + '</span>'
-      + '<span class="amt" style="color:' + (inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span></div>';
-  }).join('') || '<p class="cap">no transactions yet</p>';
+function travelFund(){
+  return CTX.funds.find(f => f.id === (CTX.hh && CTX.hh.travel_fund_id)) || null;
+}
+let sendArm = false;
+async function sendToTravelFund(){
+  const tf = travelFund();
+  if (!tf) { toast('no travel fund set — choose one in Settings'); return; }
+  const exps = travelState.exps.filter(e => e.trip_id === curTripId && !e.sent_to_fund && e.currency === tf.currency);
+  const total = exps.reduce((s, e) => s + Number(e.amount), 0);
+  if (!exps.length) { toast('nothing unsent in ' + (CURSYM[tf.currency] || tf.currency)); return; }
+  const btn = $('sendFundBtn');
+  if (!sendArm) {
+    sendArm = true; btn.textContent = 'Tap again to confirm';
+    setTimeout(() => { if (sendArm) { sendArm = false; renderTripDetail(); } }, 2500);
+    return;
+  }
+  sendArm = false;
+  const trip = tripById(curTripId);
+  btn.innerHTML = '<span class="spin"></span>';
+  const m = await sb.from('travel_expenses').update({ sent_to_fund: true }).in('id', exps.map(e => e.id));
+  if (m.error) { toast('couldn’t mark as sent: ' + m.error.message); return; }
+  const w = await sb.from('fund_transactions').insert({
+    household_id: CTX.hh.id, fund_id: tf.id, type: 'expense',
+    date: isoDate(new Date()), amount: total, remarks: 'Travel: ' + (trip ? trip.name : ''), origin: 'manual',
+  });
+  if (w.error) { toast('marked as sent, but the fund write failed: ' + w.error.message); return; }
+  toast('sent ' + fmtMoney(total, tf.currency) + ' to ' + tf.name + ' 🐻');
+  loadTravel(true);
 }
 
-// Review & apply — writes the month's planned contributions as real transactions
-let applyRowsData = [], applying = false;
-function openApplySheet(){
-  if (!fundsState || !fundsState.fb.length) { toast('no plan set for this month'); return; }
-  const byId = {}; fundsState.bal.forEach(b => byId[b.fund_id] = b);
-  applyRowsData = fundsState.fb
-    .map(r => ({ fund_id: r.fund_id, amount: Number(r.amount), fund: byId[r.fund_id], on: true }))
-    .filter(r => r.fund && r.amount > 0);
-  const box = $('applyRows'); box.innerHTML = '';
-  // income first — the money coming in this month (assumed, never written)
-  const incSection = document.createElement('div');
-  incSection.innerHTML = '<p class="cap" style="margin:2px 0 2px">income · assumed automatically, nothing is written</p>'
-    + (fundsState.inc || []).map(r =>
-      '<div class="flowrow"><span class="cap" style="color:var(--ink)">' + esc(r.source_name || 'Income') + '</span>'
-      + '<span class="num" style="color:var(--good)">+' + fmtMoney(r.amount, r.currency) + '</span></div>').join('')
-    + '<p class="cap" style="margin:12px 0 0">contributions — tap a line to skip it this month; the rest are written as real transactions</p>';
-  box.appendChild(incSection);
-  applyRowsData.forEach(r => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'applyrow';
-    b.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(r.fund.name) + '</div>'
-      + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.fund.name) + '</span>'
-      + '<span class="amt">+' + fmtMoney(r.amount, r.fund.currency) + '</span>';
-    b.onclick = () => { r.on = !r.on; b.classList.toggle('off', !r.on); updateApplySummary(); };
-    box.appendChild(b);
-  });
-  $('applyTitle').textContent = monthName(fundsState.month, true) + ' plan';
-  updateApplySummary();
-  $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none'; $('sh-apply').style.display = 'block';
+// new trip creation
+const NT_COUNTRIES = [['SG','SGD'],['MY','MYR'],['ID','IDR'],['TH','THB'],['JP','JPY'],['KR','KRW'],
+  ['CN','CNY'],['TW','TWD'],['VN','VND'],['NZ','NZD'],['US','USD'],['GB','GBP'],['AU','AUD']];
+const NT_CURRENCIES = ['MYR','IDR','THB','JPY','KRW','CNY','TWD','VND','NZD','USD','GBP','EUR'];
+let ntSel = { countries: [], currencies: [] };
+function ntChip(box, label, list, value, onToggle){
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'chip' + (list.includes(value) ? ' sel' : '');
+  b.textContent = label;
+  b.onclick = () => {
+    const i = list.indexOf(value);
+    if (i >= 0) list.splice(i, 1); else list.push(value);
+    b.classList.toggle('sel', list.includes(value));
+    if (onToggle) onToggle(list.includes(value));
+  };
+  box.appendChild(b);
+}
+function openNewTripSheet(){
+  ntSel = { countries: [], currencies: [] };
+  $('ntName').value = ''; $('ntStart').value = ''; $('ntEnd').value = '';
+  const cb = $('ntCountries'); cb.innerHTML = '';
+  NT_COUNTRIES.forEach(([cc, cur]) => ntChip(cb, flagOf(cc) + ' ' + cc, ntSel.countries, cc, on => {
+    // picking a country auto-picks its currency (except the two home ones)
+    if (on && cur !== 'AUD' && cur !== 'SGD' && !ntSel.currencies.includes(cur)) {
+      ntSel.currencies.push(cur); renderNtCurrencies();
+    }
+  }));
+  renderNtCurrencies();
+  $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none'; $('sh-apply').style.display = 'none';
+  $('sh-newtrip').style.display = 'block';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
-function updateApplySummary(){
-  const t = { AUD:0, SGD:0 }; let n = 0;
-  applyRowsData.forEach(r => { if (r.on) { t[r.fund.currency] += r.amount; n++; } });
-  $('applySummary').textContent = n + ' contributions · +' + fmtMoney(t.AUD, 'AUD') + ' · +' + fmtMoney(t.SGD, 'SGD');
+function renderNtCurrencies(){
+  const box = $('ntCurrencies'); box.innerHTML = '';
+  NT_CURRENCIES.forEach(c => ntChip(box, (CURSYM[c] || '') + ' ' + c, ntSel.currencies, c));
 }
-async function applyPlan(){
-  if (applying) return;
+let creatingTrip = false;
+async function createTrip(){
+  if (creatingTrip) return;
+  const name = $('ntName').value.trim();
+  if (!name) { toast('give the trip a name'); return; }
   if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
-  const rows = applyRowsData.filter(r => r.on);
-  if (!rows.length) { toast('everything is skipped — nothing to apply'); return; }
-  applying = true; $('applyGo').innerHTML = '<span class="spin"></span>';
-  const remark = monthName(fundsState.month, true) + ' plan';
-  const { error } = await sb.from('fund_transactions').insert(rows.map(r => ({
-    household_id: CTX.hh.id, fund_id: r.fund_id, type: 'income',
-    date: isoDate(new Date()), amount: r.amount, remarks: remark, origin: 'planned',
-  })));
-  applying = false; $('applyGo').textContent = 'Apply';
-  if (error) { toast('couldn’t apply: ' + error.message); return; }
-  closeSheet(); toast('applied — ' + rows.length + ' contributions written 🐻');
-  loadFunds();
+  creatingTrip = true; $('ntGo').innerHTML = '<span class="spin"></span>';
+  const { error } = await sb.from('trips').insert({
+    household_id: CTX.hh.id, name,
+    start_date: $('ntStart').value || null, end_date: $('ntEnd').value || null,
+    currency: ntSel.currencies[0] || 'AUD',
+    currencies: ntSel.currencies, countries: ntSel.countries,
+  });
+  creatingTrip = false; $('ntGo').textContent = 'Create trip';
+  if (error) { toast('couldn’t create: ' + error.message); return; }
+  closeSheet(); toast(name + ' created 🐻');
+  await loadContext();
+  renderTravel();
 }
 
 // ══ QUICK-ADD ═══════════════════════════════
@@ -2365,7 +1707,7 @@ async function loadContext(){
   const cached = localStorage.getItem('bh-ctx');
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
   const [hh, profiles, funds, trips, cards, dCats, tCats] = await Promise.all([
-    sb.from('households').select('id, name').single(),
+    sb.from('households').select('id, name, travel_fund_id').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('funds').select('id, name, country, currency').eq('is_active', true).order('sort_order'),
     sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
@@ -2421,7 +1763,7 @@ function cardOptions(payerName){
   const p = CTX.profiles.find(x => x.display_name === payerName);
   const pid = p ? p.id : null;   // null = Joint's cards
   return (CTX.cards || [])
-    .filter(c => c.profile_id === pid && (!c.travel_only || mode === 'trip'))
+    .filter(c => c.profile_id === pid && (!c.travel_only || mode === 'trip' || mode === 'edit'))
     .sort((a, b) => a.sort_order - b.sort_order);
 }
 function refreshCards(payerName){
@@ -2431,12 +1773,13 @@ function refreshCards(payerName){
   if (opts.length) $('cardSel').value = opts[0].name;
 }
 
-let amt = '', mode = 'daily', saving = false;
+let amt = '', mode = 'daily', saving = false, editingExp = null;
 
 function openSheet(){
   $('sh-chooser').style.display = 'block';
   $('sh-form').style.display = 'none';
   $('sh-apply').style.display = 'none';
+  $('sh-newtrip').style.display = 'none';
   $('backdrop').classList.add('open');
   $('sheet').classList.add('open');
 }
@@ -2526,6 +1869,7 @@ function refreshTripCurrencies(){
 
 function openForm(m){
   mode = m; amt = ''; renderAmt(); saving = false; $('saveBtn').textContent = 'Save';
+  editingExp = null; $('deleteBtn').style.display = 'none';
   $('descInput').value = ''; $('commentsInput').value = '';
   $('dateInput').value = isoDate(new Date());
   $('rowDetails').style.display = 'none';
@@ -2651,6 +1995,22 @@ async function saveEntry(){
     const cat = gridSel();
     if (!cat) { done(false, 'pick a category'); return; }
     const pid = (CTX.profiles.find(x => x.display_name === payer) || {}).id || null;
+    if (mode === 'edit') {
+      // update the travel expense in place, then rebuild its splits
+      const { error } = await sb.from('travel_expenses').update({
+        date, description: desc, category: cat, amount: cost, currency,
+        payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
+      }).eq('id', editingExp.id);
+      if (error) throw error;
+      const del = await sb.from('travel_expense_splits').delete().eq('expense_id', editingExp.id);
+      if (del.error) throw del.error;
+      const sp = buildSplits(payer, cost).map(s => ({ household_id: CTX.hh.id, expense_id: editingExp.id, ...s }));
+      const ins = await sb.from('travel_expense_splits').insert(sp);
+      if (ins.error) throw ins.error;
+      done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
+      if (travelInit) loadTravel(true);
+      return;
+    }
     const base = {
       household_id: CTX.hh.id, date, description: desc, category: cat, amount: cost,
       currency, payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
@@ -2667,10 +2027,78 @@ async function saveEntry(){
     if (e2) throw e2;
     localStorage.setItem('bh-payer', payer);
     localStorage.setItem('bh-cur', segSel('segCurrency'));
-    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + (mode === 'trip' ? ' · trip' : ''));
+    if (mode === 'trip' && travelInit) loadTravel(true);
+    const tripName = mode === 'trip' ? (tripById(selectedTripId) || {}).name : '';
+    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + (tripName ? ' · ' + tripName : ''));
   } catch (err) {
     done(false, err.message || String(err));
   }
+}
+
+// ── edit / delete a travel expense ───────────
+function payerFromSplits(exp){
+  const pos = (exp.travel_expense_splits || []).find(s => s.profile_id && Number(s.amount) > 0);
+  if (!pos) return 'Joint';
+  const p = CTX.profiles.find(x => x.id === pos.profile_id);
+  return p ? p.display_name : 'Joint';
+}
+function openEditExpense(exp){
+  mode = 'edit'; editingExp = exp; saving = false;
+  const n = Number(exp.amount);
+  amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
+  renderAmt();
+  $('formTitle').textContent = 'Edit expense';
+  $('descInput').placeholder = 'description';
+  $('descInput').value = exp.description || '';
+  $('dateInput').value = exp.date;
+  $('commentsInput').value = exp.comments || '';
+  $('rowTrip').style.display = 'none';
+  $('rowFund').style.display = 'none';
+  $('rowType').style.display = 'none';
+  $('rowCategory').style.display = 'block';
+  $('rowPayer').style.display = 'block';
+  $('segCurrency').style.display = 'inline-flex';
+  $('fundCurLabel').style.display = 'none';
+  $('rowDetails').style.display = 'block';
+  $('cardSel').style.display = 'block';
+  // currencies: home pair + the trip's locals + whatever this row already uses
+  const trip = tripById(exp.trip_id);
+  const codes = ['AUD','SGD'].concat((trip && trip.currencies) || []).concat(exp.currency)
+    .filter((c, i, a) => a.indexOf(c) === i);
+  SEG2CODE = {};
+  const labels = codes.map(c => { let l = CURSYM[c] || c; if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
+  buildSeg('segCurrency', labels, Math.max(codes.indexOf(exp.currency), 0));
+  // grouped grid with this row's category selected (legacy names stay selectable)
+  const grouped = JSON.parse(JSON.stringify(TRAVEL_GROUPED));
+  if (!Object.values(grouped).flat().includes(exp.category)) grouped['🗂️ Other'].push(exp.category);
+  buildGrid(grouped, exp.category);
+  const payer = payerFromSplits(exp);
+  buildSeg('segPayer', payerNames(), Math.max(payerNames().indexOf(payer), 0), p => refreshCards(p));
+  refreshCards(payer);
+  if (exp.paid_with && ![...$('cardSel').options].some(o => o.value === exp.paid_with || o.textContent === exp.paid_with)) {
+    const o = document.createElement('option'); o.textContent = exp.paid_with; $('cardSel').appendChild(o);
+  }
+  $('cardSel').value = exp.paid_with || '';
+  $('deleteBtn').style.display = 'inline'; $('deleteBtn').textContent = 'Delete';
+  $('saveBtn').textContent = 'Save';
+  $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
+  $('sh-form').style.display = 'block';
+  $('backdrop').classList.add('open'); $('sheet').classList.add('open');
+}
+let delArm = false;
+async function deleteExpense(){
+  if (!editingExp) return;
+  const btn = $('deleteBtn');
+  if (!delArm) {
+    delArm = true; btn.textContent = 'Tap again to delete';
+    setTimeout(() => { delArm = false; if ($('deleteBtn')) $('deleteBtn').textContent = 'Delete'; }, 2500);
+    return;
+  }
+  delArm = false; btn.textContent = 'Delete';
+  const { error } = await sb.from('travel_expenses').delete().eq('id', editingExp.id);
+  if (error) { toast('couldn’t delete: ' + error.message); return; }
+  closeSheet(); toast('deleted 🐻');
+  loadTravel(true);
 }
 
 // stay signed in across visits
