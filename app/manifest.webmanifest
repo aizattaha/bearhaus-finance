@@ -1,0 +1,14 @@
+{
+  "name": "BearHaus",
+  "short_name": "BearHaus",
+  "description": "Household finance for BearHaus",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F7F9FC",
+  "theme_color": "#004A98",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
