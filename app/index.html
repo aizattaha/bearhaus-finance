@@ -401,13 +401,15 @@ select.descinput{appearance:none;-webkit-appearance:none}
     <button class="choice" onclick="openForm('daily')"><div class="rowicon">🛒</div><span class="lbl">Daily expense</span></button>
     <button class="choice" onclick="openForm('fund')"><div class="rowicon">💰</div><span class="lbl">Fund transaction</span></button>
     <button class="choice" onclick="openForm('trip')"><div class="rowicon">✈️</div><span class="lbl">Trip expense</span></button>
+    <button class="choice" onclick="openForm('transfer')"><div class="rowicon">🔁</div><span class="lbl">Transfer between funds</span></button>
   </div>
 
   <div id="sh-form" style="display:none">
     <div class="sheet-head"><span class="h2" id="formTitle">Add expense</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
     <div class="f-sec" style="margin-top:0"><input class="descinput" id="descInput" placeholder="description" autocomplete="off"></div>
     <div class="f-sec" id="rowTrip" style="display:none"><div id="tripPick"></div></div>
-    <div class="f-sec" id="rowFund" style="display:none"><select class="descinput" id="fundSel"></select></div>
+    <div class="f-sec" id="rowFund" style="display:none"><p class="cap" id="fundSelCap" style="display:none;margin-bottom:4px">from</p><select class="descinput" id="fundSel"></select></div>
+    <div class="f-sec" id="rowFund2" style="display:none"><p class="cap" style="margin-bottom:4px">to</p><select class="descinput" id="fundSel2"></select><input class="descinput" id="recvInput" type="number" step="0.01" placeholder="amount received" style="display:none;margin-top:8px"></div>
     <div class="amount-line">
       <div class="seg" id="segCurrency"></div>
       <span class="lbl" id="fundCurLabel" style="display:none;color:var(--ink-soft)"></span>
@@ -640,7 +642,7 @@ function renderHome(state){
   // recent
   $('recentList').innerHTML = (state.recent || []).map(r => {
     const icon = CAT_ICON[r.category] || '🛍️';
-    const who = r.profiles ? r.profiles.display_name : 'Joint';
+    const who = r.profiles ? r.profiles.display_name : (jointLabel() || 'Joint');
     const d = new Date(r.date + 'T00:00:00');
     const daysAgo = Math.round((new Date(state.today + 'T00:00:00') - d) / 86400000);
     const when = daysAgo <= 0 ? 'today' : daysAgo === 1 ? 'yesterday'
@@ -1198,6 +1200,16 @@ function editInline(row, initial, onSave){
 
 function renderSettings(){
   const box = $('setRows'); box.innerHTML = '';
+  const hhRow = document.createElement('div'); hhRow.className = 'srow';
+  hhRow.innerHTML = '<div class="rowicon">🐻</div><span class="lbl" style="flex:1;min-width:0">' + esc(CTX.hh ? CTX.hh.name : '…') + '</span><button class="edit" aria-label="Rename household">✎</button>';
+  hhRow.querySelector('.edit').onclick = () => editInline(hhRow, CTX.hh.name, async v => {
+    const r = await sb.from('households').update({ name: v }).eq('id', CTX.hh.id);
+    if (r.error) { toast('couldn’t rename: ' + r.error.message); return; }
+    await loadContext();
+    $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
+    renderSettings(); toast('renamed 🐻');
+  });
+  box.appendChild(hhRow);
   const sections = [
     { icon:'👥', label:'People', cap: (CTX.profiles || []).map(p => p.display_name).join(' · ') || '…', render: renderSetPeople },
     { icon:'💰', label:'Funds', cap: 'rename · archive · travel & leftover funds', render: renderSetFunds },
@@ -1239,16 +1251,37 @@ async function renderSetPeople(box){
     });
     box.appendChild(d);
   });
+  const jl = jointLabel();
+  const jd = document.createElement('div'); jd.className = 'srow';
+  jd.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">🤝</div>'
+    + '<span class="lbl" style="flex:1;min-width:0">' + esc(jl || 'joint pot — off') + '</span>'
+    + (jl ? '<span class="tag blue">joint pot</span><button class="edit" aria-label="Rename">✎</button>' : '');
+  if (jl) jd.querySelector('.edit').onclick = () => editInline(jd, jl, async v => {
+    const r = await sb.from('households').update({ joint_label: v }).eq('id', CTX.hh.id);
+    if (r.error) { toast('couldn’t rename: ' + r.error.message); return; }
+    await loadContext(); renderSetPeople(box); toast('renamed 🐻');
+  });
+  const jbtn = document.createElement('button');
+  jbtn.className = 'btn-tert'; jbtn.style.cssText = 'font-size:11px;padding:2px 6px';
+  jbtn.textContent = jl ? 'Disable' : 'Enable';
+  jbtn.onclick = async () => {
+    const r = await sb.from('households').update({ joint_label: jl ? null : 'Joint' }).eq('id', CTX.hh.id);
+    if (r.error) { toast('couldn’t update: ' + r.error.message); return; }
+    await loadContext(); renderSetPeople(box);
+    toast(jl ? 'joint pot disabled' : 'joint pot enabled 🐻');
+  };
+  jd.appendChild(jbtn);
+  box.appendChild(jd);
   box.appendChild(addRowEl('new person’s name', async v => {
     const r = await sb.from('profiles').insert({ household_id: CTX.hh.id, display_name: v, sort_order: CTX.profiles.length });
     if (r.error) { toast('couldn’t add: ' + r.error.message); return; }
     await loadContext(); renderSetPeople(box); toast(v + ' added 🐻');
   }));
-  box.appendChild(capEl('people are labels for splitting — renaming keeps every past expense linked'));
+  box.appendChild(capEl('people are labels for splitting — renaming keeps every past expense linked. the joint pot is optional: shared money some households don’t use'));
 }
 
 async function renderSetFunds(box){
-  const r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, sort_order').order('sort_order');
+  const r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, group_name, sort_order').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const funds = r.data || [], active = funds.filter(f => f.is_active);
   box.innerHTML = '';
@@ -1258,7 +1291,8 @@ async function renderSetFunds(box){
       if (u.error) { toast('couldn’t set: ' + u.error.message); return; }
       await loadContext(); toast('travel fund updated 🐻');
     }, '— none —')));
-  ['AU', 'SG'].forEach(cc => {
+  const countries = [...new Set(funds.map(f => f.country))];
+  countries.forEach(cc => {
     const cur = (funds.find(f => f.country === cc && f.is_leftover_target) || {}).id || '';
     box.appendChild(labeled(cc + ' leftover flows to',
       selectEl(active.filter(f => f.country === cc).map(f => [f.id, f.name]), cur, async v => {
@@ -1273,12 +1307,13 @@ async function renderSetFunds(box){
       }, '— none —')));
   });
   const list = document.createElement('div'); list.style.marginTop = '12px';
-  funds.forEach(f => {
+  const addFundRow = (f, into) => {
     const d = document.createElement('div'); d.className = 'srow';
     if (!f.is_active) d.style.opacity = '.45';
     d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(f.name) + '</div>'
       + '<span class="lbl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>'
       + (f.is_leftover_target ? '<span class="tag blue">leftover</span>' : '')
+      + (CTX.hh && CTX.hh.travel_fund_id === f.id ? '<span class="tag blue">travel</span>' : '')
       + (!f.is_active ? '<span class="tag">archived</span>' : '')
       + '<button class="edit" aria-label="Rename">✎</button>';
     const arch = document.createElement('button');
@@ -1297,18 +1332,70 @@ async function renderSetFunds(box){
       renderSetFunds(box); toast('renamed 🐻');
     });
     d.appendChild(arch);
-    list.appendChild(d);
+    into.appendChild(d);
+  };
+  countries.forEach(cc => {
+    const ch = document.createElement('p');
+    ch.className = 'lbl'; ch.style.cssText = 'margin-top:14px';
+    ch.textContent = cc;
+    list.appendChild(ch);
+    const cfunds = funds.filter(f => f.country === cc);
+    const groups = {};
+    cfunds.forEach(f => { const g = f.group_name || 'Other'; (groups[g] = groups[g] || []).push(f); });
+    Object.keys(groups).sort((a, b) =>
+      Math.min(...groups[a].map(x => x.sort_order)) - Math.min(...groups[b].map(x => x.sort_order))
+    ).forEach(g => {
+      const gh = document.createElement('p');
+      gh.className = 'cap';
+      gh.style.cssText = 'letter-spacing:.05em;text-transform:uppercase;margin:8px 0 0';
+      gh.textContent = g;
+      list.appendChild(gh);
+      groups[g].forEach(f => addFundRow(f, list));
+    });
   });
   box.appendChild(list);
-  const af = document.createElement('div'); af.style.cssText = 'display:flex;gap:8px;margin-top:12px;align-items:center';
-  af.innerHTML = '<input class="descinput" placeholder="new fund name" style="flex:1;min-width:0"><div class="seg" id="afSeg"></div><button class="btn-mini" type="button">Add</button>';
+  const af = document.createElement('div'); af.style.cssText = 'margin-top:12px';
+  af.innerHTML = '<input class="descinput" placeholder="new fund name" style="width:100%">'
+    + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">'
+    + '<select class="descinput" style="flex:1;min-width:0" id="afCountry"></select>'
+    + '<select class="descinput" style="flex:1;min-width:0" id="afGroup"></select>'
+    + '<button class="btn-mini" type="button" id="afAdd">Add</button></div>'
+    + '<div id="afNew" style="display:none;gap:8px;margin-top:8px">'
+    + '<input class="descinput" id="afCC" placeholder="country label — e.g. TH" style="flex:1;min-width:0">'
+    + '<input class="descinput" id="afCur" placeholder="currency — e.g. THB" style="flex:1;min-width:0"></div>'
+    + '<input class="descinput" id="afNewGroup" placeholder="new group name" style="display:none;margin-top:8px;width:100%">';
   box.appendChild(af);
-  buildSeg('afSeg', ['AU', 'SG'], 0);
-  af.lastChild.onclick = async () => {
+  const cSel = af.querySelector('#afCountry');
+  const gSel = af.querySelector('#afGroup');
+  cSel.innerHTML = countries.map(c => '<option>' + esc(c) + '</option>').join('') + '<option value="__new__">+ new country…</option>';
+  const refreshGroups = () => {
+    const gs = cSel.value === '__new__' ? []
+      : [...new Set(funds.filter(f => f.country === cSel.value && f.group_name).map(f => f.group_name))];
+    gSel.innerHTML = '<option value="">— no group —</option>'
+      + gs.map(g => '<option>' + esc(g) + '</option>').join('')
+      + '<option value="__newg__">+ new group…</option>';
+    af.querySelector('#afNewGroup').style.display = 'none';
+  };
+  gSel.onchange = () => { af.querySelector('#afNewGroup').style.display = gSel.value === '__newg__' ? 'block' : 'none'; };
+  cSel.onchange = () => {
+    af.querySelector('#afNew').style.display = cSel.value === '__new__' ? 'flex' : 'none';
+    refreshGroups();
+  };
+  refreshGroups();
+  af.querySelector('#afAdd').onclick = async () => {
     const v = af.firstChild.value.trim();
     if (!v) { toast('type a name first'); return; }
-    const cc = segSel('afSeg');
-    const i = await sb.from('funds').insert({ household_id: CTX.hh.id, name: v, country: cc, currency: cc === 'SG' ? 'SGD' : 'AUD', sort_order: funds.length });
+    let cc = cSel.value, cur;
+    if (cc === '__new__') {
+      cc = af.querySelector('#afCC').value.trim().toUpperCase();
+      cur = af.querySelector('#afCur').value.trim().toUpperCase();
+      if (!cc || !cur) { toast('give the new country a label and a currency'); return; }
+    } else {
+      cur = (funds.find(f => f.country === cc) || {}).currency || 'AUD';
+    }
+    let grp = gSel.value === '__newg__' ? af.querySelector('#afNewGroup').value.trim() : (gSel.value === '__new__' ? '' : gSel.value);
+    if (gSel.value === '__newg__' && !grp) { toast('give the new group a name'); return; }
+    const i = await sb.from('funds').insert({ household_id: CTX.hh.id, name: v, country: cc, currency: cur, group_name: grp || '', sort_order: funds.length });
     if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
     await loadContext(); if (fundsInit) loadFunds();
     renderSetFunds(box); toast(v + ' added 🐻');
@@ -1322,13 +1409,21 @@ async function renderSetCards(box){
   const cards = r.data || [];
   box.innerHTML = '';
   cards.forEach(c => {
-    const owner = c.profile_id ? ((CTX.profiles.find(p => p.id === c.profile_id) || {}).display_name || '?') : 'Joint';
+    const owner = c.profile_id ? ((CTX.profiles.find(p => p.id === c.profile_id) || {}).display_name || '?') : (jointLabel() || 'Joint');
     const d = document.createElement('div'); d.className = 'srow';
     if (c.is_archived) d.style.opacity = '.45';
     d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">💳</div>'
       + '<div style="flex:1;min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div>'
       + '<div class="cap">' + esc(owner) + (c.travel_only ? ' · travel only' : '') + '</div></div>'
       + (c.is_archived ? '<span class="tag">archived</span>' : '');
+    const ebtn = document.createElement('button');
+    ebtn.className = 'edit'; ebtn.textContent = '✎'; ebtn.setAttribute('aria-label', 'Rename');
+    ebtn.onclick = () => editInline(d, c.name, async v => {
+      const u = await sb.from('payment_methods').update({ name: v }).eq('id', c.id);
+      if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+      await loadContext(); renderSetCards(box); toast('renamed 🐻 — past expenses keep the old name');
+    });
+    d.appendChild(ebtn);
     const arch = document.createElement('button');
     arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
     arch.textContent = c.is_archived ? 'Restore' : 'Archive';
@@ -1575,7 +1670,7 @@ function renderTripDetail(){
       + ' <span class="gamt">' + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join('<br>') + '</span></summary>';
     list.forEach(e => {
       const who = e.payer_profile_id
-        ? ((CTX.profiles.find(p => p.id === e.payer_profile_id) || {}).display_name || '?') : 'Joint';
+        ? ((CTX.profiles.find(p => p.id === e.payer_profile_id) || {}).display_name || '?') : (jointLabel() || 'Joint');
       const row = document.createElement('div'); row.className = 'trow';
       row.innerHTML = '<div class="td"><span>' + esc(e.description) + '</span>'
         + '<span class="cap">' + esc(who) + ' · ' + new Date(e.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})
@@ -1707,7 +1802,7 @@ async function loadContext(){
   const cached = localStorage.getItem('bh-ctx');
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
   const [hh, profiles, funds, trips, cards, dCats, tCats] = await Promise.all([
-    sb.from('households').select('id, name, travel_fund_id').single(),
+    sb.from('households').select('id, name, travel_fund_id, joint_label').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('funds').select('id, name, country, currency').eq('is_active', true).order('sort_order'),
     sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
@@ -1822,7 +1917,18 @@ function buildGrid(spec, selName){
 }
 function gridSel(){ const b = document.querySelector('#gridCategory .cat.sel'); return b ? b.dataset.name : ''; }
 
-function payerNames(){ return CTX.profiles.map(p => p.display_name).concat('Joint'); }
+// the joint pot is a household setting — its label is data, and it can be turned off
+function jointLabel(){ return (CTX.hh && CTX.hh.joint_label) || null; }
+function payerNames(){
+  const names = CTX.profiles.map(p => p.display_name);
+  return jointLabel() ? names.concat(jointLabel()) : names;
+}
+function fundOptionsHtml(funds){
+  const byC = {};
+  (funds || []).forEach(f => (byC[f.country] = byC[f.country] || []).push(f));
+  return Object.keys(byC).map(c =>
+    '<optgroup label="' + esc(c) + '">' + byC[c].map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('') + '</optgroup>').join('');
+}
 
 // ── trip picker (large cards) + per-trip currencies ──
 let selectedTripId = null, tripListOpen = false;
@@ -1877,15 +1983,18 @@ function openForm(m){
   const lastPayer = localStorage.getItem('bh-payer') || names[0];
   const lastCur = localStorage.getItem('bh-cur') || 'A$';
 
+  const noCat = m === 'fund' || m === 'transfer';
   $('rowTrip').style.display = m === 'trip' ? 'block' : 'none';
-  $('rowFund').style.display = m === 'fund' ? 'block' : 'none';
+  $('rowFund').style.display = noCat ? 'block' : 'none';
+  $('fundSelCap').style.display = m === 'transfer' ? 'block' : 'none';
+  $('rowFund2').style.display = m === 'transfer' ? 'block' : 'none';
   $('rowType').style.display = m === 'fund' ? 'block' : 'none';
-  $('rowCategory').style.display = m === 'fund' ? 'none' : 'block';
-  $('rowPayer').style.display = m === 'fund' ? 'none' : 'block';
-  $('segCurrency').style.display = m === 'fund' ? 'none' : 'inline-flex';
-  $('fundCurLabel').style.display = m === 'fund' ? 'inline' : 'none';
+  $('rowCategory').style.display = noCat ? 'none' : 'block';
+  $('rowPayer').style.display = noCat ? 'none' : 'block';
+  $('segCurrency').style.display = noCat ? 'none' : 'inline-flex';
+  $('fundCurLabel').style.display = noCat ? 'inline' : 'none';
 
-  $('cardSel').style.display = m === 'fund' ? 'none' : 'block';   // funds have no card; date takes the row
+  $('cardSel').style.display = noCat ? 'none' : 'block';   // funds/transfers have no card; date takes the row
 
   if (m === 'daily') {
     $('formTitle').textContent = 'Add expense';
@@ -1898,14 +2007,28 @@ function openForm(m){
     $('formTitle').textContent = 'Fund transaction';
     $('descInput').placeholder = 'remarks — e.g. July top-up';
     buildSeg('segType', ['Into the fund','Out of the fund'], 0);
-    const au = CTX.funds.filter(f => f.country === 'AU'), sg = CTX.funds.filter(f => f.country === 'SG');
-    $('fundSel').innerHTML =
-      '<optgroup label="AU">' + au.map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('') + '</optgroup>' +
-      '<optgroup label="SG">' + sg.map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('') + '</optgroup>';
+    $('fundSel').innerHTML = fundOptionsHtml(CTX.funds);
     const lastFund = localStorage.getItem('bh-fund');
     if (lastFund && CTX.funds.some(f => f.id === lastFund)) $('fundSel').value = lastFund;
     updateFundCur();
     $('fundSel').onchange = updateFundCur;
+  } else if (m === 'transfer') {
+    $('formTitle').textContent = 'Transfer';
+    $('descInput').placeholder = 'remarks (optional)';
+    $('fundSel').innerHTML = fundOptionsHtml(CTX.funds);
+    $('fundSel2').innerHTML = fundOptionsHtml(CTX.funds);
+    if (CTX.funds.length > 1) $('fundSel2').value = CTX.funds[1].id;
+    const xferCur = () => {
+      const a = CTX.funds.find(f => f.id === $('fundSel').value);
+      const b = CTX.funds.find(f => f.id === $('fundSel2').value);
+      $('fundCurLabel').textContent = a ? (CURSYM[a.currency] || a.currency) : '';
+      const differ = a && b && a.currency !== b.currency;
+      $('recvInput').style.display = differ ? 'block' : 'none';
+      if (differ) $('recvInput').placeholder = 'amount received in ' + (CURSYM[b.currency] || b.currency);
+    };
+    $('fundSel').onchange = xferCur;
+    $('fundSel2').onchange = xferCur;
+    xferCur();
   } else {
     $('formTitle').textContent = 'Trip expense';
     $('descInput').placeholder = 'description — e.g. beach club';
@@ -1958,7 +2081,7 @@ function renderAmt(){
 // who-owes-what rows for one expense (payer +cost, joint −cost)
 function buildSplits(payerName, cost){
   const joint = { profile_id: null, amount: -cost };
-  if (payerName === 'Joint') return [joint];
+  if (jointLabel() && payerName === jointLabel()) return [joint];
   const p = CTX.profiles.find(x => x.display_name === payerName);
   return p ? [{ profile_id: p.id, amount: cost }, joint] : [joint];
 }
@@ -1968,7 +2091,7 @@ async function saveEntry(){
   const cost = parseFloat(amt);
   if (!(cost > 0)) { toast('enter an amount first'); return; }
   const desc = $('descInput').value.trim();
-  if (mode !== 'fund' && !desc) { toast('add a description — the shop or what it was'); return; }
+  if (mode !== 'fund' && mode !== 'transfer' && !desc) { toast('add a description — the shop or what it was'); return; }
   if (!CTX.hh) { toast('still connecting — try again in a second'); await loadContext(); return; }
 
   saving = true; $('saveBtn').innerHTML = '<span class="spin"></span>';
@@ -1988,6 +2111,27 @@ async function saveEntry(){
       localStorage.setItem('bh-fund', fundId);
       const f = CTX.funds.find(x => x.id === fundId);
       done(true, 'saved — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
+      if (fundsInit) loadFunds();
+      return;
+    }
+    if (mode === 'transfer') {
+      const from = CTX.funds.find(x => x.id === $('fundSel').value);
+      const to = CTX.funds.find(x => x.id === $('fundSel2').value);
+      if (!from || !to) { done(false, 'pick both funds'); return; }
+      if (from.id === to.id) { done(false, 'pick two different funds'); return; }
+      const crossCur = from.currency !== to.currency;
+      const received = crossCur ? parseFloat($('recvInput').value) : cost;
+      if (!(received > 0)) { done(false, 'enter the amount received in ' + (CURSYM[to.currency] || to.currency)); return; }
+      const note = desc ? ' · ' + desc : '';
+      const { error } = await sb.from('fund_transactions').insert([
+        { household_id: CTX.hh.id, fund_id: from.id, type: 'expense', date,
+          amount: cost, remarks: 'Transfer → ' + to.name + note, origin: 'manual' },
+        { household_id: CTX.hh.id, fund_id: to.id, type: 'income', date,
+          amount: received, remarks: 'Transfer ← ' + from.name + note, origin: 'manual' },
+      ]);
+      if (error) throw error;
+      done(true, fmtMoney(cost, from.currency) + ' moved: ' + from.name + ' → ' + to.name);
+      if (fundsInit) loadFunds();
       return;
     }
     const currency = SEG2CODE[segSel('segCurrency')] || 'AUD';
@@ -2038,9 +2182,9 @@ async function saveEntry(){
 // ── edit / delete a travel expense ───────────
 function payerFromSplits(exp){
   const pos = (exp.travel_expense_splits || []).find(s => s.profile_id && Number(s.amount) > 0);
-  if (!pos) return 'Joint';
+  if (!pos) return jointLabel() || 'Joint';
   const p = CTX.profiles.find(x => x.id === pos.profile_id);
-  return p ? p.display_name : 'Joint';
+  return p ? p.display_name : (jointLabel() || 'Joint');
 }
 function openEditExpense(exp){
   mode = 'edit'; editingExp = exp; saving = false;
