@@ -1516,8 +1516,49 @@ async function renderSetIncome(box){
   box.appendChild(capEl('these apply to ' + monthName(m, true) + ' — monthly copy-forward arrives with the plan ritual'));
 }
 
+// fetch every row, hopping over the 1000-row-per-request cap
+async function fetchAll(table, sel, orderCol){
+  const out = [];
+  for (let from = 0;; from += 1000) {
+    const { data, error } = await sb.from(table).select(sel)
+      .order(orderCol || 'id', { ascending: true }).range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < 1000) return out;
+  }
+}
+const BACKUP_TABLES = ['households','profiles','funds','fund_transactions','daily_expenses',
+  'daily_expense_splits','trips','travel_expenses','travel_expense_splits',
+  'category_budgets','fund_budgets','income_budgets','payment_methods'];
+async function fullBackup(btn){
+  try {
+    const out = { app: 'BearHaus v2', exported_at: new Date().toISOString(), tables: {} };
+    let total = 0;
+    for (const t of BACKUP_TABLES) {
+      btn.querySelector('.lbl').textContent = 'Backing up ' + t + '…';
+      out.tables[t] = await fetchAll(t, '*', 'id');
+      total += out.tables[t].length;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], { type: 'application/json' }));
+    a.download = 'bearhaus-backup-' + isoDate(new Date()) + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    btn.querySelector('.lbl').textContent = 'Full backup (everything)';
+    toast(total.toLocaleString() + ' rows saved — keep this file somewhere safe 🐻');
+  } catch (err) {
+    btn.querySelector('.lbl').textContent = 'Full backup (everything)';
+    toast('backup failed: ' + (err.message || err));
+  }
+}
 async function renderSetExport(box){
   box.innerHTML = '';
+  const fb = document.createElement('button');
+  fb.type = 'button'; fb.className = 'choice';
+  fb.innerHTML = '<div class="rowicon">🗄️</div><span class="lbl">Full backup (everything)</span>';
+  fb.onclick = () => fullBackup(fb);
+  box.appendChild(fb);
+  box.appendChild(capEl('one file, all 13 tables — your monthly ritual until Pro-plan backups'));
   const jobs = [
     ['🛒', 'Daily expenses', 'daily_expenses', 'daily-expenses.csv', null],
     ['💰', 'Fund transactions', 'fund_transactions', 'fund-transactions.csv', 'funds(name)'],
@@ -1530,8 +1571,9 @@ async function renderSetExport(box){
     b.onclick = async () => {
       toast('preparing ' + filename + '…');
       const sel = '*' + (embed ? ', ' + embed : '');
-      const { data, error } = await sb.from(table).select(sel).order('date', { ascending: true });
-      if (error) { toast('couldn’t export: ' + error.message); return; }
+      let data;
+      try { data = await fetchAll(table, sel, 'date'); }
+      catch (err) { toast('couldn’t export: ' + err.message); return; }
       const rows = (data || []).map(r => {
         const o = { ...r };
         if (o.funds) { o.fund_name = o.funds.name; delete o.funds; }
