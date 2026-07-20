@@ -831,7 +831,7 @@ function renderHome(state){
 }
 
 // ══ BUDGET ══════════════════════════════════
-const BUDGET_ROWS = [
+let BUDGET_ROWS = [
   { icon:'🏠', group:'Rent',              blabel:'Rental' },
   { icon:'🛍️', group:'Daily Expenses',    blabel:'Daily Expenses' },
   { icon:'👶', group:'Education',         blabel:'Education' },
@@ -1568,6 +1568,7 @@ function renderSettings(){
     { icon:'👥', label:'People', cap: (CTX.profiles || []).map(p => p.display_name).join(' · ') || '…', render: renderSetPeople },
     { icon:'💰', label:'Funds', cap: 'rename · archive · travel & leftover funds', render: renderSetFunds },
     { icon:'💳', label:'Payment cards', cap: 'per-person, archivable', render: renderSetCards },
+    { icon:'🏷️', label:'Categories', cap: 'add · rename · archive', render: renderSetCategories },
     { icon:'💵', label:'Income', cap: 'part of the monthly plan', render: renderSetIncome },
     { icon:'⬇️', label:'Export data', cap: 'CSV of everything', render: renderSetExport },
   ];
@@ -1588,13 +1589,6 @@ function renderSettings(){
   planRow.innerHTML = '<div class="rowicon">🎯</div><div style="min-width:0"><div class="lbl">Monthly plan</div><div class="cap">income · budgets · fund contributions</div></div><span class="chev">›</span>';
   planRow.onclick = openPlanEditor;
   box.appendChild(planRow);
-  [['🏷️','Categories','category editing arrives later in Phase 6 — meanwhile the top tiles follow your real usage']].forEach(([ic, lb, msg]) => {
-    const row = document.createElement('button');
-    row.type = 'button'; row.className = 'setrow';
-    row.innerHTML = '<div class="rowicon">' + ic + '</div><div style="min-width:0"><div class="lbl">' + lb + '</div><div class="cap">coming soon</div></div><span class="chev">›</span>';
-    row.onclick = () => toast(msg);
-    box.appendChild(row);
-  });
   const tut = document.createElement('button');
   tut.type = 'button'; tut.className = 'setrow';
   tut.innerHTML = '<div class="rowicon">📖</div><div style="min-width:0"><div class="lbl">App tutorial</div><div class="cap">the full tour — every screen, two minutes</div></div><span class="chev">›</span>';
@@ -1821,6 +1815,91 @@ async function renderSetCards(box){
   };
 }
 
+async function renderSetCategories(box){
+  const r = await sb.from('categories').select('id, kind, name, group_name, icon, is_active, sort_order').order('sort_order');
+  if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
+  const cats = r.data || [];
+  box.innerHTML = '';
+  if (!cats.length) {
+    box.innerHTML = '<p class="cap" style="padding:8px 0">your categories arrive with the next database update 🐻</p>';
+    return;
+  }
+  [['daily', 'Daily'], ['travel', 'Travel']].forEach(([kind, label]) => {
+    const kh = document.createElement('p'); kh.className = 'lbl'; kh.style.marginTop = '14px'; kh.textContent = label;
+    box.appendChild(kh);
+    const list = cats.filter(c => c.kind === kind);
+    const groups = {};
+    list.forEach(c => (groups[c.group_name] = groups[c.group_name] || []).push(c));
+    Object.keys(groups).forEach(g => {
+      const gh = document.createElement('p');
+      gh.className = 'cap';
+      gh.style.cssText = 'letter-spacing:.05em;text-transform:uppercase;margin:8px 0 0';
+      gh.textContent = g;
+      box.appendChild(gh);
+      groups[g].forEach(c => {
+        const d = document.createElement('div'); d.className = 'srow';
+        if (!c.is_active) d.style.opacity = '.45';
+        const locked = c.name === 'Payment';   // settle-up transfers are load-bearing
+        d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + esc(c.icon) + '</div>'
+          + '<span class="lbl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</span>'
+          + (locked ? '<span class="tag">settle-up</span>' : (!c.is_active ? '<span class="tag">archived</span>' : ''))
+          + (locked ? '' : '<button class="edit" aria-label="Rename">✎</button>');
+        if (!locked) {
+          d.querySelector('.edit').onclick = () => editInline(d, c.name, async v => {
+            const u = await sb.from('categories').update({ name: v }).eq('id', c.id);
+            if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+            await loadContext(); renderSetCategories(box);
+            toast('renamed 🐻 — past expenses keep the old name');
+          });
+          const arch = document.createElement('button');
+          arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
+          arch.textContent = c.is_active ? 'Archive' : 'Restore';
+          arch.onclick = async () => {
+            const u = await sb.from('categories').update({ is_active: !c.is_active }).eq('id', c.id);
+            if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+            await loadContext(); renderSetCategories(box);
+            toast(c.name + (c.is_active ? ' archived' : ' restored') + ' 🐻');
+          };
+          d.appendChild(arch);
+        }
+        box.appendChild(d);
+      });
+    });
+  });
+  const af = document.createElement('div'); af.style.cssText = 'margin-top:14px';
+  af.innerHTML = '<div style="display:flex;gap:8px"><input class="descinput" id="acatName" placeholder="new category name" style="flex:1;min-width:0"><input class="descinput" id="acatIcon" placeholder="🛍️" maxlength="4" style="width:64px;text-align:center"></div>'
+    + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center"><div class="seg" id="acatKind"></div>'
+    + '<select class="descinput" id="acatGroup" style="flex:1;min-width:0"></select>'
+    + '<button class="btn-mini" type="button" id="acatAdd">Add</button></div>'
+    + '<input class="descinput" id="acatNewGroup" placeholder="new group name" style="display:none;margin-top:8px;width:100%">';
+  box.appendChild(af);
+  const refreshGroups = () => {
+    const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
+    const gs = [...new Set(cats.filter(c => c.kind === kind).map(c => c.group_name))];
+    $('acatGroup').innerHTML = gs.map(g => '<option>' + esc(g) + '</option>').join('') + '<option value="__new__">+ new group…</option>';
+    $('acatNewGroup').style.display = 'none';
+  };
+  buildSeg('acatKind', ['Daily', 'Travel'], 0, refreshGroups);
+  $('acatGroup').onchange = () => { $('acatNewGroup').style.display = $('acatGroup').value === '__new__' ? 'block' : 'none'; };
+  refreshGroups();
+  $('acatAdd').onclick = async () => {
+    const name = $('acatName').value.trim();
+    if (!name) { toast('type a name first'); return; }
+    const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
+    const grp = $('acatGroup').value === '__new__' ? $('acatNewGroup').value.trim() : $('acatGroup').value;
+    if (!grp) { toast('pick or name a group'); return; }
+    const same = cats.filter(c => c.kind === kind);
+    const i = await sb.from('categories').insert({
+      household_id: CTX.hh.id, kind, name, group_name: grp,
+      icon: $('acatIcon').value.trim() || '🛍️',
+      sort_order: same.length ? Math.max(...same.map(c => c.sort_order)) + 1 : 0,
+    });
+    if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
+    await loadContext(); renderSetCategories(box); toast(name + ' added 🐻');
+  };
+  box.appendChild(capEl('archiving hides a category from the picker without touching history · renames create a fresh label — past expenses keep the old one'));
+}
+
 async function renderSetIncome(box){
   // income moved into the monthly plan editor — this is just the doorway
   box.innerHTML = '';
@@ -1845,7 +1924,7 @@ async function fetchAll(table, sel, orderCol){
 }
 const BACKUP_TABLES = ['households','profiles','funds','fund_transactions','daily_expenses',
   'daily_expense_splits','trips','travel_expenses','travel_expense_splits',
-  'category_budgets','fund_budgets','income_budgets','payment_methods'];
+  'category_budgets','fund_budgets','income_budgets','payment_methods','categories'];
 async function fullBackup(btn){
   try {
     const out = { app: 'BearHaus v2', exported_at: new Date().toISOString(), tables: {} };
@@ -2169,24 +2248,33 @@ let CTX = { hh: null, profiles: [], funds: [], trips: [], cards: [] };
 async function loadContext(){
   const cached = localStorage.getItem('bh-ctx');
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
-  const [hh, profiles, funds, trips, cards, dCats, tCats] = await Promise.all([
+  if (CTX.cats) applyCategories(CTX.cats);   // instant catalogue from the last visit
+  const [hh, profiles, funds, trips, cards, cats, dCats, tCats] = await Promise.all([
     sb.from('households').select('id, name, travel_fund_id, joint_label').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('funds').select('id, name, country, currency').eq('is_active', true).order('sort_order'),
     sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
     sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order').eq('is_archived', false).order('sort_order'),
+    sb.from('categories').select('kind, name, group_name, icon').eq('is_active', true).order('sort_order'),
     sb.from('daily_expenses').select('category').order('date', {ascending:false}).limit(300),
     sb.from('travel_expenses').select('category').order('date', {ascending:false}).limit(120),
   ]);
-  if (!hh.error) CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
-                         trips: trips.data || [], cards: cards.data || [],
-                         topDaily: topCats(dCats.data, FALLBACK_DAILY),
-                         topTravel: topCats(tCats.data, FALLBACK_TRAVEL) };
+  if (!hh.error) {
+    // table may predate the categories migration — fall back to built-ins
+    const catRows = cats.error ? (CTX.cats || []) : (cats.data || []);
+    applyCategories(catRows);
+    CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
+            trips: trips.data || [], cards: cards.data || [], cats: catRows,
+            topDaily: topCats(dCats.data, FALLBACK_DAILY),
+            topTravel: topCats(tCats.data, FALLBACK_TRAVEL) };
+  }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
 }
 
-// grouped category catalogues — shown when "More" is tapped
-const DAILY_GROUPED = {
+// grouped category catalogues — shown when "More" is tapped.
+// these are the BUILT-IN defaults; applyCategories() swaps in the
+// household's own categories once they load from the database.
+let DAILY_GROUPED = {
   '🛍️ Daily expenses': ['Dining out','Groceries','Household supplies','Home - Other','Furniture','Sports',
                          'Clothing','Gifts','Liquor','Entertainment - Other','Electronics','Movies','Games',
                          'Medical Expenses','Health','Life - Other','Hotel'],
@@ -2196,7 +2284,7 @@ const DAILY_GROUPED = {
   '🏠 Home & fixed':    ['Rent','Insurance','TV/Phone/Internet'],
   '🔁 Transfers':       ['Payment'],
 };
-const TRAVEL_GROUPED = {
+let TRAVEL_GROUPED = {
   '✈️ Flights & transport': ['Flights','Airport Transfer','Taxi/Grab','Public Transport','Car Rental','Ferry/Train'],
   '🏨 Accommodation':       ['Hotel','Airbnb/Hostel'],
   '🍜 Food & drinks':       ['Dining out','Street Food','Groceries','Drinks'],
@@ -2207,8 +2295,36 @@ const TRAVEL_GROUPED = {
   '🗂️ Other':              ['Other'],
 };
 // first-eight fallbacks until your real usage stats load
-const FALLBACK_DAILY  = ['Dining out','Groceries','Bus/train','Home - Other','TV/Phone/Internet','Household supplies','Childcare'];
-const FALLBACK_TRAVEL = ['Dining out','Taxi/Grab','Public Transport','Hotel','Shopping','Currency exchange','Flights'];
+let FALLBACK_DAILY  = ['Dining out','Groceries','Bus/train','Home - Other','TV/Phone/Internet','Household supplies','Childcare'];
+let FALLBACK_TRAVEL = ['Dining out','Taxi/Grab','Public Transport','Hotel','Shopping','Currency exchange','Flights'];
+
+// swap the built-in catalogue for the household's own categories.
+// no rows yet (or the table not migrated) → the built-ins stay in place.
+function applyCategories(cats){
+  const daily = (cats || []).filter(c => c.kind === 'daily');
+  const travel = (cats || []).filter(c => c.kind === 'travel');
+  if (daily.length) {
+    DAILY_GROUPED = {};
+    daily.forEach(c => (DAILY_GROUPED[c.group_name] = DAILY_GROUPED[c.group_name] || []).push(c.name));
+    FALLBACK_DAILY = daily.filter(c => c.name !== 'Payment').slice(0, 7).map(c => c.name);
+    BUDGET_ROWS = [];
+    const seen = {};
+    daily.forEach(c => {
+      if (c.group_name === 'Transfers' || seen[c.group_name]) return;
+      seen[c.group_name] = true;
+      BUDGET_ROWS.push({ icon: c.icon, group: c.group_name, blabel: c.group_name });
+    });
+  }
+  if (travel.length) {
+    TRAVEL_GROUPED = {};
+    travel.forEach(c => (TRAVEL_GROUPED[c.group_name] = TRAVEL_GROUPED[c.group_name] || []).push(c.name));
+    FALLBACK_TRAVEL = travel.slice(0, 7).map(c => c.name);
+  }
+  (cats || []).forEach(c => {
+    CAT_ICON[c.name] = c.icon || CAT_ICON[c.name] || '🛍️';
+    if (c.kind === 'daily') GROUP_OF[c.name] = c.group_name;   // legacy names keep their old mapping
+  });
+}
 function topCats(rows, fallback){
   const freq = {};
   (rows || []).forEach(r => { if (r.category !== 'Payment') freq[r.category] = (freq[r.category] || 0) + 1; });
@@ -2584,7 +2700,7 @@ function openEditExpense(exp){
   buildSeg('segCurrency', labels, Math.max(codes.indexOf(exp.currency), 0));
   // grouped grid with this row's category selected (legacy names stay selectable)
   const grouped = JSON.parse(JSON.stringify(TRAVEL_GROUPED));
-  if (!Object.values(grouped).flat().includes(exp.category)) grouped['🗂️ Other'].push(exp.category);
+  if (!Object.values(grouped).flat().includes(exp.category)) (grouped['🗂️ Other'] = grouped['🗂️ Other'] || []).push(exp.category);
   buildGrid(grouped, exp.category);
   const payer = payerFromSplits(exp);
   buildSeg('segPayer', payerNames(), Math.max(payerNames().indexOf(payer), 0), p => refreshCards(p));
