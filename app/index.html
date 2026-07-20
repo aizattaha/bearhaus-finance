@@ -357,6 +357,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
         <p class="cap" id="budTotalLabel">…</p>
         <p class="disp num" id="budTotalMain" style="margin-top:2px;font-size:28px;line-height:36px">…</p>
         <p class="cap num" id="budTotalSub" style="margin-top:2px"></p>
+        <button id="budPlanBtn" onclick="openPlanEditor()" style="display:none;background:none;border:none;font-family:inherit;font-size:13px;font-weight:500;color:var(--accent);padding:0;margin-top:10px;cursor:pointer">Edit this month’s plan ›</button>
       </div>
       <div class="card" id="floatCard" style="display:none">
         <div style="display:flex;gap:12px;align-items:center">
@@ -399,7 +400,10 @@ select.descinput{appearance:none;-webkit-appearance:none}
       <div class="card" id="planCard" style="background:var(--accent-soft);box-shadow:none">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
           <p class="lbl" style="color:var(--primary)" id="planTitle">This month's plan</p>
-          <button class="btn btn-primary" style="height:40px;padding:0 18px;font-size:13px;flex-shrink:0" id="applyBtn" onclick="openApplySheet()">Review &amp; apply</button>
+          <span style="flex-shrink:0;display:flex;align-items:center;gap:2px">
+            <button class="btn-tert" onclick="openPlanEditor()">Edit</button>
+            <button class="btn btn-primary" style="height:40px;padding:0 18px;font-size:13px" id="applyBtn" onclick="openApplySheet()">Review &amp; apply</button>
+          </span>
         </div>
         <div id="flowRows"><p class="cap">loading…</p></div>
         <p class="cap" style="margin-top:8px" id="planCaption"></p>
@@ -486,6 +490,11 @@ select.descinput{appearance:none;-webkit-appearance:none}
     <div class="f-sec"><p class="cap" style="margin-bottom:6px">countries</p><div id="ntCountries" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
     <div class="f-sec"><p class="cap" style="margin-bottom:6px">local currencies · your home currencies are always on the list</p><div id="ntCurrencies" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
     <button class="btn btn-primary" style="width:100%;margin-top:16px" id="ntGo" onclick="createTrip()">Create trip</button>
+  </div>
+
+  <div id="sh-plan" style="display:none">
+    <div class="sheet-head"><span class="h2" id="planEdTitle">Monthly plan</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
+    <div id="planEdBody"><p class="cap">loading…</p></div>
   </div>
 </div>
 
@@ -952,6 +961,9 @@ function renderBudget(st){
   else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, PC) + ' still available'; sub.style.color = ''; }
   else { sub.textContent = fmtMoney(spent - budget, PC) + ' over budget'; sub.style.color = '#F0A8A8'; }
 
+  // current month links straight into the plan editor
+  $('budPlanBtn').style.display = st.month === curMonthIso() ? 'inline-block' : 'none';
+
   // float buffer card
   if (st.float !== null && st.float !== undefined) {
     $('floatCard').style.display = 'block';
@@ -1301,7 +1313,8 @@ function openApplySheet(){
   });
   $('applyTitle').textContent = monthName(fundsState.month, true) + ' plan';
   updateApplySummary();
-  $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none'; $('sh-apply').style.display = 'block';
+  $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none'; $('sh-newtrip').style.display = 'none';
+  $('sh-plan').style.display = 'none'; $('sh-apply').style.display = 'block';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
 function updateApplySummary(){
@@ -1325,6 +1338,186 @@ async function applyPlan(){
   if (error) { toast('couldn’t apply: ' + error.message); return; }
   closeSheet(); toast('applied — ' + rows.length + ' contributions written 🐻');
   loadFunds();
+}
+
+// ══ MONTHLY PLAN EDITOR ═════════════════════
+// one surface for the whole ritual: money in − spending plan − into funds = leftover.
+// opening a month with no plan prefills it from the most recent planned month.
+let planDraft = null, planSaving = false;
+async function openPlanEditor(){
+  if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
+  $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none';
+  $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
+  $('sh-plan').style.display = 'block';
+  $('backdrop').classList.add('open'); $('sheet').classList.add('open');
+  const m = curMonthIso(), next = addMonths(m, 1);
+  $('planEdTitle').textContent = monthName(m, true) + ' plan';
+  $('planEdBody').innerHTML = '<p class="cap">loading…</p>';
+  try {
+    const [funds, inc, cat, fb, applied] = await Promise.all([
+      sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_leftover_target').eq('is_active', true).order('sort_order'),
+      sb.from('income_budgets').select('id, source_name, currency, amount').eq('month', m),
+      sb.from('category_budgets').select('id, category_group, currency, amount').eq('month', m),
+      sb.from('fund_budgets').select('id, fund_id, amount').eq('month', m),
+      sb.from('fund_transactions').select('date').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
+    ]);
+    for (const r of [funds, inc, cat, fb, applied]) if (r.error) throw r.error;
+    let prevMonth = null, pInc = [], pCat = [], pFb = [];
+    if (!inc.data.length && !cat.data.length && !fb.data.length) {
+      // nothing planned yet — copy forward from the most recent planned month
+      const last = await Promise.all(['income_budgets', 'category_budgets', 'fund_budgets'].map(t =>
+        sb.from(t).select('month').lt('month', m).order('month', {ascending:false}).limit(1)));
+      prevMonth = last.map(r => (r.data && r.data[0]) ? r.data[0].month : null).filter(Boolean).sort().pop() || null;
+      if (prevMonth) {
+        const [i2, c2, f2] = await Promise.all([
+          sb.from('income_budgets').select('source_name, currency, amount').eq('month', prevMonth),
+          sb.from('category_budgets').select('category_group, currency, amount').eq('month', prevMonth),
+          sb.from('fund_budgets').select('fund_id, amount').eq('month', prevMonth),
+        ]);
+        pInc = i2.data || []; pCat = c2.data || []; pFb = f2.data || [];
+      }
+    }
+    planDraft = {
+      month: m,
+      prefilledFrom: prevMonth,
+      appliedOn: applied.data.length ? applied.data[0].date : null,
+      funds: funds.data || [],
+      inc: (inc.data.length ? inc.data : pInc).map(r => ({ source_name: r.source_name, currency: r.currency, amount: Number(r.amount) })),
+      cat: {},   // 'group|currency' -> amount
+      fb: {},    // fund_id -> amount
+    };
+    (cat.data.length ? cat.data : pCat).forEach(r => planDraft.cat[r.category_group + '|' + r.currency] = Number(r.amount));
+    (fb.data.length ? fb.data : pFb).forEach(r => planDraft.fb[r.fund_id] = Number(r.amount));
+    renderPlanEditor();
+  } catch (err) { $('planEdBody').innerHTML = '<p class="cap">couldn’t load: ' + esc(err.message || err) + '</p>'; }
+}
+function renderPlanEditor(){
+  const d = planDraft, box = $('planEdBody'), PC = primaryCur();
+  box.innerHTML = '';
+  const sec = t => { const p = document.createElement('p'); p.className = 'cap'; p.style.cssText = 'letter-spacing:.05em;text-transform:uppercase;margin:14px 0 2px'; p.textContent = t; return p; };
+  if (d.prefilledFrom) box.appendChild(capEl('prefilled from ' + monthName(d.prefilledFrom, true) + ' — tweak anything, then save'));
+  if (d.appliedOn) box.appendChild(capEl('heads-up: this month’s contributions were already applied — edits change the plan, not money already moved'));
+
+  const amtInput = (val, onChange) => {
+    const i = document.createElement('input');
+    i.className = 'descinput'; i.type = 'number'; i.step = '0.01'; i.inputMode = 'decimal';
+    i.placeholder = '0'; i.style.cssText = 'width:96px;flex-shrink:0;text-align:right';
+    if (val) i.value = val % 1 === 0 ? val : val.toFixed(2);
+    i.oninput = () => { onChange(parseFloat(i.value) || 0); updatePlanMath(); };
+    return i;
+  };
+  const rowEl = (label, cap2, input) => {
+    const r = document.createElement('div'); r.className = 'srow';
+    const lab = document.createElement('div'); lab.style.cssText = 'flex:1;min-width:0';
+    lab.innerHTML = '<div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + '</div>'
+      + (cap2 ? '<div class="cap">' + cap2 + '</div>' : '');
+    r.appendChild(lab); r.appendChild(input);
+    return r;
+  };
+
+  // money in
+  box.appendChild(sec('money in'));
+  d.inc.forEach(r => box.appendChild(rowEl(esc(r.source_name), curLabel(r.currency), amtInput(r.amount, v => r.amount = v))));
+  const addInc = document.createElement('div');
+  addInc.style.cssText = 'display:flex;gap:8px;margin-top:6px;align-items:center';
+  addInc.innerHTML = '<input class="descinput" placeholder="new source" style="flex:1;min-width:0"><div class="seg" id="planIncSeg"></div><button class="btn-mini" type="button">Add</button>';
+  box.appendChild(addInc);
+  const incMap = {};
+  const incLabels = homeCurrencies().map(c => { let l = curLabel(c); if (incMap[l]) l = c; incMap[l] = c; return l; });
+  buildSeg('planIncSeg', incLabels, 0);
+  addInc.lastChild.onclick = () => {
+    const name = addInc.firstChild.value.trim();
+    if (!name) { toast('name the source first'); return; }
+    d.inc.push({ source_name: name, currency: incMap[segSel('planIncSeg')] || PC, amount: 0 });
+    renderPlanEditor();
+  };
+
+  // spending plan
+  box.appendChild(sec('spending plan · ' + curLabel(PC)));
+  const covered = new Set();
+  BUDGET_ROWS.forEach(b => {
+    const key = b.blabel + '|' + PC;
+    covered.add(key);
+    box.appendChild(rowEl(b.icon + ' ' + esc(b.group), null, amtInput(d.cat[key] || 0, v => d.cat[key] = v)));
+  });
+  Object.keys(d.cat).filter(k => !covered.has(k) && d.cat[k] > 0).forEach(k => {
+    const i = k.lastIndexOf('|');
+    box.appendChild(rowEl(esc(k.slice(0, i)), curLabel(k.slice(i + 1)), amtInput(d.cat[k], v => d.cat[k] = v)));
+  });
+
+  // into funds
+  box.appendChild(sec('into funds'));
+  const byCountry = {};
+  d.funds.forEach(f => (byCountry[f.country] = byCountry[f.country] || []).push(f));
+  Object.keys(byCountry).forEach(cc => {
+    const h = document.createElement('p'); h.className = 'lbl'; h.style.marginTop = '8px'; h.textContent = cc;
+    box.appendChild(h);
+    byCountry[cc].forEach(f => {
+      const cap2 = f.is_leftover_target ? 'leftover lands here on its own — usually leave blank' : null;
+      box.appendChild(rowEl(fundIcon(f.name) + ' ' + esc(f.name), cap2, amtInput(d.fb[f.id] || 0, v => d.fb[f.id] = v)));
+    });
+  });
+
+  // the loop, live — pinned to the bottom while you type
+  const foot = document.createElement('div');
+  foot.style.cssText = 'position:sticky;bottom:0;background:#fff;padding:10px 0 8px;margin-top:14px;border-top:1px solid var(--muted)';
+  foot.innerHTML = '<p class="cap" style="margin-bottom:2px">money in − spending plan − into funds = leftover</p>'
+    + '<div id="planMath"></div>'
+    + '<button class="btn btn-primary" style="width:100%;margin-top:10px" id="planSave">Save plan</button>';
+  box.appendChild(foot);
+  foot.querySelector('#planSave').onclick = savePlan;
+  updatePlanMath();
+}
+function updatePlanMath(){
+  const d = planDraft; if (!d || !$('planMath')) return;
+  const inc = {}, cat = {}, fb = {};
+  d.inc.forEach(r => { if (r.amount > 0) inc[r.currency] = (inc[r.currency] || 0) + r.amount; });
+  Object.entries(d.cat).forEach(([k, v]) => { if (v > 0) { const c = k.slice(k.lastIndexOf('|') + 1); cat[c] = (cat[c] || 0) + v; } });
+  const byId = {}; d.funds.forEach(f => byId[f.id] = f);
+  Object.entries(d.fb).forEach(([id, v]) => {
+    const f = byId[id];
+    if (f && v > 0 && !f.is_leftover_target) fb[f.currency] = (fb[f.currency] || 0) + v;   // leftover funds ARE the leftover
+  });
+  const curs = [...new Set([...homeCurrencies(), ...Object.keys(inc), ...Object.keys(cat), ...Object.keys(fb)])];
+  const n = v => Number(v || 0).toLocaleString('en-AU', {maximumFractionDigits: 0});
+  $('planMath').innerHTML = curs.map(c => {
+    const left = (inc[c] || 0) - (cat[c] || 0) - (fb[c] || 0);
+    return '<div class="flowrow"><span class="cap num" style="flex:1">' + curLabel(c) + ' · '
+      + n(inc[c]) + ' − ' + n(cat[c]) + ' − ' + n(fb[c]) + '</span>'
+      + '<span class="lbl num" style="padding-left:8px;color:' + (left < 0 ? 'var(--bad)' : 'var(--good)') + '">= '
+      + (left < 0 ? '−' : '+') + fmtMoney(Math.abs(left), c) + '</span></div>';
+  }).join('');
+}
+async function savePlan(){
+  if (planSaving || !planDraft) return;
+  planSaving = true;
+  const btn = $('planSave'); if (btn) btn.innerHTML = '<span class="spin"></span>';
+  const d = planDraft, m = d.month, hh = CTX.hh.id;
+  try {
+    let r = await sb.from('income_budgets').delete().eq('month', m);
+    if (r.error) throw r.error;
+    const incRows = d.inc.filter(x => x.amount > 0).map(x => ({ household_id: hh, month: m, source_name: x.source_name, currency: x.currency, amount: x.amount }));
+    if (incRows.length) { r = await sb.from('income_budgets').insert(incRows); if (r.error) throw r.error; }
+    r = await sb.from('category_budgets').delete().eq('month', m);
+    if (r.error) throw r.error;
+    const catRows = Object.entries(d.cat).filter(([, v]) => v > 0).map(([k, v]) => {
+      const i = k.lastIndexOf('|');
+      return { household_id: hh, month: m, category_group: k.slice(0, i), currency: k.slice(i + 1), amount: v };
+    });
+    if (catRows.length) { r = await sb.from('category_budgets').insert(catRows); if (r.error) throw r.error; }
+    r = await sb.from('fund_budgets').delete().eq('month', m);
+    if (r.error) throw r.error;
+    const fbRows = Object.entries(d.fb).filter(([, v]) => v > 0).map(([id, v]) => ({ household_id: hh, month: m, fund_id: id, amount: v }));
+    if (fbRows.length) { r = await sb.from('fund_budgets').insert(fbRows); if (r.error) throw r.error; }
+    planSaving = false;
+    closeSheet(); toast('plan saved 🐻');
+    if (fundsInit) loadFunds();
+    if (budgetInit) selectBudgetMonth(budgetMonth);
+  } catch (err) {
+    planSaving = false;
+    if ($('planSave')) $('planSave').textContent = 'Save plan';
+    toast('couldn’t save: ' + (err.message || err));
+  }
 }
 
 // ══ SETTINGS ════════════════════════════════
@@ -1375,7 +1568,7 @@ function renderSettings(){
     { icon:'👥', label:'People', cap: (CTX.profiles || []).map(p => p.display_name).join(' · ') || '…', render: renderSetPeople },
     { icon:'💰', label:'Funds', cap: 'rename · archive · travel & leftover funds', render: renderSetFunds },
     { icon:'💳', label:'Payment cards', cap: 'per-person, archivable', render: renderSetCards },
-    { icon:'💵', label:'Income', cap: monthName(curMonthIso(), true) + '’s sources', render: renderSetIncome },
+    { icon:'💵', label:'Income', cap: 'part of the monthly plan', render: renderSetIncome },
     { icon:'⬇️', label:'Export data', cap: 'CSV of everything', render: renderSetExport },
   ];
   sections.forEach(s => {
@@ -1390,8 +1583,12 @@ function renderSettings(){
     };
     box.appendChild(row); box.appendChild(body);
   });
-  [['🏷️','Categories','category editing arrives with onboarding (Phase 6) — meanwhile the top tiles follow your real usage'],
-   ['🎯','Budgets & plan','per-month budget editing arrives with the plan ritual (Phase 6)']].forEach(([ic, lb, msg]) => {
+  const planRow = document.createElement('button');
+  planRow.type = 'button'; planRow.className = 'setrow';
+  planRow.innerHTML = '<div class="rowicon">🎯</div><div style="min-width:0"><div class="lbl">Monthly plan</div><div class="cap">income · budgets · fund contributions</div></div><span class="chev">›</span>';
+  planRow.onclick = openPlanEditor;
+  box.appendChild(planRow);
+  [['🏷️','Categories','category editing arrives later in Phase 6 — meanwhile the top tiles follow your real usage']].forEach(([ic, lb, msg]) => {
     const row = document.createElement('button');
     row.type = 'button'; row.className = 'setrow';
     row.innerHTML = '<div class="rowicon">' + ic + '</div><div style="min-width:0"><div class="lbl">' + lb + '</div><div class="cap">coming soon</div></div><span class="chev">›</span>';
@@ -1625,54 +1822,14 @@ async function renderSetCards(box){
 }
 
 async function renderSetIncome(box){
-  const m = curMonthIso();
-  const r = await sb.from('income_budgets').select('id, source_name, currency, amount').eq('month', m).order('source_name');
-  if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
-  const rows = r.data || [];
+  // income moved into the monthly plan editor — this is just the doorway
   box.innerHTML = '';
-  rows.forEach(inc => {
-    const d = document.createElement('div'); d.className = 'srow';
-    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">💵</div>'
-      + '<span class="lbl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(inc.source_name) + '</span>'
-      + '<span class="lbl num" style="color:var(--good)">+' + fmtMoney(inc.amount, inc.currency) + '</span>'
-      + '<button class="edit" aria-label="Edit amount">✎</button>';
-    d.querySelector('.edit').onclick = () => {
-      const input = document.createElement('input');
-      input.className = 'descinput'; input.type = 'number'; input.step = '0.01';
-      input.value = Number(inc.amount); input.style.cssText = 'width:110px;flex-shrink:0';
-      const ok = document.createElement('button'); ok.className = 'btn-mini'; ok.textContent = '✓'; ok.style.padding = '0 14px';
-      d.querySelector('.lbl.num').replaceWith(input);
-      d.querySelector('.edit').replaceWith(ok);
-      input.focus();
-      ok.onclick = async () => {
-        const v = parseFloat(input.value);
-        if (!(v >= 0)) { toast('enter a valid amount'); return; }
-        const u = await sb.from('income_budgets').update({ amount: v }).eq('id', inc.id);
-        if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
-        if (fundsInit) loadFunds();
-        renderSetIncome(box); toast('updated 🐻');
-      };
-    };
-    box.appendChild(d);
-  });
-  const af = document.createElement('div'); af.style.cssText = 'display:flex;gap:8px;margin-top:12px;align-items:center';
-  af.innerHTML = '<input class="descinput" placeholder="source name" style="flex:1;min-width:0"><input class="descinput" type="number" step="0.01" placeholder="0.00" style="width:90px"><div class="seg" id="aiSeg"></div><button class="btn-mini" type="button">Add</button>';
-  box.appendChild(af);
-  const segMap = {};
-  const segLabels = homeCurrencies().map(c => { let l = curLabel(c); if (segMap[l]) l = c; segMap[l] = c; return l; });
-  buildSeg('aiSeg', segLabels, 0);
-  af.lastChild.onclick = async () => {
-    const name = af.children[0].value.trim(), amt2 = parseFloat(af.children[1].value);
-    if (!name || !(amt2 > 0)) { toast('name and amount needed'); return; }
-    const i = await sb.from('income_budgets').insert({
-      household_id: CTX.hh.id, month: m, source_name: name,
-      currency: segMap[segSel('aiSeg')] || primaryCur(), amount: amt2,
-    });
-    if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
-    if (fundsInit) loadFunds();
-    renderSetIncome(box); toast(name + ' added 🐻');
-  };
-  box.appendChild(capEl('these apply to ' + monthName(m, true) + ' — monthly copy-forward arrives with the plan ritual'));
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'choice';
+  b.innerHTML = '<div class="rowicon">🗓️</div><span class="lbl">Open the monthly plan</span>';
+  b.onclick = openPlanEditor;
+  box.appendChild(b);
+  box.appendChild(capEl('income now lives in the monthly plan, together with spending budgets and fund contributions — the whole month in one place'));
 }
 
 // fetch every row, hopping over the 1000-row-per-request cap
@@ -1978,6 +2135,7 @@ function openNewTripSheet(){
   }));
   renderNtCurrencies();
   $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none'; $('sh-apply').style.display = 'none';
+  $('sh-plan').style.display = 'none';
   $('sh-newtrip').style.display = 'block';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
@@ -2085,6 +2243,7 @@ function openSheet(){
   $('sh-form').style.display = 'none';
   $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none';
+  $('sh-plan').style.display = 'none';
   $('backdrop').classList.add('open');
   $('sheet').classList.add('open');
 }
@@ -2437,6 +2596,7 @@ function openEditExpense(exp){
   $('deleteBtn').style.display = 'inline'; $('deleteBtn').textContent = 'Delete';
   $('saveBtn').textContent = 'Save';
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
+  $('sh-plan').style.display = 'none';
   $('sh-form').style.display = 'block';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
