@@ -327,7 +327,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span class="h2" id="donutTitle">This month by category</span>
-          <span style="display:inline-flex;font-size:12px;font-weight:500;border-radius:999px;padding:3px 12px;background:var(--accent-soft);color:var(--primary)">A$</span>
+          <span id="donutCur" style="display:inline-flex;font-size:12px;font-weight:500;border-radius:999px;padding:3px 12px;background:var(--accent-soft);color:var(--primary)">A$</span>
         </div>
         <div class="donutwrap" id="donutWrap"><p class="cap">loading…</p></div>
       </div>
@@ -344,7 +344,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
       </div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="h2">Last 6 months</span><span class="pill">A$</span>
+          <span class="h2">Last 6 months</span><span class="pill" id="budCurPill">A$</span>
         </div>
         <div id="budChart" style="margin-top:10px"><p class="cap">loading…</p></div>
         <div class="legend2">
@@ -398,18 +398,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
 
     <section class="screen" id="scr-funds">
       <div><p class="cap">Funds</p><h2 class="h1" style="margin-top:2px">How much do we have?</h2></div>
-      <div class="duo">
-        <div class="total-card">
-          <p class="cap">AU funds</p>
-          <p class="disp num" id="fTotAU" style="margin-top:2px;font-size:19px;line-height:28px">…</p>
-          <p class="cap num" id="fTotAUn" style="margin-top:2px"></p>
-        </div>
-        <div class="total-card" style="background:#003A78">
-          <p class="cap">SG funds</p>
-          <p class="disp num" id="fTotSG" style="margin-top:2px;font-size:19px;line-height:28px">…</p>
-          <p class="cap num" id="fTotSGn" style="margin-top:2px"></p>
-        </div>
-      </div>
+      <div class="duo" id="fundTotals"><p class="cap">loading…</p></div>
       <div class="card" id="planCard" style="background:var(--accent-soft);box-shadow:none">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
           <p class="lbl" style="color:var(--primary)" id="planTitle">This month's plan</p>
@@ -418,20 +407,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
         <div id="flowRows"><p class="cap">loading…</p></div>
         <p class="cap" style="margin-top:8px" id="planCaption"></p>
       </div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <span class="h2">AU</span>
-          <span><button class="btn-tert" id="fAUedit">Edit</button><button class="btn-tert" id="fAUmore" style="display:none"></button></span>
-        </div>
-        <div id="fundsAU"></div>
-      </div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <span class="h2">SG</span>
-          <span><button class="btn-tert" id="fSGedit">Edit</button><button class="btn-tert" id="fSGmore" style="display:none"></button></span>
-        </div>
-        <div id="fundsSG"></div>
-      </div>
+      <div id="fundListCards" style="display:flex;flex-direction:column;gap:16px"></div>
     </section>
 
     <section class="screen" id="scr-settings">
@@ -511,7 +487,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
       <input class="descinput" id="ntEnd" type="date" style="flex:1">
     </div>
     <div class="f-sec"><p class="cap" style="margin-bottom:6px">countries</p><div id="ntCountries" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
-    <div class="f-sec"><p class="cap" style="margin-bottom:6px">local currencies · A$ and S$ are always available</p><div id="ntCurrencies" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
+    <div class="f-sec"><p class="cap" style="margin-bottom:6px">local currencies · your home currencies are always on the list</p><div id="ntCurrencies" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
     <button class="btn btn-primary" style="width:100%;margin-top:16px" id="ntGo" onclick="createTrip()">Create trip</button>
   </div>
 </div>
@@ -551,6 +527,15 @@ function fmtMoney(v, cur){
 }
 // 'SG' -> 🇸🇬 (country code to flag emoji)
 const flagOf = cc => /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
+
+// the currencies THIS household uses — derived from its funds, so every screen
+// only ever offers what the household actually has (an AU-only home sees no S$)
+function homeCurrencies(){
+  const l = [...new Set((CTX.funds || []).map(f => f.currency))];
+  return l.length ? l : ['AUD'];
+}
+function primaryCur(){ return homeCurrencies()[0]; }
+const curLabel = c => CURSYM[c] || c;
 
 // ── auth flow ────────────────────────────────
 let authMode = 'signin';
@@ -702,6 +687,9 @@ async function enterApp(){
   loadHome();
   loadContext().then(() => {
     if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
+    // the first paint guessed the home currency — repaint with the real one
+    const c = localStorage.getItem('bh-home');
+    if (c) { try { renderHome(JSON.parse(c)); } catch(e){} }
   });
 }
 
@@ -766,16 +754,17 @@ function renderHome(state){
     const d = new Date(now); d.setDate(now.getDate() - i);
     days.push({ iso: isoDate(d), label: i === 0 ? 'Today' : d.toLocaleDateString('en-AU', {weekday:'short'}), au: 0 });
   }
-  let weekAU = 0, weekSG = 0;
+  const PC = primaryCur();
+  let weekMain = 0; const weekOther = {};
   (state.week || []).forEach(r => {
     const amt = Number(r.amount);
-    if (r.currency === 'SGD') { weekSG += amt; return; }
-    weekAU += amt;
+    if (r.currency !== PC) { weekOther[r.currency] = (weekOther[r.currency] || 0) + amt; return; }
+    weekMain += amt;
     const day = days.find(d => d.iso === r.date);
     if (day) day.au += amt;
   });
-  $('weekTotal').textContent = fmtMoney(weekAU, 'AUD');
-  $('weekTotalSG').textContent = weekSG > 0 ? '+ ' + fmtMoney(weekSG, 'SGD') + ' in SG' : '';
+  $('weekTotal').textContent = fmtMoney(weekMain, PC);
+  $('weekTotalSG').textContent = Object.entries(weekOther).map(([c, v]) => '+ ' + fmtMoney(v, c)).join(' · ');
   const max = Math.max(...days.map(d => d.au), 1);
   $('weekBars').innerHTML = days.map((d, i) =>
     `<i class="${i === 6 ? 'today' : ''}" style="height:${Math.max(Math.round(d.au / max * 100), 4)}%"></i>`).join('');
@@ -797,11 +786,12 @@ function renderHome(state){
       <div class="amt num">−${fmtMoney(r.amount, r.currency)}</div></div>`;
   }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet this week 🐻</p>';
 
-  // donut: this month, A$, grouped
+  // donut: this month, home currency, grouped
+  $('donutCur').textContent = curLabel(PC);
   const byGroup = {};
   let monthAU = 0;
   (state.month || []).forEach(r => {
-    if (r.currency === 'SGD' || r.category === 'Payment') return;
+    if (r.currency !== PC || r.category === 'Payment') return;
     const g = GROUP_OF[r.category] || 'Other';
     byGroup[g] = (byGroup[g] || 0) + Number(r.amount);
     monthAU += Number(r.amount);
@@ -826,7 +816,7 @@ function renderHome(state){
   $('donutWrap').innerHTML = `
     <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Spending by category">
       <circle cx="60" cy="60" r="45" fill="none" stroke="#E6E5E5" stroke-width="13"/>${segs}
-      <text x="60" y="57" text-anchor="middle" font-size="14" font-weight="600" fill="#1A2B44" font-family="Poppins,sans-serif">A$${Math.round(monthAU).toLocaleString('en-AU')}</text>
+      <text x="60" y="57" text-anchor="middle" font-size="14" font-weight="600" fill="#1A2B44" font-family="Poppins,sans-serif">${curLabel(PC)}${Math.round(monthAU).toLocaleString('en-AU')}</text>
       <text x="60" y="73" text-anchor="middle" font-size="10" fill="#6B7A90" font-family="Poppins,sans-serif">so far</text>
     </svg>
     <div class="legend">${top.map(([g, v], i) =>
@@ -888,25 +878,28 @@ async function selectBudgetMonth(m){
       sb.from('daily_expenses').select('date, description, category, amount, currency')
         .gte('date', chartStart).lt('date', next).neq('category', 'Payment'),
       sb.from('category_budgets').select('month, category_group, amount')
-        .gte('month', chartStart).lte('month', m).eq('currency', 'AUD'),
-      sb.from('fund_balances').select('balance').eq('name', 'Float').maybeSingle(),
+        .gte('month', chartStart).lte('month', m).eq('currency', primaryCur()),
+      sb.from('fund_balances').select('balance, currency').eq('name', 'Float').maybeSingle(),
     ]);
     if (exp.error) throw exp.error;
     if (bud.error) throw bud.error;
-    const state = { month: m, chartStart, exp: exp.data, bud: bud.data,
-                    float: flt.data ? Number(flt.data.balance) : null };
+    const state = { month: m, chartStart, exp: exp.data, bud: bud.data, cur: primaryCur(),
+                    float: flt.data ? Number(flt.data.balance) : null,
+                    floatCur: flt.data ? flt.data.currency : null };
     localStorage.setItem('bh-budget', JSON.stringify(state));
     renderBudget(state);
   } catch (err) { toast('couldn’t load budget: ' + err.message); }
 }
 
 function renderBudget(st){
+  const PC = st.cur || 'AUD';
+  $('budCurPill').textContent = curLabel(PC);
   const months = []; for (let i = 5; i >= 0; i--) months.push(addMonths(st.month, -i));
   // sums[month] = {group: amount}, totals + budgets per month
   const sums = {}, budTot = {}, budByLabel = {};
   months.forEach(m => { sums[m] = {}; budTot[m] = 0; });
   (st.exp || []).forEach(r => {
-    if (r.currency !== 'AUD') return;
+    if (r.currency !== PC) return;
     const m = r.date.slice(0, 7) + '-01';
     if (!sums[m]) return;
     const g = GROUP_OF[r.category] || 'Other';
@@ -955,17 +948,17 @@ function renderBudget(st){
   const spent = totalOf(st.month), budget = budTot[st.month];
   const isCur = st.month === curMonthIso();
   $('budTotalLabel').textContent = monthName(st.month, true) + (isCur ? ' so far' : '');
-  $('budTotalMain').innerHTML = fmtMoney(spent, 'AUD')
-    + (budget > 0 ? ' <span style="font-size:15px;font-weight:400;color:var(--accent)">of ' + fmtMoney(budget, 'AUD') + '</span>' : '');
+  $('budTotalMain').innerHTML = fmtMoney(spent, PC)
+    + (budget > 0 ? ' <span style="font-size:15px;font-weight:400;color:var(--accent)">of ' + fmtMoney(budget, PC) + '</span>' : '');
   const sub = $('budTotalSub');
   if (!budget) { sub.textContent = 'no budget set for this month'; sub.style.color = ''; }
-  else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, 'AUD') + ' still available'; sub.style.color = ''; }
-  else { sub.textContent = fmtMoney(spent - budget, 'AUD') + ' over budget'; sub.style.color = '#F0A8A8'; }
+  else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, PC) + ' still available'; sub.style.color = ''; }
+  else { sub.textContent = fmtMoney(spent - budget, PC) + ' over budget'; sub.style.color = '#F0A8A8'; }
 
   // float buffer card
   if (st.float !== null && st.float !== undefined) {
     $('floatCard').style.display = 'block';
-    $('floatBal').textContent = fmtMoney(st.float, 'AUD');
+    $('floatBal').textContent = fmtMoney(st.float, st.floatCur || PC);
     $('floatBal').style.color = st.float < 0 ? 'var(--bad)' : 'var(--primary)';
   }
 
@@ -978,17 +971,17 @@ function renderBudget(st){
     const wMain = b <= 0 ? (s > 0 ? 100 : 0) : Math.min(s / b, 1) * (over ? b / s : 1) * 100;
     const wOver = over ? (1 - b / s) * 100 : 0;
     const status = b <= 0 ? ''
-      : over ? '<div class="lbl num" style="color:var(--bad)">' + fmtMoney(s - b, 'AUD') + ' over</div>'
+      : over ? '<div class="lbl num" style="color:var(--bad)">' + fmtMoney(s - b, PC) + ' over</div>'
       : b - s < 0.005 ? '<div class="lbl num" style="color:var(--good)">on budget</div>'
-             : '<div class="lbl num" style="color:var(--good)">' + fmtMoney(b - s, 'AUD') + ' left</div>';
-    const capTxt = b > 0 ? fmtMoney(s, 'AUD') + ' of ' + fmtMoney(b, 'AUD')
-                         : fmtMoney(s, 'AUD') + ' · no budget';
+             : '<div class="lbl num" style="color:var(--good)">' + fmtMoney(b - s, PC) + ' left</div>';
+    const capTxt = b > 0 ? fmtMoney(s, PC) + ' of ' + fmtMoney(b, PC)
+                         : fmtMoney(s, PC) + ' · no budget';
     const rows = (st.exp || [])
-      .filter(r => r.currency === 'AUD' && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group)
+      .filter(r => r.currency === PC && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group)
       .sort((a, c) => c.date < a.date ? -1 : 1)
       .map(r => `<div class="drow"><span class="dd">${esc(r.description)}</span>
         <span class="cap">${new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})}</span>
-        <span class="amt">−${fmtMoney(r.amount, 'AUD')}</span></div>`).join('')
+        <span class="amt">−${fmtMoney(r.amount, PC)}</span></div>`).join('')
       || '<p class="cap" style="padding:4px 0">nothing this month</p>';
     const card = document.createElement('div');
     card.className = 'card pacecard';
@@ -1054,14 +1047,30 @@ async function loadFunds(){
   } catch (err) { toast('couldn’t load funds: ' + err.message); }
 }
 function renderFunds(st){
-  const tot = { AUD:0, SGD:0 }, cnt = { AUD:0, SGD:0 };
-  st.bal.forEach(b => { tot[b.currency] = (tot[b.currency] || 0) + Number(b.balance); cnt[b.currency] = (cnt[b.currency] || 0) + 1; });
-  $('fTotAU').textContent = fmtMoney(tot.AUD || 0, 'AUD');
-  $('fTotSG').textContent = fmtMoney(tot.SGD || 0, 'SGD');
-  $('fTotAUn').textContent = 'across ' + (cnt.AUD || 0) + ' funds';
-  $('fTotSGn').textContent = 'across ' + (cnt.SGD || 0) + ' funds';
+  // countries & currencies this household actually uses, in fund order
+  const countries = [];
+  st.bal.forEach(b => { if (!countries.includes(b.country)) countries.push(b.country); });
+  const CURS = [];
+  st.bal.forEach(b => { if (!CURS.includes(b.currency)) CURS.push(b.currency); });
+  (st.inc || []).forEach(r => { if (!CURS.includes(r.currency)) CURS.push(r.currency); });
+  if (!CURS.length) CURS.push('AUD');
 
-  // money flow: income − spending budget − contributions = leftover
+  const tot = {}, cnt = {}, curOf = {};
+  st.bal.forEach(b => {
+    tot[b.country] = (tot[b.country] || 0) + Number(b.balance);
+    cnt[b.country] = (cnt[b.country] || 0) + 1;
+    curOf[b.country] = curOf[b.country] || b.currency;
+  });
+  const tbox = $('fundTotals');
+  tbox.style.gridTemplateColumns = countries.length > 1 ? '1fr 1fr' : '1fr';
+  tbox.innerHTML = countries.map((cc, i) =>
+    '<div class="total-card"' + (i % 2 ? ' style="background:#003A78"' : '') + '>'
+    + '<p class="cap">' + esc(cc) + ' funds</p>'
+    + '<p class="disp num" style="margin-top:2px;font-size:19px;line-height:28px">' + fmtMoney(tot[cc] || 0, curOf[cc]) + '</p>'
+    + '<p class="cap num" style="margin-top:2px">across ' + (cnt[cc] || 0) + ' funds</p></div>').join('')
+    || '<p class="cap" style="padding:8px 0">no funds yet — add one in Settings 🐻</p>';
+
+  // money flow: income − spending budget − contributions = leftover (per currency)
   $('planTitle').textContent = monthName(st.month, true).split(' ')[0] + '’s plan';
   const byId = {}; st.bal.forEach(b => byId[b.fund_id] = b);
   const sum = { inc:{}, cat:{}, funds:{} };
@@ -1079,21 +1088,19 @@ function renderFunds(st){
     return '<span class="num" style="color:' + (v > 0 ? posColor : negColor) + '">'
       + (v > 0 ? '+' : '−') + fmtMoney(Math.abs(v), c) + '</span>';
   };
-  const row = (label, a, s, style) => '<div class="flowrow"' + (style ? ' style="' + style + '"' : '') + '><span class="cap">' + label + '</span>' + a + s + '</div>';
-  const leftA = (sum.inc.AUD || 0) - (sum.cat.AUD || 0) - (sum.funds.AUD || 0);
-  const leftS = (sum.inc.SGD || 0) - (sum.cat.SGD || 0) - (sum.funds.SGD || 0);
+  const row = (label, cells, style) => '<div class="flowrow"' + (style ? ' style="' + style + '"' : '') + '><span class="cap">' + label + '</span>' + cells.join('') + '</div>';
+  const cellsFor = (of, pos, neg) => CURS.map(c => cell(of(c), c, pos, neg));
   const blank = '<span class="num"></span>';
   const incBreak = (st.inc || []).map(r =>
     row('<span style="padding-left:12px">↳ ' + esc(r.source_name || 'Income') + '</span>',
-        r.currency === 'AUD' ? cell(Number(r.amount), 'AUD', 'var(--good)', 'var(--bad)') : blank,
-        r.currency === 'SGD' ? cell(Number(r.amount), 'SGD', 'var(--good)', 'var(--bad)') : blank)).join('');
+        CURS.map(c => c === r.currency ? cell(Number(r.amount), c, 'var(--good)', 'var(--bad)') : blank))).join('');
   $('flowRows').innerHTML =
     '<div id="incHead" style="cursor:pointer">'
-      + row('Income · ' + (st.inc || []).length + ' sources ▾', cell(sum.inc.AUD || 0, 'AUD', 'var(--good)', 'var(--bad)'), cell(sum.inc.SGD || 0, 'SGD', 'var(--good)', 'var(--bad)'))
+      + row('Income · ' + (st.inc || []).length + ' sources ▾', cellsFor(c => sum.inc[c] || 0, 'var(--good)', 'var(--bad)'))
     + '</div><div id="incBreak" style="display:none">' + incBreak + '</div>'
-    + row('Spending budget', cell(-(sum.cat.AUD || 0), 'AUD', 'var(--ink)', 'var(--ink)'), cell(-(sum.cat.SGD || 0), 'SGD', 'var(--ink)', 'var(--ink)'))
-    + row('Into funds · ' + fundCount, cell(-(sum.funds.AUD || 0), 'AUD', 'var(--ink)', 'var(--ink)'), cell(-(sum.funds.SGD || 0), 'SGD', 'var(--ink)', 'var(--ink)'))
-    + row('Leftover', cell(leftA, 'AUD', 'var(--good)', 'var(--bad)'), cell(leftS, 'SGD', 'var(--good)', 'var(--bad)'),
+    + row('Spending budget', cellsFor(c => -(sum.cat[c] || 0), 'var(--ink)', 'var(--ink)'))
+    + row('Into funds · ' + fundCount, cellsFor(c => -(sum.funds[c] || 0), 'var(--ink)', 'var(--ink)'))
+    + row('Leftover', cellsFor(c => (sum.inc[c] || 0) - (sum.cat[c] || 0) - (sum.funds[c] || 0), 'var(--good)', 'var(--bad)'),
           'border-top:1px solid rgba(0,74,152,.15);margin-top:4px;padding-top:8px');
   $('incHead').onclick = () => {
     const b = $('incBreak');
@@ -1113,13 +1120,26 @@ function renderFunds(st){
     btn.textContent = 'Review & apply'; btn.disabled = false; btn.style.opacity = '1';
   }
   $('planCaption').textContent = cap;
-  renderFundList('AU', st);
-  renderFundList('SG', st);
+
+  // one fund-list card per country the household uses
+  const lbox = $('fundListCards'); lbox.innerHTML = '';
+  countries.forEach(cc => {
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+      + '<span class="h2">' + esc(cc) + '</span>'
+      + '<span><button class="btn-tert" id="fedit-' + esc(cc) + '">Edit</button>'
+      + '<button class="btn-tert" id="fmore-' + esc(cc) + '" style="display:none"></button></span></div>'
+      + '<div id="funds-' + esc(cc) + '"></div>';
+    lbox.appendChild(card);
+    renderFundList(cc, st);
+  });
 }
 function renderFundList(country, st){
-  const box = $(country === 'AU' ? 'fundsAU' : 'fundsSG');
-  const more = $(country === 'AU' ? 'fAUmore' : 'fSGmore');
-  const editBtn = $(country === 'AU' ? 'fAUedit' : 'fSGedit');
+  const box = $('funds-' + country);
+  const more = $('fmore-' + country);
+  const editBtn = $('fedit-' + country);
+  if (!box) return;
+  fundsExtraGroups[country] = fundsExtraGroups[country] || [];
   const editing = fundsEdit[country];
   const all = st.bal.filter(b => b.country === country);
   const expanded = fundsExpanded[country] || editing;   // edit mode shows everything
@@ -1138,7 +1158,7 @@ function renderFundList(country, st){
     const zone = document.createElement('div');
     zone.className = 'dropzone'; zone.dataset.g = g; zone.dataset.country = country;
     const sub = list.reduce((s, b) => s + Number(b.balance), 0);
-    const cur = list.length ? list[0].currency : (country === 'SG' ? 'SGD' : 'AUD');
+    const cur = list.length ? list[0].currency : (all[0] ? all[0].currency : primaryCur());
     const h = document.createElement('div');
     h.className = 'fgroup';
     h.innerHTML = '<span class="cap" style="letter-spacing:.05em;text-transform:uppercase">' + esc(g) + '</span>'
@@ -1288,9 +1308,10 @@ function openApplySheet(){
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
 function updateApplySummary(){
-  const t = { AUD:0, SGD:0 }; let n = 0;
-  applyRowsData.forEach(r => { if (r.on) { t[r.fund.currency] += r.amount; n++; } });
-  $('applySummary').textContent = n + ' contributions · +' + fmtMoney(t.AUD, 'AUD') + ' · +' + fmtMoney(t.SGD, 'SGD');
+  const t = {}; let n = 0;
+  applyRowsData.forEach(r => { if (r.on) { t[r.fund.currency] = (t[r.fund.currency] || 0) + r.amount; n++; } });
+  const parts = Object.entries(t).map(([c, v]) => '+' + fmtMoney(v, c));
+  $('applySummary').textContent = n + ' contributions' + (parts.length ? ' · ' + parts.join(' · ') : '');
 }
 async function applyPlan(){
   if (applying) return;
@@ -1640,13 +1661,15 @@ async function renderSetIncome(box){
   const af = document.createElement('div'); af.style.cssText = 'display:flex;gap:8px;margin-top:12px;align-items:center';
   af.innerHTML = '<input class="descinput" placeholder="source name" style="flex:1;min-width:0"><input class="descinput" type="number" step="0.01" placeholder="0.00" style="width:90px"><div class="seg" id="aiSeg"></div><button class="btn-mini" type="button">Add</button>';
   box.appendChild(af);
-  buildSeg('aiSeg', ['A$', 'S$'], 0);
+  const segMap = {};
+  const segLabels = homeCurrencies().map(c => { let l = curLabel(c); if (segMap[l]) l = c; segMap[l] = c; return l; });
+  buildSeg('aiSeg', segLabels, 0);
   af.lastChild.onclick = async () => {
     const name = af.children[0].value.trim(), amt2 = parseFloat(af.children[1].value);
     if (!name || !(amt2 > 0)) { toast('name and amount needed'); return; }
     const i = await sb.from('income_budgets').insert({
       household_id: CTX.hh.id, month: m, source_name: name,
-      currency: segSel('aiSeg') === 'S$' ? 'SGD' : 'AUD', amount: amt2,
+      currency: segMap[segSel('aiSeg')] || primaryCur(), amount: amt2,
     });
     if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
     if (fundsInit) loadFunds();
@@ -2151,7 +2174,7 @@ function renderTripPick(){
 }
 function refreshTripCurrencies(){
   const t = tripById(selectedTripId);
-  const codes = ['AUD', 'SGD'].concat((t && t.currencies) || []).filter((c, i, a) => a.indexOf(c) === i);
+  const codes = homeCurrencies().concat((t && t.currencies) || []).filter((c, i, a) => a.indexOf(c) === i);
   SEG2CODE = {};
   const labels = codes.map(c => {
     let l = CURSYM[c] || c;
@@ -2159,7 +2182,7 @@ function refreshTripCurrencies(){
     SEG2CODE[l] = c;
     return l;
   });
-  const last = localStorage.getItem('bh-cur') || 'A$';
+  const last = localStorage.getItem('bh-cur') || labels[0];
   buildSeg('segCurrency', labels, Math.max(labels.indexOf(last), 0));
 }
 
@@ -2189,8 +2212,9 @@ function openForm(m){
   if (m === 'daily') {
     $('formTitle').textContent = 'Add expense';
     $('descInput').placeholder = 'description — e.g. Woolworths';
-    SEG2CODE = { 'A$':'AUD', 'S$':'SGD' };
-    buildSeg('segCurrency', ['A$','S$'], lastCur === 'S$' ? 1 : 0);
+    SEG2CODE = {};
+    const homeLabels = homeCurrencies().map(c => { let l = curLabel(c); if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
+    buildSeg('segCurrency', homeLabels, Math.max(homeLabels.indexOf(lastCur), 0));
     const top = (CTX.topDaily || FALLBACK_DAILY).concat('__MORE__');
     buildGrid(top, top[0]);
   } else if (m === 'fund') {
@@ -2240,7 +2264,7 @@ function openForm(m){
 }
 function updateFundCur(){
   const f = CTX.funds.find(x => x.id === $('fundSel').value);
-  $('fundCurLabel').textContent = f ? (f.currency === 'SGD' ? 'S$' : 'A$') : '';
+  $('fundCurLabel').textContent = f ? curLabel(f.currency) : '';
 }
 function toggleDetails(){
   const r = $('rowDetails');
@@ -2324,7 +2348,7 @@ async function saveEntry(){
       if (fundsInit) loadFunds();
       return;
     }
-    const currency = SEG2CODE[segSel('segCurrency')] || 'AUD';
+    const currency = SEG2CODE[segSel('segCurrency')] || primaryCur();
     const payer = segSel('segPayer');
     const cat = gridSel();
     if (!cat) { done(false, 'pick a category'); return; }
@@ -2395,9 +2419,9 @@ function openEditExpense(exp){
   $('fundCurLabel').style.display = 'none';
   $('rowDetails').style.display = 'block';
   $('cardSel').style.display = 'block';
-  // currencies: home pair + the trip's locals + whatever this row already uses
+  // currencies: home set + the trip's locals + whatever this row already uses
   const trip = tripById(exp.trip_id);
-  const codes = ['AUD','SGD'].concat((trip && trip.currencies) || []).concat(exp.currency)
+  const codes = homeCurrencies().concat((trip && trip.currencies) || []).concat(exp.currency)
     .filter((c, i, a) => a.indexOf(c) === i);
   SEG2CODE = {};
   const labels = codes.map(c => { let l = CURSYM[c] || c; if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
