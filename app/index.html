@@ -198,6 +198,21 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .key:active{background:var(--accent-soft)}
 .f-sec{margin-top:10px}
 
+/* ── onboarding (new households) ───────────── */
+#onboard{display:none;min-height:100dvh;align-items:center;justify-content:center;padding:24px;background:linear-gradient(170deg,#DCE9FC 0%,#E9F1FD 55%,#F7F9FC 100%)}
+#onboard .login-card{align-items:stretch;gap:14px;max-width:420px}
+.ob-people .field{margin-top:8px}
+
+/* ── first-run tutorial ────────────────────── */
+.tut-block{position:fixed;inset:0;z-index:39}
+.tut-hole{position:fixed;z-index:40;border-radius:18px;box-shadow:0 0 0 9999px rgba(26,43,68,.55);pointer-events:none;transition:all .25s cubic-bezier(.4,0,.2,1)}
+.tut-card{position:fixed;z-index:41;background:#fff;border-radius:20px;box-shadow:var(--shadow-lift);padding:18px 20px;width:min(320px,calc(100vw - 40px));left:50%;transform:translateX(-50%);transition:top .25s cubic-bezier(.4,0,.2,1)}
+.tut-card .cap{margin-top:6px}
+.tut-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}
+.tut-dots{display:flex;gap:5px}
+.tut-dots i{width:6px;height:6px;border-radius:99px;background:var(--muted)}
+.tut-dots i.on{background:var(--primary)}
+
 /* tab bar */
 .tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--muted);display:flex;justify-content:space-around;align-items:center;height:calc(72px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);max-width:520px;margin:0 auto;z-index:10}
 .tab{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;line-height:14px;color:var(--ink-soft);width:64px;background:none;border:none;cursor:pointer;padding:6px 0;font-family:inherit}
@@ -227,9 +242,48 @@ select.descinput{appearance:none;-webkit-appearance:none}
     <form id="loginForm">
       <input class="field" id="email" type="email" placeholder="email" autocomplete="username" required>
       <input class="field" id="password" type="password" placeholder="password" autocomplete="current-password" required>
+      <input class="field" id="inviteCode" placeholder="invite code" autocomplete="off" style="display:none">
       <button class="btn btn-primary" id="loginBtn" type="submit">Sign in</button>
       <p id="loginError"></p>
     </form>
+    <button class="btn-tert" id="modeToggle" type="button">joining the beta? create your account</button>
+  </div>
+</div>
+
+<!-- ══ ONBOARDING (first sign-in, no household yet) ══ -->
+<div id="onboard">
+  <div class="login-card">
+    <div class="logo" style="align-self:center">🐻</div>
+    <div style="text-align:center">
+      <h1 class="h1">Set up your household</h1>
+      <p class="cap" style="margin-top:4px">a minute of setup, then you’re in</p>
+    </div>
+    <div>
+      <p class="cap" style="margin-bottom:4px">invite code</p>
+      <input class="field" id="obCode" placeholder="e.g. BEAR-SUNRISE-01" autocomplete="off">
+    </div>
+    <div>
+      <p class="cap" style="margin-bottom:4px">household name</p>
+      <input class="field" id="obName" placeholder="e.g. The Tan household" autocomplete="off">
+    </div>
+    <div class="ob-people" id="obPeople">
+      <p class="cap">people — for tracking who paid</p>
+      <input class="field" placeholder="your name">
+      <input class="field" placeholder="partner’s name (optional)">
+    </div>
+    <button class="btn-tert" type="button" style="align-self:flex-start;padding-left:0" onclick="obAddPerson()">+ add another person</button>
+    <div>
+      <p class="cap" style="margin-bottom:6px">countries you keep money in</p>
+      <div id="obCountries" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+    <div>
+      <p class="cap" style="margin-bottom:6px">joint pot — shared money that belongs to everyone</p>
+      <div style="display:flex;gap:8px"><button class="chip sel" id="obJoint" type="button" onclick="this.classList.toggle('sel')">🤝 keep a joint pot</button></div>
+    </div>
+    <button class="btn btn-primary" id="obGo" type="button" onclick="createHousehold()">Create my household</button>
+    <p id="obError" style="color:var(--bad);font-size:13px;line-height:18px;text-align:center;min-height:18px"></p>
+    <p class="cap" style="text-align:center">you’ll start with a few funds (Float, Savings, Emergency, Travel) and the everyday categories — rename or add more anytime in Settings</p>
+    <button class="btn-tert" type="button" style="align-self:center" onclick="signOut()">sign out</button>
   </div>
 </div>
 
@@ -499,28 +553,108 @@ function fmtMoney(v, cur){
 const flagOf = cc => /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
 
 // ── auth flow ────────────────────────────────
+let authMode = 'signin';
+$('modeToggle').onclick = () => {
+  authMode = authMode === 'signin' ? 'signup' : 'signin';
+  $('inviteCode').style.display = authMode === 'signup' ? 'block' : 'none';
+  $('loginBtn').textContent = authMode === 'signup' ? 'Create account' : 'Sign in';
+  $('modeToggle').textContent = authMode === 'signup'
+    ? 'already have an account? sign in'
+    : 'joining the beta? create your account';
+  $('loginError').textContent = '';
+};
 $('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const btn = $('loginBtn');
+  const btn = $('loginBtn'), errEl = $('loginError');
+  const fail = m => { errEl.style.color = 'var(--bad)'; errEl.textContent = m; };
+  const done = () => { btn.disabled = false; btn.textContent = authMode === 'signup' ? 'Create account' : 'Sign in'; };
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
-  $('loginError').textContent = '';
-  const { error } = await sb.auth.signInWithPassword({
-    email: $('email').value.trim(),
-    password: $('password').value,
-  });
-  btn.disabled = false; btn.textContent = 'Sign in';
-  if (error) {
-    $('loginError').textContent = error.message === 'Invalid login credentials'
-      ? 'email or password didn’t match — try again'
-      : 'couldn’t sign in: ' + error.message;
+  errEl.textContent = '';
+  const email = $('email').value.trim(), password = $('password').value;
+
+  if (authMode === 'signup') {
+    const code = $('inviteCode').value.trim();
+    if (!code) { done(); fail('enter your invite code — it’s in your invite message'); return; }
+    const chk = await sb.rpc('check_invite', { p_code: code });
+    if (chk.error) { done(); fail('couldn’t check the invite code: ' + chk.error.message); return; }
+    if (!chk.data) { done(); fail('that invite code isn’t valid — or it’s already been used'); return; }
+    const { data, error } = await sb.auth.signUp({ email, password });
+    done();
+    if (error) { fail('couldn’t create the account: ' + error.message); return; }
+    localStorage.setItem('bh-invite', code);
+    if (data.session) { boot(); return; }
+    errEl.style.color = 'var(--good)';
+    errEl.textContent = 'account created — confirm it via the email we just sent, then sign in here';
     return;
   }
-  enterApp();
+
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  done();
+  if (error) {
+    fail(error.message === 'Invalid login credentials'
+      ? 'email or password didn’t match — try again'
+      : 'couldn’t sign in: ' + error.message);
+    return;
+  }
+  boot();
 });
 
 async function signOut(){
   await sb.auth.signOut();
+  // this device may be handed to someone else — leave no cached numbers behind
+  ['bh-home','bh-budget','bh-funds','bh-travel','bh-ctx','bh-trip','bh-fund','bh-payer','bh-cur','bh-invite'].forEach(k => localStorage.removeItem(k));
   location.reload();
+}
+
+// signed in, but which door? existing household → app, none yet → setup wizard
+async function boot(){
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem('bh-ctx')); } catch(e){}
+  if (cached && cached.hh) { enterApp(); return; }   // known household: paint instantly
+  const { data } = await sb.from('households').select('id').maybeSingle();
+  if (data) enterApp(); else showOnboard();
+}
+
+// ── onboarding (new households) ──────────────
+const obSel = { countries: ['AU'] };
+function showOnboard(){
+  $('login').style.display = 'none';
+  $('app').style.display = 'none';
+  $('onboard').style.display = 'flex';
+  $('obCode').value = localStorage.getItem('bh-invite') || '';
+  const box = $('obCountries'); box.innerHTML = '';
+  [['AU','A$'],['SG','S$']].forEach(([cc, sym]) => ntChip(box, flagOf(cc) + ' ' + cc + ' · ' + sym, obSel.countries, cc));
+}
+function obAddPerson(){
+  const inp = document.createElement('input');
+  inp.className = 'field'; inp.placeholder = 'their name';
+  $('obPeople').appendChild(inp);
+  inp.focus();
+}
+let obCreating = false;
+async function createHousehold(){
+  if (obCreating) return;
+  const err = m => { $('obError').textContent = m; };
+  err('');
+  const code = $('obCode').value.trim();
+  const name = $('obName').value.trim();
+  const people = [...document.querySelectorAll('#obPeople .field')].map(i => i.value.trim()).filter(Boolean);
+  if (!code) { err('enter your invite code'); return; }
+  if (!name) { err('give your household a name'); return; }
+  if (!people.length) { err('add at least one person'); return; }
+  if (!obSel.countries.length) { err('pick at least one country'); return; }
+  obCreating = true; $('obGo').innerHTML = '<span class="spin"></span>';
+  const { error } = await sb.rpc('create_household_setup', {
+    p_code: code, p_household: name, p_people: people,
+    p_joint_label: $('obJoint').classList.contains('sel') ? 'Joint' : null,
+    p_countries: obSel.countries,
+  });
+  obCreating = false; $('obGo').textContent = 'Create my household';
+  if (error) { err(error.message); return; }
+  localStorage.removeItem('bh-invite');
+  $('onboard').style.display = 'none';
+  enterApp();
+  setTimeout(startTutorial, 700);   // first login → the guided tour
 }
 
 // ── category knowledge ───────────────────────
@@ -1246,6 +1380,11 @@ function renderSettings(){
     row.onclick = () => toast(msg);
     box.appendChild(row);
   });
+  const tut = document.createElement('button');
+  tut.type = 'button'; tut.className = 'setrow';
+  tut.innerHTML = '<div class="rowicon">📖</div><div style="min-width:0"><div class="lbl">App tutorial</div><div class="cap">a 60-second guided tour</div></div><span class="chev">›</span>';
+  tut.onclick = () => { go('scr-home'); setTimeout(startTutorial, 150); };
+  box.appendChild(tut);
 }
 
 async function renderSetPeople(box){
@@ -2296,11 +2435,77 @@ async function deleteExpense(){
   loadTravel(true);
 }
 
+// ══ FIRST-RUN TUTORIAL ══════════════════════
+// auto-starts once, right after onboarding; replayable from Settings
+const TUT_STEPS = [
+  { el: () => $('weekTotal').closest('.card'), title: 'Home',
+    text: 'your week at a glance — what you spent, day by day. below it: recent expenses and the month by category.' },
+  { el: () => document.querySelector('.fab'), round: true, title: 'Add in 5 seconds',
+    text: 'the + adds a daily expense, fund top-up, trip expense or transfer. description, amount, category — done.' },
+  { el: () => document.querySelector('[data-scr="scr-budget"]'), title: 'Budget',
+    text: 'are you on pace this month? each category shows what’s spent against its budget, with the last 6 months charted.' },
+  { el: () => document.querySelector('[data-scr="scr-travel"]'), title: 'Travel',
+    text: 'create a trip, track expenses in any currency, and settle up into your travel fund when you’re home.' },
+  { el: () => document.querySelector('[data-scr="scr-funds"]'), title: 'Funds',
+    text: 'every fund’s live balance, grouped your way — plus the monthly plan that moves money in one tap.' },
+  { el: () => document.querySelector('#scr-home .iconbtn'), title: 'Make it yours',
+    text: 'rename people and funds, add payment cards and income, export your data — it all lives in Settings.' },
+];
+let tutIdx = -1, tutEls = null;
+function startTutorial(){
+  go('scr-home');
+  if (tutEls) endTutorial(true);
+  const block = document.createElement('div'); block.className = 'tut-block';
+  const hole = document.createElement('div'); hole.className = 'tut-hole';
+  const card = document.createElement('div'); card.className = 'tut-card';
+  document.body.append(block, hole, card);
+  tutEls = { block, hole, card };
+  block.onclick = () => tutStep(tutIdx + 1);
+  tutIdx = -1;
+  tutStep(0);
+}
+function endTutorial(quiet){
+  if (!tutEls) return;
+  Object.values(tutEls).forEach(el => el.remove());
+  tutEls = null;
+  localStorage.setItem('bh-tut-done', '1');
+  if (!quiet) toast('you’re all set — tap + to add your first expense 🐻');
+}
+function tutStep(i){
+  if (!tutEls) return;
+  if (i >= TUT_STEPS.length) { endTutorial(); return; }
+  tutIdx = i;
+  const s = TUT_STEPS[i];
+  const el = s.el();
+  if (!el) { tutStep(i + 1); return; }
+  const r = el.getBoundingClientRect(), pad = 6;
+  const { hole, card } = tutEls;
+  hole.style.left = (r.left - pad) + 'px';
+  hole.style.top = (r.top - pad) + 'px';
+  hole.style.width = (r.width + pad * 2) + 'px';
+  hole.style.height = (r.height + pad * 2) + 'px';
+  hole.style.borderRadius = s.round ? '999px' : '18px';
+  card.innerHTML = '<p class="h2">' + s.title + '</p><p class="cap">' + s.text + '</p>'
+    + '<div class="tut-foot"><div class="tut-dots">'
+    + TUT_STEPS.map((_, d) => '<i class="' + (d === i ? 'on' : '') + '"></i>').join('') + '</div>'
+    + '<div style="display:flex;align-items:center;gap:4px">'
+    + '<button class="btn-tert" type="button" onclick="endTutorial(true)">Skip</button>'
+    + '<button class="btn btn-primary" type="button" style="height:40px;padding:0 20px;font-size:13px" onclick="tutStep(' + (i + 1) + ')">'
+    + (i === TUT_STEPS.length - 1 ? 'Done' : 'Next') + '</button></div></div>';
+  // tooltip sits under the highlight, or above it near the bottom of the screen
+  requestAnimationFrame(() => {
+    const ch = card.offsetHeight;
+    let top = r.bottom + pad + 14;
+    if (top + ch > window.innerHeight - 16) top = r.top - pad - ch - 14;
+    card.style.top = Math.max(top, 16) + 'px';
+  });
+}
+
 // installed-app feel: block iOS pinch-zoom gestures
 document.addEventListener('gesturestart', e => e.preventDefault());
 
 // stay signed in across visits
-sb.auth.getSession().then(({ data }) => { if (data.session) enterApp(); });
+sb.auth.getSession().then(({ data }) => { if (data.session) boot(); });
 </script>
 </body>
 </html>
