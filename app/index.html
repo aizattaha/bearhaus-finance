@@ -209,9 +209,6 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .tut-card{position:fixed;z-index:41;background:#fff;border-radius:20px;box-shadow:var(--shadow-lift);padding:18px 20px;width:min(320px,calc(100vw - 40px));left:50%;transform:translateX(-50%);transition:top .25s cubic-bezier(.4,0,.2,1)}
 .tut-card .cap{margin-top:6px}
 .tut-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}
-.tut-dots{display:flex;gap:5px}
-.tut-dots i{width:6px;height:6px;border-radius:99px;background:var(--muted)}
-.tut-dots i.on{background:var(--primary)}
 
 /* tab bar */
 .tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--muted);display:flex;justify-content:space-around;align-items:center;height:calc(72px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);max-width:520px;margin:0 auto;z-index:10}
@@ -1403,7 +1400,7 @@ function renderSettings(){
   });
   const tut = document.createElement('button');
   tut.type = 'button'; tut.className = 'setrow';
-  tut.innerHTML = '<div class="rowicon">📖</div><div style="min-width:0"><div class="lbl">App tutorial</div><div class="cap">a 60-second guided tour</div></div><span class="chev">›</span>';
+  tut.innerHTML = '<div class="rowicon">📖</div><div style="min-width:0"><div class="lbl">App tutorial</div><div class="cap">the full tour — every screen, two minutes</div></div><span class="chev">›</span>';
   tut.onclick = () => { go('scr-home'); setTimeout(startTutorial, 150); };
   box.appendChild(tut);
 }
@@ -2460,25 +2457,41 @@ async function deleteExpense(){
 }
 
 // ══ FIRST-RUN TUTORIAL ══════════════════════
-// auto-starts once, right after onboarding; replayable from Settings
+// a real walk through every screen — it navigates the app, opens the add
+// sheet, and visits Settings. auto-runs once after onboarding; replayable
+// from Settings. copy stays tiny: one idea per stop.
 const TUT_STEPS = [
-  { el: () => $('weekTotal').closest('.card'), title: 'Home',
-    text: 'your week at a glance — what you spent, day by day. below it: recent expenses and the month by category.' },
-  { el: () => document.querySelector('.fab'), round: true, title: 'Add in 5 seconds',
-    text: 'the + adds a daily expense, fund top-up, trip expense or transfer. description, amount, category — done.' },
-  { el: () => document.querySelector('[data-scr="scr-budget"]'), title: 'Budget',
-    text: 'are you on pace this month? each category shows what’s spent against its budget, with the last 6 months charted.' },
-  { el: () => document.querySelector('[data-scr="scr-travel"]'), title: 'Travel',
-    text: 'create a trip, track expenses in any currency, and settle up into your travel fund when you’re home.' },
-  { el: () => document.querySelector('[data-scr="scr-funds"]'), title: 'Funds',
-    text: 'every fund’s live balance, grouped your way — plus the monthly plan that moves money in one tap.' },
-  { el: () => document.querySelector('#scr-home .iconbtn'), title: 'Make it yours',
-    text: 'rename people and funds, add payment cards and income, export your data — it all lives in Settings.' },
+  { scr:'scr-home', el: () => $('weekTotal').closest('.card'),
+    title:'Home', text:'what you spent this week, day by day.' },
+  { scr:'scr-home', el: () => $('donutWrap').closest('.card'),
+    title:'By category', text:'this month so far, split by where it went.' },
+  { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
+    title:'Add', text:'everything starts here — tap + anytime.' },
+  { scr:'scr-home', pre: () => openSheet(), el: () => $('sheet'),
+    title:'Add anything', text:'daily spending · fund money · trip expenses · transfers.' },
+  { scr:'scr-home', pre: () => openForm('daily'), el: () => $('sheet'),
+    title:'The 5-second expense', text:'describe it, tap a category, type the amount, save.' },
+  { scr:'scr-budget', el: () => $('budTotalMain').closest('.total-card'),
+    title:'Budget', text:'plan the month, then watch spent vs planned.' },
+  { scr:'scr-budget', el: () => $('budChart').closest('.card'),
+    title:'Six months back', text:'bars are spending · the dashed line is your plan.' },
+  { scr:'scr-travel', el: () => document.querySelector('#scr-travel .iconbtn'), round:true,
+    title:'Travel', text:'each trip keeps its own spending and currencies. create one here.' },
+  { scr:'scr-funds', el: () => $('fundTotals'),
+    title:'Funds', text:'where your money lives — every balance stays current.' },
+  { scr:'scr-funds', el: () => $('planCard'),
+    title:'The monthly ritual', text:'income − budgets − fund top-ups = leftover. apply it in one tap.' },
+  { scr:'scr-settings', el: () => $('setRows').closest('.card'),
+    title:'Settings', text:'people, funds, cards, income — rename anything, anytime.' },
+  { scr:'scr-settings', el: () => [...document.querySelectorAll('#setRows .setrow')].find(r => r.textContent.includes('Export data')),
+    title:'Your data is yours', text:'download everything as files, whenever you like.' },
+  { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
+    title:'That’s it', text:'add your first expense — the app does the rest 🐻' },
 ];
-let tutIdx = -1, tutEls = null;
+let tutIdx = -1, tutEls = null, tutTimer = null;
 function startTutorial(){
-  go('scr-home');
   if (tutEls) endTutorial(true);
+  go('scr-home');
   const block = document.createElement('div'); block.className = 'tut-block';
   const hole = document.createElement('div'); hole.className = 'tut-hole';
   const card = document.createElement('div'); card.className = 'tut-card';
@@ -2490,8 +2503,11 @@ function startTutorial(){
 }
 function endTutorial(quiet){
   if (!tutEls) return;
+  clearTimeout(tutTimer);
   Object.values(tutEls).forEach(el => el.remove());
   tutEls = null;
+  closeSheet();
+  go('scr-home');
   localStorage.setItem('bh-tut-done', '1');
   if (!quiet) toast('you’re all set — tap + to add your first expense 🐻');
 }
@@ -2500,8 +2516,17 @@ function tutStep(i){
   if (i >= TUT_STEPS.length) { endTutorial(); return; }
   tutIdx = i;
   const s = TUT_STEPS[i];
+  if (s.pre) s.pre(); else closeSheet();   // sheet stops open it; every other stop closes it
+  if (s.scr && !$(s.scr).classList.contains('active')) go(s.scr);
+  // let the screen (or the sliding sheet) settle before spotlighting
+  clearTimeout(tutTimer);
+  tutTimer = setTimeout(() => tutPlace(i, s), s.pre ? 420 : 180);
+}
+function tutPlace(i, s){
+  if (!tutEls || tutIdx !== i) return;
   const el = s.el();
   if (!el) { tutStep(i + 1); return; }
+  try { el.scrollIntoView({ block:'center' }); } catch(e){}
   const r = el.getBoundingClientRect(), pad = 6;
   const { hole, card } = tutEls;
   hole.style.left = (r.left - pad) + 'px';
@@ -2510,8 +2535,7 @@ function tutStep(i){
   hole.style.height = (r.height + pad * 2) + 'px';
   hole.style.borderRadius = s.round ? '999px' : '18px';
   card.innerHTML = '<p class="h2">' + s.title + '</p><p class="cap">' + s.text + '</p>'
-    + '<div class="tut-foot"><div class="tut-dots">'
-    + TUT_STEPS.map((_, d) => '<i class="' + (d === i ? 'on' : '') + '"></i>').join('') + '</div>'
+    + '<div class="tut-foot"><span class="cap num">' + (i + 1) + ' of ' + TUT_STEPS.length + '</span>'
     + '<div style="display:flex;align-items:center;gap:4px">'
     + '<button class="btn-tert" type="button" onclick="endTutorial(true)">Skip</button>'
     + '<button class="btn btn-primary" type="button" style="height:40px;padding:0 20px;font-size:13px" onclick="tutStep(' + (i + 1) + ')">'
