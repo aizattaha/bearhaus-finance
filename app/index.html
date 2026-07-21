@@ -193,6 +193,15 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .tripcard.sel{border-color:var(--primary);background:var(--accent-soft)}
 .tripcard .tflags{font-size:22px;flex-shrink:0;line-height:1}
 .tripcard .chev{margin-left:auto;color:var(--ink-soft)}
+/* description-first quick-add */
+.descwrap{position:relative}
+#descInput{font-size:17px;padding:13px 14px}
+.descsug{position:absolute;left:0;right:0;top:100%;margin-top:6px;background:#fff;border-radius:14px;box-shadow:var(--shadow-lift);z-index:6;overflow:hidden;display:none}
+.descsug button{display:flex;width:100%;gap:10px;align-items:center;padding:11px 14px;background:none;border:none;font-family:inherit;font-size:14px;color:var(--ink);cursor:pointer;text-align:left}
+.descsug button:active{background:var(--accent-soft)}
+.descsug .cap{margin-left:auto;flex-shrink:0}
+.catchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;background:var(--accent-soft);color:var(--primary);border:none;border-radius:999px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.catchip .cn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
 .key{height:40px;border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:17px;font-weight:500;color:var(--ink);cursor:pointer}
 .key:active{background:var(--accent-soft)}
@@ -446,7 +455,14 @@ select.descinput{appearance:none;-webkit-appearance:none}
 
   <div id="sh-form" style="display:none">
     <div class="sheet-head"><span class="h2" id="formTitle">Add expense</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
-    <div class="f-sec" style="margin-top:0"><input class="descinput" id="descInput" placeholder="description" autocomplete="off"></div>
+    <div class="f-sec descwrap" style="margin-top:0">
+      <input class="descinput" id="descInput" placeholder="description" autocomplete="off">
+      <div class="descsug" id="descSug"></div>
+    </div>
+    <div class="f-sec" id="rowCategory">
+      <button type="button" class="catchip" id="catChip" onclick="toggleCatGrid()"></button>
+      <div class="catgrid" id="gridCategory" style="display:none;margin-top:10px"></div>
+    </div>
     <div class="f-sec" id="rowTrip" style="display:none"><div id="tripPick"></div></div>
     <div class="f-sec" id="rowFund" style="display:none"><p class="cap" id="fundSelCap" style="display:none;margin-bottom:4px">from</p><select class="descinput" id="fundSel"></select></div>
     <div class="f-sec" id="rowFund2" style="display:none"><p class="cap" style="margin-bottom:4px">to</p><select class="descinput" id="fundSel2"></select><input class="descinput" id="recvInput" type="number" step="0.01" placeholder="amount received" style="display:none;margin-top:8px"></div>
@@ -456,7 +472,6 @@ select.descinput{appearance:none;-webkit-appearance:none}
       <span class="disp num" id="amtDisp" style="color:var(--primary)">0</span>
     </div>
     <div class="f-sec" id="rowType" style="display:none"><div class="seg grow" id="segType"></div></div>
-    <div class="f-sec" id="rowCategory"><div class="catgrid" id="gridCategory"></div></div>
     <div class="f-sec" id="rowPayer"><div class="seg grow" id="segPayer"></div></div>
     <div class="f-sec" id="rowDetails" style="display:none">
       <div style="display:flex;gap:8px">
@@ -1388,6 +1403,8 @@ async function openPlanEditor(){
     };
     (cat.data.length ? cat.data : pCat).forEach(r => planDraft.cat[r.category_group + '|' + r.currency] = Number(r.amount));
     (fb.data.length ? fb.data : pFb).forEach(r => planDraft.fb[r.fund_id] = Number(r.amount));
+    // never open an empty "money in" — a waiting Salary row teaches where income goes
+    if (!planDraft.inc.length) planDraft.inc.push({ source_name: 'Salary', currency: primaryCur(), amount: 0 });
     renderPlanEditor();
   } catch (err) { $('planEdBody').innerHTML = '<p class="cap">couldn’t load: ' + esc(err.message || err) + '</p>'; }
 }
@@ -1831,10 +1848,32 @@ async function renderSetCategories(box){
     const groups = {};
     list.forEach(c => (groups[c.group_name] = groups[c.group_name] || []).push(c));
     Object.keys(groups).forEach(g => {
-      const gh = document.createElement('p');
-      gh.className = 'cap';
-      gh.style.cssText = 'letter-spacing:.05em;text-transform:uppercase;margin:8px 0 0';
-      gh.textContent = g;
+      const gh = document.createElement('div');
+      gh.style.cssText = 'display:flex;align-items:center;gap:8px;margin:8px 0 0';
+      gh.innerHTML = '<span class="cap" style="letter-spacing:.05em;text-transform:uppercase">' + esc(g) + '</span>'
+        + (g === 'Transfers' ? '' : '<button class="edit" style="width:22px;height:22px;font-size:11px" aria-label="Rename group">✎</button>');
+      const geBtn = gh.querySelector('.edit');
+      if (geBtn) geBtn.onclick = () => {
+        const input = document.createElement('input');
+        input.className = 'descinput'; input.value = g; input.style.cssText = 'flex:1;min-width:0';
+        const ok = document.createElement('button'); ok.className = 'btn-mini'; ok.textContent = '✓'; ok.style.padding = '0 14px';
+        gh.innerHTML = ''; gh.appendChild(input); gh.appendChild(ok); input.focus();
+        ok.onclick = async () => {
+          const v = input.value.trim();
+          if (!v || v === g) { renderSetCategories(box); return; }
+          const u = await sb.from('categories').update({ group_name: v }).eq('kind', kind).eq('group_name', g);
+          if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+          if (kind === 'daily') {
+            // budgets are stored by group name — they must follow the rename
+            const b2 = await sb.from('category_budgets').update({ category_group: v }).eq('category_group', g);
+            if (b2.error) toast('group renamed, but budgets didn’t follow: ' + b2.error.message);
+          }
+          await loadContext();
+          if (budgetInit) selectBudgetMonth(budgetMonth);
+          renderSetCategories(box);
+          toast('group renamed 🐻' + (kind === 'daily' ? ' — budgets followed' : ''));
+        };
+      };
       box.appendChild(gh);
       groups[g].forEach(c => {
         const d = document.createElement('div'); d.className = 'srow';
@@ -1851,6 +1890,23 @@ async function renderSetCategories(box){
             await loadContext(); renderSetCategories(box);
             toast('renamed 🐻 — past expenses keep the old name');
           });
+          const mv = document.createElement('button');
+          mv.className = 'btn-tert'; mv.style.cssText = 'font-size:11px;padding:2px 6px';
+          mv.textContent = 'Move';
+          mv.onclick = () => {
+            const gs = [...new Set(cats.filter(x => x.kind === c.kind).map(x => x.group_name))];
+            const sel = document.createElement('select'); sel.className = 'descinput'; sel.style.cssText = 'flex:1;min-width:0';
+            sel.innerHTML = gs.map(x => '<option' + (x === c.group_name ? ' selected' : '') + '>' + esc(x) + '</option>').join('');
+            d.querySelector('.lbl').replaceWith(sel);
+            mv.remove();
+            sel.onchange = async () => {
+              const u = await sb.from('categories').update({ group_name: sel.value }).eq('id', c.id);
+              if (u.error) { toast('couldn’t move: ' + u.error.message); return; }
+              await loadContext(); renderSetCategories(box);
+              toast(c.name + ' → ' + sel.value + ' 🐻');
+            };
+          };
+          d.appendChild(mv);
           const arch = document.createElement('button');
           arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
           arch.textContent = c.is_active ? 'Archive' : 'Restore';
@@ -2061,7 +2117,7 @@ function renderTravel(){
     else if (settled) body = '<p class="h2" style="margin-top:10px">Settled</p>';
     else {
       const totals = Object.entries(byCur).map(([c, d]) => fmtMoney(d.total, c)).join(' + ');
-      const owed = owedByPerson(exps);
+      const owed = payerNames().length < 2 ? [] : owedByPerson(exps);   // nobody to settle with solo
       const settleHtml = owed.map(o => '<div class="lbl num">Joint owes ' + esc(o.name) + ' ' + o.amounts + '</div>').join('');
       body = '<p class="disp num" style="font-size:22px;line-height:30px;margin-top:10px">' + totals + '</p>'
         + (settleHtml ? '<div class="settlebox">' + settleHtml + '</div>' : '');
@@ -2133,13 +2189,16 @@ function renderTripDetail(){
   const tf = travelFund();
   const unsentInFund = tf ? exps.filter(e => !e.sent_to_fund && e.currency === tf.currency) : [];
   const unsentTotal = unsentInFund.reduce((s, e) => s + Number(e.amount), 0);
-  const owed = owedByPerson(exps);
+  const solo = payerNames().length < 2;   // one person: fund accounting, no settling
+  const owed = solo ? [] : owedByPerson(exps);
   let html = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
-    + '<p class="h2">Settle up</p><span class="cap">paid back from the joint pot</span></div>';
-  if (!exps.length) html += '<p class="cap" style="margin-top:8px">nothing to settle yet</p>';
+    + (solo
+      ? '<p class="h2">Travel fund</p><span class="cap">move this trip’s spending into the fund</span>'
+      : '<p class="h2">Settle up</p><span class="cap">paid back from the joint pot</span>') + '</div>';
+  if (!exps.length) html += '<p class="cap" style="margin-top:8px">' + (solo ? 'no expenses yet' : 'nothing to settle yet') + '</p>';
   else if (allSent) html += '<div class="settlebox"><span class="lbl">Sent to ' + esc(tf ? tf.name : 'the travel fund') + ' ✓</span></div>';
   else {
-    html += '<div style="margin-top:10px">'
+    if (!solo) html += '<div style="margin-top:10px">'
       + (owed.length
         ? owed.map(o => '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:6px">'
             + '<span class="cap">Joint owes ' + esc(o.name) + '</span>'
@@ -2256,8 +2315,8 @@ async function loadContext(){
     sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
     sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order').eq('is_archived', false).order('sort_order'),
     sb.from('categories').select('kind, name, group_name, icon').eq('is_active', true).order('sort_order'),
-    sb.from('daily_expenses').select('category').order('date', {ascending:false}).limit(300),
-    sb.from('travel_expenses').select('category').order('date', {ascending:false}).limit(120),
+    sb.from('daily_expenses').select('description, category').order('date', {ascending:false}).limit(300),
+    sb.from('travel_expenses').select('description, category').order('date', {ascending:false}).limit(120),
   ]);
   if (!hh.error) {
     // table may predate the categories migration — fall back to built-ins
@@ -2266,9 +2325,23 @@ async function loadContext(){
     CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
             trips: trips.data || [], cards: cards.data || [], cats: catRows,
             topDaily: topCats(dCats.data, FALLBACK_DAILY),
-            topTravel: topCats(tCats.data, FALLBACK_TRAVEL) };
+            topTravel: topCats(tCats.data, FALLBACK_TRAVEL),
+            histDaily: histFrom(dCats.data), histTravel: histFrom(tCats.data) };
   }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
+}
+// unique past descriptions with their usual category — feeds the type-ahead
+function histFrom(rows){
+  const seen = new Set(), out = [];
+  (rows || []).forEach(r => {
+    const d = (r.description || '').trim();
+    if (!d || r.category === 'Payment') return;
+    const k = d.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ d, c: r.category });
+  });
+  return out;
 }
 
 // grouped category catalogues — shown when "More" is tapped.
@@ -2352,7 +2425,7 @@ function refreshCards(payerName){
   if (opts.length) $('cardSel').value = opts[0].name;
 }
 
-let amt = '', mode = 'daily', saving = false, editingExp = null;
+let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '';
 
 function openSheet(){
   $('sh-chooser').style.display = 'block';
@@ -2366,7 +2439,42 @@ function openSheet(){
 function closeSheet(){
   $('backdrop').classList.remove('open');
   $('sheet').classList.remove('open');
+  hideSug();
 }
+
+// ── description type-ahead: match past descriptions, auto-pick the category ──
+function hideSug(){ const b = $('descSug'); if (b) b.style.display = 'none'; }
+$('descInput').addEventListener('input', () => {
+  if (mode === 'fund' || mode === 'transfer') { hideSug(); return; }
+  const q = $('descInput').value.trim().toLowerCase();
+  if (q.length < 2) { hideSug(); return; }
+  const hist = (mode === 'trip' || mode === 'edit') ? (CTX.histTravel || []) : (CTX.histDaily || []);
+  const starts = [], contains = [];
+  hist.forEach(h => {
+    const l = h.d.toLowerCase();
+    if (l.startsWith(q)) starts.push(h);
+    else if (l.includes(q)) contains.push(h);
+  });
+  const m = starts.concat(contains).slice(0, 4);
+  if (!m.length || (m.length === 1 && m[0].d.toLowerCase() === q)) { hideSug(); return; }
+  const box = $('descSug'); box.innerHTML = '';
+  m.forEach(h => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.innerHTML = '<span>' + (CAT_ICON[h.c] || '🛍️') + '</span>'
+      + '<span class="lbl" style="font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(h.d) + '</span>'
+      + '<span class="cap">' + esc(h.c) + '</span>';
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();                       // beat the input's blur
+      $('descInput').value = h.d;
+      selectedCat = h.c; renderCatChip();
+      $('gridCategory').style.display = 'none';
+      hideSug();
+    });
+    box.appendChild(b);
+  });
+  box.style.display = 'block';
+});
+$('descInput').addEventListener('blur', () => setTimeout(hideSug, 200));
 function buildSeg(id, items, selIdx, onPick){
   const box = $(id); box.innerHTML = '';
   items.forEach((c, i) => {
@@ -2378,8 +2486,10 @@ function buildSeg(id, items, selIdx, onPick){
 }
 function segSel(id){ const b = document.querySelector('#' + id + ' .sel'); return b ? b.textContent : ''; }
 function buildGrid(spec, selName){
-  // spec = array of names (top-used view) OR grouped object (after "More")
+  // spec = array of names (top-used view) OR grouped object (after "More").
+  // picking a tile collapses the grid back into the chip.
   const box = $('gridCategory'); box.innerHTML = '';
+  const okName = n => n !== 'Payment' || payerNames().length >= 2;   // settle-up is meaningless solo
   const addTile = name => {
     const b = document.createElement('button'); b.type = 'button';
     b.className = 'cat' + (name === selName ? ' sel' : '');
@@ -2387,20 +2497,36 @@ function buildGrid(spec, selName){
     const label = name === '__MORE__' ? 'More' : name;
     b.innerHTML = '<span class="ci">' + (CAT_ICON[name] || '🛍️') + '</span><span class="cl">' + esc(label) + '</span>';
     b.onclick = () => {
-      if (name === '__MORE__') { buildGrid(mode === 'trip' ? TRAVEL_GROUPED : DAILY_GROUPED, gridSel()); return; }
-      box.querySelectorAll('.cat').forEach(x => x.classList.remove('sel')); b.classList.add('sel');
+      if (name === '__MORE__') { buildGrid(mode === 'trip' || mode === 'edit' ? TRAVEL_GROUPED : DAILY_GROUPED, selectedCat); return; }
+      selectedCat = name; renderCatChip();
+      box.style.display = 'none';
     };
     box.appendChild(b);
   };
-  if (Array.isArray(spec)) spec.forEach(addTile);
+  if (Array.isArray(spec)) spec.filter(okName).forEach(addTile);
   else Object.entries(spec).forEach(([group, names]) => {
+    const show = names.filter(okName);
+    if (!show.length) return;
     const h = document.createElement('p');
     h.className = 'cap catgroup'; h.textContent = group;
     box.appendChild(h);
-    names.forEach(addTile);
+    show.forEach(addTile);
   });
 }
-function gridSel(){ const b = document.querySelector('#gridCategory .cat.sel'); return b ? b.dataset.name : ''; }
+function gridSel(){ return selectedCat; }
+function renderCatChip(){
+  $('catChip').innerHTML = '<span>' + (CAT_ICON[selectedCat] || '🛍️') + '</span>'
+    + '<span class="cn">' + esc(selectedCat || 'pick a category') + '</span>'
+    + '<span style="opacity:.7">▾</span>';
+}
+function toggleCatGrid(){
+  const g = $('gridCategory');
+  if (g.style.display === 'none') {
+    const top = (mode === 'trip' || mode === 'edit' ? (CTX.topTravel || FALLBACK_TRAVEL) : (CTX.topDaily || FALLBACK_DAILY));
+    buildGrid(top.concat('__MORE__'), selectedCat);
+    g.style.display = 'grid';
+  } else g.style.display = 'none';
+}
 
 // the joint pot is a household setting — its label is data, and it can be turned off
 function jointLabel(){ return (CTX.hh && CTX.hh.joint_label) || null; }
@@ -2475,7 +2601,10 @@ function openForm(m){
   $('rowFund2').style.display = m === 'transfer' ? 'block' : 'none';
   $('rowType').style.display = m === 'fund' ? 'block' : 'none';
   $('rowCategory').style.display = noCat ? 'none' : 'block';
-  $('rowPayer').style.display = noCat ? 'none' : 'block';
+  $('gridCategory').style.display = 'none';
+  hideSug();
+  // a one-person household has nobody to split with — skip the payer row
+  $('rowPayer').style.display = (noCat || payerNames().length < 2) ? 'none' : 'block';
   $('segCurrency').style.display = noCat ? 'none' : 'inline-flex';
   $('fundCurLabel').style.display = noCat ? 'inline' : 'none';
 
@@ -2487,8 +2616,8 @@ function openForm(m){
     SEG2CODE = {};
     const homeLabels = homeCurrencies().map(c => { let l = curLabel(c); if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
     buildSeg('segCurrency', homeLabels, Math.max(homeLabels.indexOf(lastCur), 0));
-    const top = (CTX.topDaily || FALLBACK_DAILY).concat('__MORE__');
-    buildGrid(top, top[0]);
+    selectedCat = (CTX.topDaily || FALLBACK_DAILY)[0];
+    renderCatChip();
   } else if (m === 'fund') {
     $('formTitle').textContent = 'Fund transaction';
     $('descInput').placeholder = 'remarks — e.g. July top-up';
@@ -2523,8 +2652,8 @@ function openForm(m){
     tripListOpen = false;
     renderTripPick();
     refreshTripCurrencies();
-    const top = (CTX.topTravel || FALLBACK_TRAVEL).concat('__MORE__');
-    buildGrid(top, top[0]);
+    selectedCat = (CTX.topTravel || FALLBACK_TRAVEL)[0];
+    renderCatChip();
   }
   if (m !== 'fund') {
     buildSeg('segPayer', names, Math.max(names.indexOf(lastPayer), 0),
@@ -2698,10 +2827,12 @@ function openEditExpense(exp){
   SEG2CODE = {};
   const labels = codes.map(c => { let l = CURSYM[c] || c; if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
   buildSeg('segCurrency', labels, Math.max(codes.indexOf(exp.currency), 0));
-  // grouped grid with this row's category selected (legacy names stay selectable)
-  const grouped = JSON.parse(JSON.stringify(TRAVEL_GROUPED));
-  if (!Object.values(grouped).flat().includes(exp.category)) (grouped['🗂️ Other'] = grouped['🗂️ Other'] || []).push(exp.category);
-  buildGrid(grouped, exp.category);
+  // this row's category shows in the chip; tap it to change
+  selectedCat = exp.category;
+  renderCatChip();
+  $('gridCategory').style.display = 'none';
+  hideSug();
+  $('rowPayer').style.display = payerNames().length < 2 ? 'none' : 'block';
   const payer = payerFromSplits(exp);
   buildSeg('segPayer', payerNames(), Math.max(payerNames().indexOf(payer), 0), p => refreshCards(p));
   refreshCards(payer);
@@ -2737,6 +2868,8 @@ async function deleteExpense(){
 // sheet, and visits Settings. auto-runs once after onboarding; replayable
 // from Settings. copy stays tiny: one idea per stop.
 const TUT_STEPS = [
+  { scr:'scr-home', center:true, title:'The idea',
+    text:'every month: plan the income, give spending a cap, move the rest into funds. what’s left over is truly free to spend.' },
   { scr:'scr-home', el: () => $('weekTotal').closest('.card'),
     title:'Home', text:'what you spent this week, day by day.' },
   { scr:'scr-home', el: () => $('donutWrap').closest('.card'),
@@ -2800,27 +2933,39 @@ function tutStep(i){
 }
 function tutPlace(i, s){
   if (!tutEls || tutIdx !== i) return;
-  const el = s.el();
-  if (!el) { tutStep(i + 1); return; }
-  try { el.scrollIntoView({ block:'center' }); } catch(e){}
-  const r = el.getBoundingClientRect(), pad = 6;
-  const { hole, card } = tutEls;
-  hole.style.left = (r.left - pad) + 'px';
-  hole.style.top = (r.top - pad) + 'px';
-  hole.style.width = (r.width + pad * 2) + 'px';
-  hole.style.height = (r.height + pad * 2) + 'px';
-  hole.style.borderRadius = s.round ? '999px' : '18px';
+  const { hole, card } = tutEls, pad = 6;
+  let r = null;
+  if (s.center) {
+    // no target — dim everything, float the card mid-screen
+    hole.style.left = '50%'; hole.style.top = '30%';
+    hole.style.width = '0px'; hole.style.height = '0px';
+    hole.style.borderRadius = '999px';
+  } else {
+    const el = s.el();
+    if (!el) { tutStep(i + 1); return; }
+    try { el.scrollIntoView({ block:'center' }); } catch(e){}
+    r = el.getBoundingClientRect();
+    hole.style.left = (r.left - pad) + 'px';
+    hole.style.top = (r.top - pad) + 'px';
+    hole.style.width = (r.width + pad * 2) + 'px';
+    hole.style.height = (r.height + pad * 2) + 'px';
+    hole.style.borderRadius = s.round ? '999px' : '18px';
+  }
   card.innerHTML = '<p class="h2">' + s.title + '</p><p class="cap">' + s.text + '</p>'
     + '<div class="tut-foot"><span class="cap num">' + (i + 1) + ' of ' + TUT_STEPS.length + '</span>'
     + '<div style="display:flex;align-items:center;gap:4px">'
     + '<button class="btn-tert" type="button" onclick="endTutorial(true)">Skip</button>'
     + '<button class="btn btn-primary" type="button" style="height:40px;padding:0 20px;font-size:13px" onclick="tutStep(' + (i + 1) + ')">'
     + (i === TUT_STEPS.length - 1 ? 'Done' : 'Next') + '</button></div></div>';
-  // tooltip sits under the highlight, or above it near the bottom of the screen
+  // tooltip sits under the highlight, above it near the bottom, or centered
   requestAnimationFrame(() => {
     const ch = card.offsetHeight;
-    let top = r.bottom + pad + 14;
-    if (top + ch > window.innerHeight - 16) top = r.top - pad - ch - 14;
+    let top;
+    if (s.center) top = (window.innerHeight - ch) / 2.4;
+    else {
+      top = r.bottom + pad + 14;
+      if (top + ch > window.innerHeight - 16) top = r.top - pad - ch - 14;
+    }
     card.style.top = Math.max(top, 16) + 'px';
   });
 }
