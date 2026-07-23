@@ -203,8 +203,9 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .catchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;background:var(--accent-soft);color:var(--primary);border:none;border-radius:999px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}
 .catchip .cn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
-.key{height:40px;border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:17px;font-weight:500;color:var(--ink);cursor:pointer}
+.key{height:46px;border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:17px;font-weight:500;color:var(--ink);cursor:pointer}
 .key:active{background:var(--accent-soft)}
+.key.del{font-size:22px;background:var(--accent-soft);color:var(--primary)}
 .f-sec{margin-top:10px}
 
 /* ── onboarding (new households) ───────────── */
@@ -325,7 +326,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <span class="h2">Recent</span>
-          <button class="btn-tert" onclick="toast('the full, filterable list arrives with quick-add in 5.3 🐻')">View all</button>
+          <button class="btn-tert" onclick="openAllTx()">View all</button>
         </div>
         <div id="recentList"><p class="cap" style="padding:12px 0">loading…</p></div>
       </div>
@@ -420,6 +421,24 @@ select.descinput{appearance:none;-webkit-appearance:none}
       <div id="fundListCards" style="display:flex;flex-direction:column;gap:16px"></div>
     </section>
 
+    <section class="screen" id="scr-alltx">
+      <div>
+        <button class="btn-tert" style="padding-left:0" onclick="go('scr-home')">‹ Home</button>
+        <h2 class="h1" style="margin-top:6px">All transactions</h2>
+        <p class="cap">tap any line to edit or delete it</p>
+      </div>
+      <div class="card" style="padding:16px">
+        <input class="descinput" id="atxSearch" placeholder="search descriptions" autocomplete="off">
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <div class="seg" id="atxType"></div>
+          <select class="descinput" id="atxMonth" style="flex:1;min-width:0"></select>
+        </div>
+        <select class="descinput" id="atxWhat" style="margin-top:8px;width:100%;display:none"></select>
+      </div>
+      <div class="card" id="atxList" style="padding-top:8px;padding-bottom:8px"><p class="cap" style="padding:12px 0">loading…</p></div>
+      <button class="btn-tert" id="atxMore" style="align-self:center;display:none" onclick="loadAllTx(false)">Load more</button>
+    </section>
+
     <section class="screen" id="scr-settings">
       <div>
         <button class="btn-tert" style="padding-left:0" onclick="go('scr-home')">‹ Home</button>
@@ -480,12 +499,12 @@ select.descinput{appearance:none;-webkit-appearance:none}
       </div>
       <input class="descinput" id="commentsInput" placeholder="note (optional)" style="margin-top:8px">
     </div>
-    <div class="keypad" id="keypad"></div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
       <button class="btn btn-primary" style="flex:1" id="saveBtn" onclick="saveEntry()">Save</button>
       <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad)" onclick="deleteExpense()">Delete</button>
       <button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button>
     </div>
+    <div class="keypad" id="keypad"></div>
   </div>
 
   <div id="sh-apply" style="display:none">
@@ -532,7 +551,7 @@ function toast(msg){
 function go(id){
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
-  const tabFor = {'scr-home':'scr-home','scr-settings':'scr-home','scr-budget':'scr-budget','scr-travel':'scr-travel','scr-trip':'scr-travel','scr-funds':'scr-funds'};
+  const tabFor = {'scr-home':'scr-home','scr-settings':'scr-home','scr-alltx':'scr-home','scr-budget':'scr-budget','scr-travel':'scr-travel','scr-trip':'scr-travel','scr-funds':'scr-funds'};
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.scr === tabFor[id]));
   window.scrollTo(0, 0);
   if (id === 'scr-budget' && !budgetInit) initBudget();
@@ -739,7 +758,7 @@ async function loadHome(){
       sb.from('daily_expenses').select('date, amount, currency, category')
         .gte('date', isoDate(weekStart)).neq('category', 'Payment'),
       sb.from('daily_expenses')
-        .select('date, description, category, amount, currency, profiles(display_name)')
+        .select('id, date, description, category, amount, currency, profiles(display_name)')
         .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(5),
       sb.from('daily_expenses').select('category, amount, currency')
         .gte('date', isoDate(monthStart)).neq('category', 'Payment'),
@@ -806,6 +825,19 @@ function renderHome(state){
       <div class="cap">${esc(r.category)} · ${esc(who)} · ${when}</div></div>
       <div class="amt num">−${fmtMoney(r.amount, r.currency)}</div></div>`;
   }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet this week 🐻</p>';
+  // tap a recent line to fix it — fetches the full row, then opens the edit sheet
+  [...$('recentList').children].forEach((el, i) => {
+    const r = (state.recent || [])[i];
+    if (!r || !r.id) return;
+    el.style.cursor = 'pointer';
+    el.onclick = async () => {
+      const { data, error } = await sb.from('daily_expenses')
+        .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id, daily_expense_splits(profile_id, amount)')
+        .eq('id', r.id).single();
+      if (error) { toast('couldn’t open: ' + error.message); return; }
+      openEditDaily(data);
+    };
+  });
 
   // donut: this month, home currency, grouped
   $('donutCur').textContent = curLabel(PC);
@@ -1000,13 +1032,12 @@ function renderBudget(st){
              : '<div class="lbl num" style="color:var(--good)">' + fmtMoney(b - s, PC) + ' left</div>';
     const capTxt = b > 0 ? fmtMoney(s, PC) + ' of ' + fmtMoney(b, PC)
                          : fmtMoney(s, PC) + ' · no budget';
-    const rows = (st.exp || [])
-      .filter(r => r.currency === PC && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group)
-      .sort((a, c) => c.date < a.date ? -1 : 1)
-      .map(r => `<div class="drow"><span class="dd">${esc(r.description)}</span>
-        <span class="cap">${new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})}</span>
-        <span class="amt">−${fmtMoney(r.amount, PC)}</span></div>`).join('')
-      || '<p class="cap" style="padding:4px 0">nothing this month</p>';
+    // drill level 1: this group's categories, biggest spend first;
+    // level 2: a category's line items, revealed on tap
+    const monthExp = (st.exp || []).filter(r =>
+      r.currency === PC && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group);
+    const catSums = {};
+    monthExp.forEach(r => catSums[r.category] = (catSums[r.category] || 0) + Number(r.amount));
     const card = document.createElement('div');
     card.className = 'card pacecard';
     card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
@@ -1018,9 +1049,32 @@ function renderBudget(st){
           </div>
           <div class="pace"><i style="width:${wMain.toFixed(1)}%"></i>${over ? '<i class="over" style="width:' + wOver.toFixed(1) + '%"></i>' : ''}</div>
         </div>
-      </div>
-      <div class="drill">${rows}</div>`;
-    card.onclick = () => card.querySelector('.drill').classList.toggle('open');
+      </div>`;
+    const drill = document.createElement('div');
+    drill.className = 'drill';
+    const catList = Object.entries(catSums).sort((a, c) => c[1] - a[1]);
+    if (!catList.length) drill.innerHTML = '<p class="cap" style="padding:4px 0">nothing this month</p>';
+    catList.forEach(([cName, cSum]) => {
+      const crow = document.createElement('div');
+      crow.className = 'drow';
+      crow.style.cursor = 'pointer';
+      crow.innerHTML = '<span style="flex-shrink:0">' + (CAT_ICON[cName] || '🛍️') + '</span>'
+        + '<span class="dd" style="font-weight:500">' + esc(cName) + '</span>'
+        + '<span class="cap">▾</span>'
+        + '<span class="amt">−' + fmtMoney(cSum, PC) + '</span>';
+      const sub = document.createElement('div');
+      sub.style.cssText = 'display:none;padding-left:22px';
+      sub.innerHTML = monthExp.filter(r => r.category === cName)
+        .sort((a, c) => c.date < a.date ? -1 : 1)
+        .map(r => `<div class="drow"><span class="dd">${esc(r.description)}</span>
+          <span class="cap">${new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})}</span>
+          <span class="amt">−${fmtMoney(r.amount, PC)}</span></div>`).join('');
+      crow.onclick = e => { e.stopPropagation(); sub.style.display = sub.style.display === 'none' ? 'block' : 'none'; };
+      drill.appendChild(crow);
+      drill.appendChild(sub);
+    });
+    card.appendChild(drill);
+    card.onclick = () => drill.classList.toggle('open');
     box.appendChild(card);
   });
 }
@@ -1288,17 +1342,25 @@ async function toggleFundDrill(btn, fund){
   d.innerHTML = '<p class="cap">loading…</p>';
   btn.after(d);
   const { data, error } = await sb.from('fund_transactions')
-    .select('date, type, amount, remarks, origin')
+    .select('id, date, type, amount, remarks, origin')
     .eq('fund_id', fund.fund_id)
     .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(8);
   if (error) { d.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
-  d.innerHTML = (data || []).map(t => {
+  d.innerHTML = '';
+  (data || []).forEach(t => {
     const inc = t.type === 'income';
-    return '<div class="drow"><span class="dd">' + esc(t.remarks || (inc ? 'money in' : 'money out'))
+    const row = document.createElement('div');
+    row.className = 'drow';
+    row.style.cursor = 'pointer';
+    row.innerHTML = '<span class="dd">' + esc(t.remarks || (inc ? 'money in' : 'money out'))
       + (t.origin === 'planned' ? ' <span class="cap">· plan</span>' : '') + '</span>'
       + '<span class="cap">' + new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'}) + '</span>'
-      + '<span class="amt" style="color:' + (inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span></div>';
-  }).join('') || '<p class="cap">no transactions yet</p>';
+      + '<span class="amt" style="color:' + (inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span>';
+    row.onclick = () => openEditFund({ id: t.id, date: t.date, type: t.type, amount: t.amount, remarks: t.remarks,
+      origin: t.origin, fund_id: fund.fund_id, funds: { name: fund.name, currency: fund.currency } });
+    d.appendChild(row);
+  });
+  if (!(data || []).length) d.innerHTML = '<p class="cap">no transactions yet</p>';
 }
 
 // Review & apply — writes the month's planned contributions as real transactions
@@ -1535,6 +1597,111 @@ async function savePlan(){
     if ($('planSave')) $('planSave').textContent = 'Save plan';
     toast('couldn’t save: ' + (err.message || err));
   }
+}
+
+// ══ ALL TRANSACTIONS ════════════════════════
+// every daily expense and fund transaction, filterable, paged —
+// and the one place where any line can be edited or deleted.
+const ATX_PAGE = 60;
+let atx = null;
+const fmtDayMonYr = d => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'});
+function openAllTx(){
+  if (!atx) {
+    buildSeg('atxType', ['All', 'Daily', 'Funds'], 0, () => { refreshAtxWhat(); loadAllTx(true); });
+    let opts = '<option value="">all months</option>';
+    for (let m = curMonthIso(); m >= BUD_MIN; m = addMonths(m, -1)) opts += '<option value="' + m + '">' + monthName(m, true) + '</option>';
+    $('atxMonth').innerHTML = opts;
+    $('atxMonth').onchange = () => loadAllTx(true);
+    $('atxWhat').onchange = () => loadAllTx(true);
+    let deb = null;
+    $('atxSearch').addEventListener('input', () => { clearTimeout(deb); deb = setTimeout(() => loadAllTx(true), 350); });
+    refreshAtxWhat();
+  }
+  go('scr-alltx');
+  loadAllTx(true);
+}
+function refreshAtxWhat(){
+  const type = segSel('atxType'), w = $('atxWhat');
+  if (type === 'Daily') {
+    const cats = [...new Set(((CTX.cats || []).filter(c => c.kind === 'daily').map(c => c.name)).concat(Object.values(DAILY_GROUPED).flat()))];
+    w.innerHTML = '<option value="">all categories</option>' + cats.map(c => '<option>' + esc(c) + '</option>').join('');
+    w.style.display = 'block';
+  } else if (type === 'Funds') {
+    w.innerHTML = '<option value="">all funds</option>' + (CTX.funds || []).map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('');
+    w.style.display = 'block';
+  } else w.style.display = 'none';
+}
+async function loadAllTx(reset){
+  if (reset || !atx) atx = { rows: [], dOff: 0, fOff: 0, dDone: false, fDone: false };
+  const type = segSel('atxType') || 'All';
+  const q = $('atxSearch').value.trim();
+  const m = $('atxMonth').value;
+  const what = $('atxWhat').style.display === 'none' ? '' : $('atxWhat').value;
+  $('atxMore').style.display = 'none';
+  if (!atx.rows.length) $('atxList').innerHTML = '<p class="cap" style="padding:12px 0">loading…</p>';
+  try {
+    let qd = null, qf = null;
+    if (type !== 'Funds' && !atx.dDone) {
+      qd = sb.from('daily_expenses')
+        .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id, daily_expense_splits(profile_id, amount)')
+        .order('date', {ascending:false}).order('created_at', {ascending:false})
+        .range(atx.dOff, atx.dOff + ATX_PAGE - 1);
+      if (q) qd = qd.ilike('description', '%' + q + '%');
+      if (m) qd = qd.gte('date', m).lt('date', addMonths(m, 1));
+      if (type === 'Daily' && what) qd = qd.eq('category', what);
+    }
+    if (type !== 'Daily' && !atx.fDone) {
+      qf = sb.from('fund_transactions')
+        .select('id, date, type, amount, remarks, origin, fund_id, funds(name, currency)')
+        .order('date', {ascending:false}).order('created_at', {ascending:false})
+        .range(atx.fOff, atx.fOff + ATX_PAGE - 1);
+      if (q) qf = qf.ilike('remarks', '%' + q + '%');
+      if (m) qf = qf.gte('date', m).lt('date', addMonths(m, 1));
+      if (type === 'Funds' && what) qf = qf.eq('fund_id', what);
+    }
+    const [dr, fr] = await Promise.all([qd || Promise.resolve(null), qf || Promise.resolve(null)]);
+    if (dr) {
+      if (dr.error) throw dr.error;
+      atx.dOff += dr.data.length;
+      if (dr.data.length < ATX_PAGE) atx.dDone = true;
+      dr.data.forEach(r => atx.rows.push({ kind: 'd', r }));
+    }
+    if (fr) {
+      if (fr.error) throw fr.error;
+      atx.fOff += fr.data.length;
+      if (fr.data.length < ATX_PAGE) atx.fDone = true;
+      fr.data.forEach(r => atx.rows.push({ kind: 'f', r }));
+    }
+    renderAllTx(type);
+  } catch (err) { toast('couldn’t load: ' + (err.message || err)); }
+}
+function renderAllTx(type){
+  const box = $('atxList'); box.innerHTML = '';
+  const rows = atx.rows.slice().sort((a, b) => b.r.date > a.r.date ? 1 : b.r.date < a.r.date ? -1 : 0);
+  if (!rows.length) box.innerHTML = '<p class="cap" style="padding:12px 0">nothing matches 🐻</p>';
+  rows.forEach(({ kind, r }) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'fundrow';
+    if (kind === 'd') {
+      const who = r.payer_profile_id
+        ? ((CTX.profiles.find(p => p.id === r.payer_profile_id) || {}).display_name || '?') : (jointLabel() || 'Joint');
+      b.innerHTML = '<div class="rowicon">' + (CAT_ICON[r.category] || '🛍️') + '</div>'
+        + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.description) + '</div>'
+        + '<div class="cap">' + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + '</div></div>'
+        + '<div class="amt num" style="color:var(--bad)">−' + fmtMoney(r.amount, r.currency) + '</div>';
+      b.onclick = () => openEditDaily(r);
+    } else {
+      const inc = r.type === 'income';
+      b.innerHTML = '<div class="rowicon">' + fundIcon(r.funds ? r.funds.name : '') + '</div>'
+        + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.remarks || (inc ? 'money in' : 'money out')) + '</div>'
+        + '<div class="cap">' + esc(r.funds ? r.funds.name : 'fund') + (r.origin === 'planned' ? ' · plan' : '') + ' · ' + fmtDayMonYr(r.date) + '</div></div>'
+        + '<div class="amt num" style="color:' + (inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(r.amount, r.funds ? r.funds.currency : 'AUD') + '</div>';
+      b.onclick = () => openEditFund(r);
+    }
+    box.appendChild(b);
+  });
+  const done = type === 'Daily' ? atx.dDone : type === 'Funds' ? atx.fDone : (atx.dDone && atx.fDone);
+  $('atxMore').style.display = done ? 'none' : 'inline';
 }
 
 // ══ SETTINGS ════════════════════════════════
@@ -2620,8 +2787,8 @@ function openForm(m){
     renderCatChip();
   } else if (m === 'fund') {
     $('formTitle').textContent = 'Fund transaction';
-    $('descInput').placeholder = 'remarks — e.g. July top-up';
-    buildSeg('segType', ['Into the fund','Out of the fund'], 0);
+    $('descInput').placeholder = 'remarks — e.g. groceries top-up';
+    buildSeg('segType', ['Into the fund','Out of the fund'], 1);   // spending is the everyday case
     $('fundSel').innerHTML = fundOptionsHtml(CTX.funds);
     const lastFund = localStorage.getItem('bh-fund');
     if (lastFund && CTX.funds.some(f => f.id === lastFund)) $('fundSel').value = lastFund;
@@ -2677,6 +2844,7 @@ function toggleDetails(){
   const pad = $('keypad');
   ['1','2','3','4','5','6','7','8','9','.','0','⌫'].forEach(k => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'key'; b.textContent = k;
+    if (k === '⌫') b.classList.add('del');
     b.onclick = () => {
       if (k === '⌫') amt = amt.slice(0, -1);
       else if (k === '.') { if (!amt.includes('.')) amt = (amt || '0') + '.'; }
@@ -2706,7 +2874,7 @@ async function saveEntry(){
   const cost = parseFloat(amt);
   if (!(cost > 0)) { toast('enter an amount first'); return; }
   const desc = $('descInput').value.trim();
-  if (mode !== 'fund' && mode !== 'transfer' && !desc) { toast('add a description — the shop or what it was'); return; }
+  if (mode !== 'fund' && mode !== 'transfer' && mode !== 'editFund' && !desc) { toast('add a description — the shop or what it was'); return; }
   if (!CTX.hh) { toast('still connecting — try again in a second'); await loadContext(); return; }
 
   saving = true; $('saveBtn').innerHTML = '<span class="spin"></span>';
@@ -2749,6 +2917,20 @@ async function saveEntry(){
       if (fundsInit) loadFunds();
       return;
     }
+    if (mode === 'editFund') {
+      const fundId = $('fundSel').value;
+      const { error } = await sb.from('fund_transactions').update({
+        fund_id: fundId,
+        type: segSel('segType') === 'Into the fund' ? 'income' : 'expense',
+        date, amount: cost, remarks: desc,
+      }).eq('id', editingExp.id);
+      if (error) throw error;
+      const f = CTX.funds.find(x => x.id === fundId) || (editingExp.funds ? { currency: editingExp.funds.currency } : null);
+      done(true, 'updated — ' + fmtMoney(cost, f ? f.currency : 'AUD'));
+      if (fundsInit) loadFunds();
+      if (atx) loadAllTx(true);
+      return;
+    }
     const currency = SEG2CODE[segSel('segCurrency')] || primaryCur();
     const payer = segSel('segPayer');
     const cat = gridSel();
@@ -2768,6 +2950,23 @@ async function saveEntry(){
       if (ins.error) throw ins.error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
       if (travelInit) loadTravel(true);
+      return;
+    }
+    if (mode === 'editDaily') {
+      // update the daily expense in place, then rebuild its splits
+      const { error } = await sb.from('daily_expenses').update({
+        date, description: desc, category: cat, amount: cost, currency,
+        payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
+      }).eq('id', editingExp.id);
+      if (error) throw error;
+      const del = await sb.from('daily_expense_splits').delete().eq('expense_id', editingExp.id);
+      if (del.error) throw del.error;
+      const sp = buildSplits(payer, cost).map(s => ({ household_id: CTX.hh.id, expense_id: editingExp.id, ...s }));
+      const ins = await sb.from('daily_expense_splits').insert(sp);
+      if (ins.error) throw ins.error;
+      done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
+      if (atx) loadAllTx(true);
+      if (budgetInit) selectBudgetMonth(budgetMonth);
       return;
     }
     const base = {
@@ -2813,6 +3012,7 @@ function openEditExpense(exp){
   $('commentsInput').value = exp.comments || '';
   $('rowTrip').style.display = 'none';
   $('rowFund').style.display = 'none';
+  $('rowFund2').style.display = 'none';
   $('rowType').style.display = 'none';
   $('rowCategory').style.display = 'block';
   $('rowPayer').style.display = 'block';
@@ -2847,6 +3047,98 @@ function openEditExpense(exp){
   $('sh-form').style.display = 'block';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
+// ── edit / delete a daily expense ────────────
+function openEditDaily(exp){
+  mode = 'editDaily'; editingExp = exp; saving = false;
+  const n = Number(exp.amount);
+  amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
+  renderAmt();
+  $('formTitle').textContent = 'Edit expense';
+  $('descInput').placeholder = 'description';
+  $('descInput').value = exp.description || '';
+  $('dateInput').value = exp.date;
+  $('commentsInput').value = exp.comments || '';
+  $('rowTrip').style.display = 'none';
+  $('rowFund').style.display = 'none';
+  $('rowFund2').style.display = 'none';
+  $('rowType').style.display = 'none';
+  $('rowCategory').style.display = 'block';
+  $('segCurrency').style.display = 'inline-flex';
+  $('fundCurLabel').style.display = 'none';
+  $('rowDetails').style.display = 'block';
+  $('cardSel').style.display = 'block';
+  const codes = homeCurrencies().concat(exp.currency).filter((c, i, a) => a.indexOf(c) === i);
+  SEG2CODE = {};
+  const labels = codes.map(c => { let l = curLabel(c); if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
+  buildSeg('segCurrency', labels, Math.max(codes.indexOf(exp.currency), 0));
+  selectedCat = exp.category;
+  renderCatChip();
+  $('gridCategory').style.display = 'none';
+  hideSug();
+  const pos = (exp.daily_expense_splits || []).find(s => s.profile_id && Number(s.amount) > 0);
+  const payer = pos
+    ? ((CTX.profiles.find(p => p.id === pos.profile_id) || {}).display_name || (jointLabel() || 'Joint'))
+    : (jointLabel() || 'Joint');
+  $('rowPayer').style.display = payerNames().length < 2 ? 'none' : 'block';
+  buildSeg('segPayer', payerNames(), Math.max(payerNames().indexOf(payer), 0), p => refreshCards(p));
+  refreshCards(payer);
+  if (exp.paid_with && ![...$('cardSel').options].some(o => o.value === exp.paid_with || o.textContent === exp.paid_with)) {
+    const o = document.createElement('option'); o.textContent = exp.paid_with; $('cardSel').appendChild(o);
+  }
+  $('cardSel').value = exp.paid_with || '';
+  $('deleteBtn').style.display = 'inline'; $('deleteBtn').textContent = 'Delete';
+  $('saveBtn').textContent = 'Save';
+  $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
+  $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
+  $('sh-form').style.display = 'block';
+  $('backdrop').classList.add('open'); $('sheet').classList.add('open');
+}
+
+// ── edit / delete a fund transaction ─────────
+function openEditFund(tx){
+  mode = 'editFund'; editingExp = tx; saving = false;
+  const n = Number(tx.amount);
+  amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
+  renderAmt();
+  $('formTitle').textContent = 'Edit fund transaction';
+  $('descInput').placeholder = 'remarks';
+  $('descInput').value = tx.remarks || '';
+  $('dateInput').value = tx.date;
+  $('commentsInput').value = '';
+  $('rowTrip').style.display = 'none';
+  $('rowFund').style.display = 'block';
+  $('fundSelCap').style.display = 'none';
+  $('rowFund2').style.display = 'none';
+  $('rowType').style.display = 'block';
+  $('rowCategory').style.display = 'none';
+  $('rowPayer').style.display = 'none';
+  $('segCurrency').style.display = 'none';
+  $('fundCurLabel').style.display = 'inline';
+  $('rowDetails').style.display = 'block';
+  $('cardSel').style.display = 'none';
+  $('gridCategory').style.display = 'none';
+  hideSug();
+  $('fundSel').innerHTML = fundOptionsHtml(CTX.funds);
+  if (!CTX.funds.some(f => f.id === tx.fund_id) && tx.funds) {
+    // the fund was archived — keep it selectable for this row
+    const o = document.createElement('option'); o.value = tx.fund_id; o.textContent = tx.funds.name;
+    $('fundSel').appendChild(o);
+  }
+  $('fundSel').value = tx.fund_id;
+  updateFundCur();
+  if (!$('fundCurLabel').textContent && tx.funds) $('fundCurLabel').textContent = curLabel(tx.funds.currency);
+  $('fundSel').onchange = updateFundCur;
+  buildSeg('segType', ['Into the fund', 'Out of the fund'], tx.type === 'income' ? 0 : 1);
+  $('deleteBtn').style.display = 'inline'; $('deleteBtn').textContent = 'Delete';
+  $('saveBtn').textContent = 'Save';
+  $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
+  $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
+  $('sh-form').style.display = 'block';
+  $('backdrop').classList.add('open'); $('sheet').classList.add('open');
+  if (tx.origin === 'planned') toast('written by Review & apply — edits change this record, not the plan');
+  else if (/^Transfer [→←]/.test(tx.remarks || '')) toast('this is half of a transfer — its pair won’t change');
+}
+
 let delArm = false;
 async function deleteExpense(){
   if (!editingExp) return;
@@ -2857,10 +3149,17 @@ async function deleteExpense(){
     return;
   }
   delArm = false; btn.textContent = 'Delete';
-  const { error } = await sb.from('travel_expenses').delete().eq('id', editingExp.id);
+  const table = mode === 'editFund' ? 'fund_transactions'
+              : mode === 'editDaily' ? 'daily_expenses'
+              : 'travel_expenses';
+  const { error } = await sb.from(table).delete().eq('id', editingExp.id);
   if (error) { toast('couldn’t delete: ' + error.message); return; }
   closeSheet(); toast('deleted 🐻');
-  loadTravel(true);
+  if (mode === 'edit') { loadTravel(true); return; }
+  loadHome();
+  if (atx) loadAllTx(true);
+  if (mode === 'editFund' && fundsInit) loadFunds();
+  if (mode === 'editDaily' && budgetInit) selectBudgetMonth(budgetMonth);
 }
 
 // ══ FIRST-RUN TUTORIAL ══════════════════════
