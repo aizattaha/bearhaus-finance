@@ -1295,8 +1295,10 @@ function renderFunds(st){
     b.style.display = b.style.display === 'none' ? 'block' : 'none';
   };
   const leftoverFunds = st.bal.filter(b => b.is_leftover_target);
+  const lfNames = leftoverFunds.map(b => b.name + ' ' + flagOf(b.country)).join(' · ');
   let cap = leftoverFunds.length
-    ? 'leftover is earmarked for ' + leftoverFunds.map(b => b.name + ' ' + flagOf(b.country)).join(' · ') + ' — nothing moves by itself'
+    ? (st.appliedOn ? 'leftover moved to ' + lfNames + ' with the plan'
+                    : 'leftover moves to ' + lfNames + ' when you apply the plan')
     : 'leftover stays in the pool — mark leftover funds in Settings';
   const btn = $('applyBtn');
   btn.disabled = false; btn.style.opacity = '1';
@@ -1359,7 +1361,7 @@ function renderFundList(country, st){
     list.forEach(b => {
       const btn = document.createElement('button');
       btn.type = 'button'; btn.className = 'fundrow';
-      const earmark = (!editing && b.is_leftover_target && st.leftover && st.leftover[b.currency] > 0.005) ? st.leftover[b.currency] : 0;
+      const earmark = (!editing && !st.appliedOn && b.is_leftover_target && st.leftover && st.leftover[b.currency] > 0.005) ? st.leftover[b.currency] : 0;
       btn.innerHTML = (editing ? '<span class="dhandle">≡</span>' : '')
         + '<div class="rowicon">' + fundIcon(b.name) + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
@@ -1569,7 +1571,7 @@ function renderPlanSheet(){
   else { top.style.cssText = 'width:100%;background:var(--accent-soft);color:var(--primary)'; top.textContent = '✎ Edit'; top.onclick = () => { planEditMode = true; renderPlanSheet(); }; }
   box.appendChild(top);
   if (edit && d.prefilledFrom && !d.saved) box.appendChild(capEl('prefilled from ' + monthName(d.prefilledFrom, true) + ' — tweak anything, then save'));
-  if (!edit && d.saved && !d.appliedOn) box.appendChild(capEl('plan saved ✓ — nothing has moved yet. Apply below writes the fund contributions when you’re ready.'));
+  if (!edit && d.saved && !d.appliedOn) box.appendChild(capEl('plan saved ✓ — nothing has moved yet. Apply below writes the fund contributions and moves the leftover when you’re ready.'));
   if (edit && d.appliedOn) box.appendChild(capEl('heads-up: this month’s contributions were already applied — edits change the plan, not money already moved'));
 
   // money in
@@ -1668,9 +1670,12 @@ function renderPlanSheet(){
   // the equation, pinned and live in both states
   const foot = document.createElement('div');
   foot.className = 'plansticky';
+  const lfTargets = d.funds.filter(f => f.is_leftover_target).map(f => f.name + ' ' + flagOf(f.country)).join(' · ');
   foot.innerHTML = '<div class="planeq"><p class="cap" style="margin-bottom:2px">'
     + (edit ? 'income − spending − funds = leftover · recalculates as you type' : (d.appliedOn ? 'income − spending − funds = leftover · as applied' : 'income − spending − funds = leftover'))
-    + '</p><div id="planMath"></div></div>';
+    + '</p><div id="planMath"></div>'
+    + (!edit && lfTargets ? '<p class="cap" style="margin-top:4px">' + (d.appliedOn ? 'leftover moved to ' + esc(lfTargets) + ' ✓' : 'leftover moves to ' + esc(lfTargets) + ' when you apply') + '</p>' : '')
+    + '</div>';
   if (!edit) {
     const ap = document.createElement('button');
     ap.type = 'button'; ap.className = 'btn btn-primary'; ap.id = 'applyGo';
@@ -1716,7 +1721,8 @@ function updatePlanEq(){
   }).join('');
 }
 
-// Apply — writes the un-skipped contributions as real transactions
+// Apply — writes the un-skipped contributions AND the leftover, atomically.
+// (Aizat, 24 Jul: once the review is applied, leftover goes straight to its fund.)
 async function applyPlan(){
   if (applying || !planDraft) return;
   if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
@@ -1724,17 +1730,33 @@ async function applyPlan(){
   const rows = d.funds
     .filter(f => d.fb[f.id] > 0 && d.on[f.id] !== false)
     .map(f => ({ fund_id: f.id, amount: d.fb[f.id] }));
-  if (!rows.length) { toast('everything is skipped — nothing to apply'); return; }
+  // leftover per currency = income − spending budget − applied contributions
+  const inc = {}, cat = {}, fbSum = {};
+  d.inc.forEach(r => { if (r.amount > 0) inc[r.currency] = (inc[r.currency] || 0) + r.amount; });
+  Object.entries(d.cat).forEach(([k, v]) => { if (v > 0) { const c = k.slice(k.lastIndexOf('|') + 1); cat[c] = (cat[c] || 0) + v; } });
+  rows.forEach(r => {
+    const f = d.funds.find(x => x.id === r.fund_id);
+    if (f && !f.is_leftover_target) fbSum[f.currency] = (fbSum[f.currency] || 0) + r.amount;
+  });
+  const leftoverRows = [];
+  [...new Set([...Object.keys(inc), ...Object.keys(cat), ...Object.keys(fbSum)])].forEach(c => {
+    const left = Math.round(((inc[c] || 0) - (cat[c] || 0) - (fbSum[c] || 0)) * 100) / 100;
+    const target = d.funds.find(f => f.is_leftover_target && f.currency === c);
+    if (target && left > 0.005) leftoverRows.push({ fund_id: target.id, amount: left, leftover: true });
+  });
+  if (!rows.length && !leftoverRows.length) { toast('everything is skipped — nothing to apply'); return; }
   applying = true;
   if ($('applyGo')) $('applyGo').innerHTML = '<span class="spin"></span>';
   const remark = monthName(d.month, true) + ' plan';
-  const { error } = await sb.from('fund_transactions').insert(rows.map(r => ({
+  const { error } = await sb.from('fund_transactions').insert(rows.concat(leftoverRows).map(r => ({
     household_id: CTX.hh.id, fund_id: r.fund_id, type: 'income',
-    date: isoDate(new Date()), amount: r.amount, remarks: remark, origin: 'planned',
+    date: isoDate(new Date()), amount: r.amount,
+    remarks: remark + (r.leftover ? ' — leftover' : ''), origin: 'planned',
   })));
   applying = false;
   if (error) { if ($('applyGo')) $('applyGo').textContent = 'Apply'; toast('couldn’t apply: ' + error.message); return; }
-  closeSheet(); toast('applied — ' + rows.length + ' contributions written 🐻');
+  closeSheet();
+  toast('applied — ' + rows.length + ' contributions' + (leftoverRows.length ? ' + leftover moved' : '') + ' 🐻');
   loadFunds();
   checkPlanNudge();
 }
