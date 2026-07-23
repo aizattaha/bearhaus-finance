@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BearHaus</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -240,6 +240,9 @@ select.descinput{appearance:none;-webkit-appearance:none}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.srow .edit,.trow .edit{position:relative}
+.srow .edit::after,.trow .edit::after{content:"";position:absolute;inset:-9px}
+input[type="date"].descinput{min-width:0}
 </style>
 </head>
 <body>
@@ -360,14 +363,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
           <span class="h2">Last 6 months</span><span class="pill" id="budCurPill">A$</span>
         </div>
         <div id="budChart" style="margin-top:10px"><p class="cap">loading…</p></div>
-        <div class="legend2">
-          <span class="li"><span class="dot" style="background:#004A98"></span>Rent</span>
-          <span class="li"><span class="dot" style="background:#5A8AC7"></span>Daily</span>
-          <span class="li"><span class="dot" style="background:#B4CEFF"></span>Education</span>
-          <span class="li"><span class="dot" style="background:#E4EEFF"></span>Transport</span>
-          <span class="li"><span class="dot" style="background:#E6E5E5"></span>Other</span>
-          <span class="li"><span class="dash"></span>budget</span>
-        </div>
+        <div class="legend2" id="budLegend"></div>
       </div>
       <div class="total-card">
         <p class="cap" id="budTotalLabel">…</p>
@@ -536,7 +532,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
 // ── connection ───────────────────────────────
 const SUPABASE_URL = 'https://diqaezhdxloqhglndqrq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_K-fUtwnuZAJLTNquqDN87Q_yBkEEGhZ';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ── tiny helpers ─────────────────────────────
 const $ = id => document.getElementById(id);
@@ -545,6 +541,13 @@ function toast(msg){
   const t = $('toastEl');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+// double-tap shield for one-shot buttons (QA-14)
+function guard(btn){
+  if (!btn || btn.disabled) return false;
+  btn.disabled = true;
+  setTimeout(() => { btn.disabled = false; }, 2500);
+  return true;
 }
 function go(id){
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -560,7 +563,7 @@ function go(id){
 const CURSYM = { AUD:'A$', SGD:'S$', IDR:'Rp', JPY:'¥', CNY:'¥', KRW:'₩', THB:'฿', MYR:'RM',
                  VND:'₫', EUR:'€', GBP:'£', USD:'US$', NZD:'NZ$', TWD:'NT$', HKD:'HK$', INR:'₹' };
 function fmtMoney(v, cur){
-  const sym = CURSYM[cur] || (cur ? cur + ' ' : 'A$');
+  const sym = CURSYM[cur] || (cur ? String(cur).replace(/[^A-Za-z]/g, '').slice(0, 5) + ' ' : 'A$');
   return sym + Number(v).toLocaleString('en-AU', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 // 'SG' -> 🇸🇬 (country code to flag emoji)
@@ -573,7 +576,7 @@ function homeCurrencies(){
   return l.length ? l : ['AUD'];
 }
 function primaryCur(){ return homeCurrencies()[0]; }
-const curLabel = c => CURSYM[c] || c;
+const curLabel = c => CURSYM[c] || String(c || '').replace(/[^A-Za-z]/g, '').slice(0, 5);
 
 // ── auth flow ────────────────────────────────
 let authMode = 'signin';
@@ -588,6 +591,7 @@ $('modeToggle').onclick = () => {
 };
 $('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
+  if (!sb) { $('loginError').style.color = 'var(--bad)'; $('loginError').textContent = 'couldn’t load the app — check your connection, then close and reopen'; return; }
   const btn = $('loginBtn'), errEl = $('loginError');
   const fail = m => { errEl.style.color = 'var(--bad)'; errEl.textContent = m; };
   const done = () => { btn.disabled = false; btn.textContent = authMode === 'signup' ? 'Create account' : 'Sign in'; };
@@ -622,10 +626,17 @@ $('loginForm').addEventListener('submit', async e => {
   boot();
 });
 
+let outArm = false;
 async function signOut(){
+  if (!outArm) {   // an accidental tap shouldn't cost a login (QA-21)
+    outArm = true;
+    toast('tap Sign out again to confirm');
+    setTimeout(() => { outArm = false; }, 2500);
+    return;
+  }
   await sb.auth.signOut();
   // this device may be handed to someone else — leave no cached numbers behind
-  ['bh-home','bh-budget','bh-funds','bh-travel','bh-ctx','bh-trip','bh-fund','bh-payer','bh-cur','bh-invite'].forEach(k => localStorage.removeItem(k));
+  ['bh-home','bh-budget','bh-funds','bh-travel','bh-ctx','bh-trip','bh-fund','bh-payer','bh-cur','bh-invite','bh-tut-done'].forEach(k => localStorage.removeItem(k));
   location.reload();
 }
 
@@ -634,7 +645,8 @@ async function boot(){
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem('bh-ctx')); } catch(e){}
   if (cached && cached.hh) { enterApp(); return; }   // known household: paint instantly
-  const { data } = await sb.from('households').select('id').maybeSingle();
+  const { data, error } = await sb.from('households').select('id').maybeSingle();
+  if (error) { enterApp(); return; }   // a blip isn't "no household" — Home shows a retry card (QA-11)
   if (data) enterApp(); else showOnboard();
 }
 
@@ -704,7 +716,7 @@ const CAT_ICON = {
   'Gifts':'🎁','Medical Expenses':'💊','Health':'💊','Liquor':'🍺','Movies':'🎬','Games':'🎮',
   'Electronics':'🔌','Hotel':'🏨','Payment':'🔁',
 };
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // local calendar date, NOT toISOString() — that detours through UTC and,
 // being 10h behind Sydney, drags the previous day into every range
 const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -733,6 +745,7 @@ async function enterApp(){
 
 // ── error surfacing + self-heal ──────────────
 function showError(msg){
+  if (!$('scr-home').classList.contains('active')) { toast(msg); return; }   // visible wherever you are (QA-34)
   $('errorMsg').textContent = msg;
   $('errorCard').style.display = 'block';
 }
@@ -754,12 +767,12 @@ async function loadHome(){
 
     const [week, recent, month] = await Promise.all([
       sb.from('daily_expenses').select('date, amount, currency, category')
-        .gte('date', isoDate(weekStart)).neq('category', 'Payment'),
+        .gte('date', isoDate(weekStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
       sb.from('daily_expenses')
         .select('id, date, description, category, amount, currency, profiles(display_name)')
         .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(5),
       sb.from('daily_expenses').select('category, amount, currency')
-        .gte('date', isoDate(monthStart)).neq('category', 'Payment'),
+        .gte('date', isoDate(monthStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
     ]);
     if (week.error) throw week.error;
     if (recent.error) throw recent.error;
@@ -768,6 +781,7 @@ async function loadHome(){
     const state = { week: week.data, recent: recent.data, month: month.data, today: isoDate(now) };
     localStorage.setItem('bh-home', JSON.stringify(state));
     $('errorCard').style.display = 'none';
+    homeRetried = false;   // a success re-arms the one-shot token refresh (QA-34)
     renderHome(state);
   } catch (err) {
     const msg = String(err.message || err);
@@ -821,7 +835,7 @@ function renderHome(state){
     return `<div class="row"><div class="rowicon">${icon}</div>
       <div style="min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.description)}</div>
       <div class="cap">${esc(r.category)} · ${esc(who)} · ${when}</div></div>
-      <div class="amt num">−${fmtMoney(r.amount, r.currency)}</div></div>`;
+      <div class="amt num"${r.category === 'Payment' ? ' style="color:var(--ink-soft)"' : ''}>−${fmtMoney(r.amount, r.currency)}</div></div>`;
   }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet this week 🐻</p>';
   // tap a recent line to fix it — fetches the full row, then opens the edit sheet
   [...$('recentList').children].forEach((el, i) => {
@@ -871,7 +885,7 @@ function renderHome(state){
       <text x="60" y="73" text-anchor="middle" font-size="10" fill="#6B7A90" font-family="Poppins,sans-serif">so far</text>
     </svg>
     <div class="legend">${top.map(([g, v], i) =>
-      `<div class="li"><span class="dot" style="background:${COLORS[i]}"></span><span>${esc(g)}</span><span class="amt">${Math.round(v).toLocaleString('en-AU')}</span></div>`).join('')
+      `<div class="li"><span class="dot" style="background:${COLORS[i]}"></span><span>${esc(g)}</span><span class="amt">${curLabel(PC)}${Math.round(v).toLocaleString('en-AU')}</span></div>`).join('')
       || '<p class="cap">no spending yet this month</p>'}</div>`;
 }
 
@@ -885,9 +899,9 @@ let BUDGET_ROWS = [
   { icon:'📱', group:'TV/Phone/Internet', blabel:'Phone Bill/Internet' },
   { icon:'🛡️', group:'Insurance',         blabel:'Insurance' },
 ];
-const CHART_GROUPS = ['Rent','Daily Expenses','Education','Transportation'];   // rest = Other
+let CHART_GROUPS = ['Rent','Daily Expenses','Education','Transportation'];   // rest = Other; rebuilt from the household's groups
 const CHART_COLORS = ['#004A98','#5A8AC7','#B4CEFF','#E4EEFF','#E6E5E5'];
-let budgetMonth = null, budgetInit = false;
+let budgetMonth = null, budgetInit = false, budSeq = 0;
 
 const curMonthIso = () => { const n = new Date(); return isoDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
 function addMonths(iso, n){
@@ -897,7 +911,7 @@ function addMonths(iso, n){
 function monthName(iso, long){
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', long ? {month:'long', year:'numeric'} : {month:'short', year:'numeric'});
 }
-const BUD_MIN = '2024-02-01';              // first month of your data
+let BUD_MIN = curMonthIso();   // pushed back to the household's real first month once data loads (QA-17)
 function updateRotor(){
   const prev = addMonths(budgetMonth, -1), next = addMonths(budgetMonth, 1);
   const canPrev = prev >= BUD_MIN, canNext = next <= curMonthIso();
@@ -922,11 +936,12 @@ function initBudget(){
 }
 async function selectBudgetMonth(m){
   budgetMonth = m;
+  const mySeq = ++budSeq;   // last requested month wins, not last to resolve (QA-9)
   updateRotor();
   const chartStart = addMonths(m, -5), next = addMonths(m, 1);
   try {
     const [exp, bud, flt] = await Promise.all([
-      sb.from('daily_expenses').select('date, description, category, amount, currency')
+      sb.from('daily_expenses').select('id, date, description, category, amount, currency')
         .gte('date', chartStart).lt('date', next).neq('category', 'Payment'),
       sb.from('category_budgets').select('month, category_group, amount')
         .gte('month', chartStart).lte('month', m).eq('currency', primaryCur()),
@@ -934,6 +949,7 @@ async function selectBudgetMonth(m){
     ]);
     if (exp.error) throw exp.error;
     if (bud.error) throw bud.error;
+    if (mySeq !== budSeq) return;
     const state = { month: m, chartStart, exp: exp.data, bud: bud.data, cur: primaryCur(),
                     float: flt.data ? Number(flt.data.balance) : null,
                     floatCur: flt.data ? flt.data.currency : null };
@@ -994,6 +1010,10 @@ function renderBudget(st){
       font-weight="${sel ? 600 : 400}" fill="${over ? '#D25353' : sel ? '#004A98' : '#6B7A90'}">${monthName(m).split(' ')[0]}</text>`;
   });
   $('budChart').innerHTML = `<svg viewBox="0 0 320 150" style="display:block;width:100%;height:auto" role="img" aria-label="Six months of spending vs budget">${svg}</svg>`;
+  $('budLegend').innerHTML = CHART_GROUPS.map((g, i) =>
+    '<span class="li"><span class="dot" style="background:' + CHART_COLORS[i] + '"></span>' + esc(g) + '</span>').join('')
+    + '<span class="li"><span class="dot" style="background:' + CHART_COLORS[4] + '"></span>Other</span>'
+    + '<span class="li"><span class="dash"></span>budget</span>;'.slice(0, -1);
 
   // total card
   const spent = totalOf(st.month), budget = budTot[st.month];
@@ -1022,7 +1042,7 @@ function renderBudget(st){
     const s = sums[st.month][row.group] || 0, b = budByLabel[row.blabel] || 0;
     if (!s && !b) return;
     const over = b > 0 && s > b;
-    const wMain = b <= 0 ? (s > 0 ? 100 : 0) : Math.min(s / b, 1) * (over ? b / s : 1) * 100;
+    const wMain = b <= 0 ? 0 : Math.min(s / b, 1) * (over ? b / s : 1) * 100;   // no budget → empty track (QA-28)
     const wOver = over ? (1 - b / s) * 100 : 0;
     const status = b <= 0 ? ''
       : over ? '<div class="lbl num" style="color:var(--bad)">' + fmtMoney(s - b, PC) + ' over</div>'
@@ -1062,11 +1082,27 @@ function renderBudget(st){
         + '<span class="amt">−' + fmtMoney(cSum, PC) + '</span>';
       const sub = document.createElement('div');
       sub.style.cssText = 'display:none;padding-left:22px';
-      sub.innerHTML = monthExp.filter(r => r.category === cName)
+      monthExp.filter(r => r.category === cName)
         .sort((a, c) => c.date < a.date ? -1 : 1)
-        .map(r => `<div class="drow"><span class="dd">${esc(r.description)}</span>
+        .forEach(r => {
+          const lr = document.createElement('div');
+          lr.className = 'drow';
+          lr.innerHTML = `<span class="dd">${esc(r.description)}</span>
           <span class="cap">${new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})}</span>
-          <span class="amt">−${fmtMoney(r.amount, PC)}</span></div>`).join('');
+          <span class="amt">−${fmtMoney(r.amount, PC)}</span>`;
+          if (r.id) {
+            lr.style.cursor = 'pointer';
+            lr.onclick = async ev => {
+              ev.stopPropagation();
+              const { data, error } = await sb.from('daily_expenses')
+                .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id, daily_expense_splits(profile_id, amount)')
+                .eq('id', r.id).single();
+              if (error) { toast('couldn’t open: ' + error.message); return; }
+              openEditDaily(data);
+            };
+          }
+          sub.appendChild(lr);
+        });
       crow.onclick = e => { e.stopPropagation(); sub.style.display = sub.style.display === 'none' ? 'block' : 'none'; };
       drill.appendChild(crow);
       drill.appendChild(sub);
@@ -1172,7 +1208,7 @@ function renderFunds(st){
         CURS.map(c => c === r.currency ? cell(Number(r.amount), c, 'var(--good)', 'var(--bad)') : blank))).join('');
   $('flowRows').innerHTML =
     '<div id="incHead" style="cursor:pointer">'
-      + row('Income · ' + (st.inc || []).length + ' sources ▾', cellsFor(c => sum.inc[c] || 0, 'var(--good)', 'var(--bad)'))
+      + row('Income · ' + (st.inc || []).length + ((st.inc || []).length === 1 ? ' source ▾' : ' sources ▾'), cellsFor(c => sum.inc[c] || 0, 'var(--good)', 'var(--bad)'))
     + '</div><div id="incBreak" style="display:none">' + incBreak + '</div>'
     + row('Spending budget', cellsFor(c => -(sum.cat[c] || 0), 'var(--ink)', 'var(--ink)'))
     + row('Into funds · ' + fundCount, cellsFor(c => -(sum.funds[c] || 0), 'var(--ink)', 'var(--ink)'))
@@ -1184,7 +1220,7 @@ function renderFunds(st){
   };
   const leftoverFunds = st.bal.filter(b => b.is_leftover_target);
   let cap = leftoverFunds.length
-    ? 'leftover flows to ' + leftoverFunds.map(b => b.name + ' ' + flagOf(b.country)).join(' · ')
+    ? 'leftover is earmarked for ' + leftoverFunds.map(b => b.name + ' ' + flagOf(b.country)).join(' · ') + ' — nothing moves by itself'
     : 'leftover stays in the pool — mark leftover funds in Settings';
   const btn = $('applyBtn');
   btn.disabled = false; btn.style.opacity = '1';
@@ -1220,7 +1256,8 @@ function renderFundList(country, st){
   const editing = fundsEdit[country];
   const all = st.bal.filter(b => b.country === country);
   const expanded = fundsExpanded[country] || editing;   // edit mode shows everything
-  const visible = expanded ? all : all.filter(b => Math.abs(Number(b.balance)) >= 0.005);
+  const anyBalance = all.some(b => Math.abs(Number(b.balance)) >= 0.005);
+  const visible = (expanded || !anyBalance) ? all : all.filter(b => Math.abs(Number(b.balance)) >= 0.005);
   // second-level grouping, ordered by each group's first fund
   const groups = {};
   visible.forEach(b => { const g = b.group_name || 'Other'; (groups[g] = groups[g] || []).push(b); });
@@ -1504,7 +1541,7 @@ function renderPlanSheet(){
   }
 
   // into funds — grouped like the dashboard
-  box.appendChild(sec(edit ? 'into funds · every fund gets a box' : 'into funds · tap a line to skip it this month'));
+  box.appendChild(sec(edit ? 'into funds · every fund gets a box' : (d.appliedOn ? 'into funds · as applied' : 'into funds · tap a line to skip it this month')));
   const groups = {};
   d.funds.forEach(f => {
     if (!edit && !(d.fb[f.id] > 0)) return;   // review shows only planned lines
@@ -1531,7 +1568,8 @@ function renderPlanSheet(){
           + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>'
           + '<span class="amt">+' + fmtMoney(d.fb[f.id], f.currency) + '</span>';
         if (d.on[f.id] === false) b.classList.add('off');
-        b.onclick = () => {
+        if (d.appliedOn) b.style.cursor = 'default';   // applied: nothing left to skip (QA-7)
+        else b.onclick = () => {
           d.on[f.id] = d.on[f.id] === false ? true : false;
           b.classList.toggle('off', d.on[f.id] === false);
           updatePlanEq();
@@ -1546,7 +1584,7 @@ function renderPlanSheet(){
   const foot = document.createElement('div');
   foot.className = 'plansticky';
   foot.innerHTML = '<div class="planeq"><p class="cap" style="margin-bottom:2px">'
-    + (edit ? 'income − spending − funds = leftover · recalculates as you type' : 'income − spending − funds = leftover')
+    + (edit ? 'income − spending − funds = leftover · recalculates as you type' : (d.appliedOn ? 'income − spending − funds = leftover · as applied' : 'income − spending − funds = leftover'))
     + '</p><div id="planMath"></div></div>';
   if (!edit) {
     const ap = document.createElement('button');
@@ -1622,21 +1660,17 @@ async function savePlan(){
   const btn = $('planSave'); if (btn) btn.innerHTML = '<span class="spin"></span>';
   const d = planDraft, m = d.month, hh = CTX.hh.id;
   try {
-    let r = await sb.from('income_budgets').delete().eq('month', m);
-    if (r.error) throw r.error;
-    const incRows = d.inc.filter(x => x.amount > 0).map(x => ({ household_id: hh, month: m, source_name: x.source_name, currency: x.currency, amount: x.amount }));
-    if (incRows.length) { r = await sb.from('income_budgets').insert(incRows); if (r.error) throw r.error; }
-    r = await sb.from('category_budgets').delete().eq('month', m);
-    if (r.error) throw r.error;
-    const catRows = Object.entries(d.cat).filter(([, v]) => v > 0).map(([k, v]) => {
-      const i = k.lastIndexOf('|');
-      return { household_id: hh, month: m, category_group: k.slice(0, i), currency: k.slice(i + 1), amount: v };
+    // one server-side transaction — the plan can never be half-written (QA-3)
+    const { error } = await sb.rpc('save_month_plan', {
+      p_month: m,
+      p_inc: d.inc.filter(x => x.amount > 0).map(x => ({ source_name: x.source_name, currency: x.currency, amount: x.amount })),
+      p_cat: Object.entries(d.cat).filter(([, v]) => v > 0).map(([k, v]) => {
+        const i = k.lastIndexOf('|');
+        return { category_group: k.slice(0, i), currency: k.slice(i + 1), amount: v };
+      }),
+      p_fb: Object.entries(d.fb).filter(([, v]) => v > 0).map(([id, v]) => ({ fund_id: id, amount: v })),
     });
-    if (catRows.length) { r = await sb.from('category_budgets').insert(catRows); if (r.error) throw r.error; }
-    r = await sb.from('fund_budgets').delete().eq('month', m);
-    if (r.error) throw r.error;
-    const fbRows = Object.entries(d.fb).filter(([, v]) => v > 0).map(([id, v]) => ({ household_id: hh, month: m, fund_id: id, amount: v }));
-    if (fbRows.length) { r = await sb.from('fund_budgets').insert(fbRows); if (r.error) throw r.error; }
+    if (error) throw error;
     planSaving = false;
     toast('plan saved 🐻');
     if (budgetInit) selectBudgetMonth(budgetMonth);
@@ -1654,8 +1688,8 @@ async function savePlan(){
 // every daily expense and fund transaction, filterable, paged —
 // and the one place where any line can be edited or deleted.
 const ATX_PAGE = 60;
-let atx = null;
-const fmtDayMonYr = d => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'});
+let atx = null, atxSeq = 0;
+const fmtDayMonYr = d => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'});
 function openAllTx(){
   if (!atx) {
     buildSeg('atxType', ['All', 'Daily', 'Funds'], 0, () => { refreshAtxWhat(); loadAllTx(true); });
@@ -1666,8 +1700,12 @@ function openAllTx(){
     $('atxWhat').onchange = () => loadAllTx(true);
     let deb = null;
     $('atxSearch').addEventListener('input', () => { clearTimeout(deb); deb = setTimeout(() => loadAllTx(true), 350); });
-    refreshAtxWhat();
   }
+  // fresh visit, fresh filters — a stale invisible search reads as lost data (QA-22)
+  $('atxSearch').value = '';
+  $('atxMonth').value = '';
+  buildSeg('atxType', ['All', 'Daily', 'Funds'], 0, () => { refreshAtxWhat(); loadAllTx(true); });
+  refreshAtxWhat();
   go('scr-alltx');
   loadAllTx(true);
 }
@@ -1685,11 +1723,12 @@ function refreshAtxWhat(){
 async function loadAllTx(reset){
   if (reset || !atx) atx = { rows: [], dOff: 0, fOff: 0, dDone: false, fDone: false };
   const type = segSel('atxType') || 'All';
-  const q = $('atxSearch').value.trim();
+  const q = $('atxSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch);
   const m = $('atxMonth').value;
   const what = $('atxWhat').style.display === 'none' ? '' : $('atxWhat').value;
   $('atxMore').style.display = 'none';
   if (!atx.rows.length) $('atxList').innerHTML = '<p class="cap" style="padding:12px 0">loading…</p>';
+  const mySeq = ++atxSeq;   // filters changed mid-flight? drop this response (QA-9)
   try {
     let qd = null, qf = null;
     if (type !== 'Funds' && !atx.dDone) {
@@ -1711,6 +1750,7 @@ async function loadAllTx(reset){
       if (type === 'Funds' && what) qf = qf.eq('fund_id', what);
     }
     const [dr, fr] = await Promise.all([qd || Promise.resolve(null), qf || Promise.resolve(null)]);
+    if (mySeq !== atxSeq) return;
     if (dr) {
       if (dr.error) throw dr.error;
       atx.dOff += dr.data.length;
@@ -1728,8 +1768,16 @@ async function loadAllTx(reset){
 }
 function renderAllTx(type){
   const box = $('atxList'); box.innerHTML = '';
-  const rows = atx.rows.slice().sort((a, b) => b.r.date > a.r.date ? 1 : b.r.date < a.r.date ? -1 : 0);
-  if (!rows.length) box.innerHTML = '<p class="cap" style="padding:12px 0">nothing matches 🐻</p>';
+  let rows = atx.rows.slice().sort((a, b) => b.r.date > a.r.date ? 1 : b.r.date < a.r.date ? -1 : 0);
+  // only render as far back as BOTH sources have loaded — no silent gaps (QA-10)
+  if (type === 'All') {
+    const oldest = k => { const kk = atx.rows.filter(x => x.kind === k); return kk.length ? kk.reduce((mm, x) => x.r.date < mm ? x.r.date : mm, '9999-99-99') : null; };
+    const od = atx.dDone ? null : oldest('d');
+    const of = atx.fDone ? null : oldest('f');
+    const cutoff = od && of ? (od > of ? od : of) : (od || of);
+    if (cutoff) rows = rows.filter(x => x.r.date >= cutoff);
+  }
+  if (!rows.length) box.innerHTML = '<p class="cap" style="padding:12px 0">' + (atx.rows.length ? 'older items load below 🐻' : 'nothing matches 🐻') + '</p>';
   rows.forEach(({ kind, r }) => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'fundrow';
@@ -1739,7 +1787,7 @@ function renderAllTx(type){
       b.innerHTML = '<div class="rowicon">' + (CAT_ICON[r.category] || '🛍️') + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.description) + '</div>'
         + '<div class="cap">' + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + '</div></div>'
-        + '<div class="amt num" style="color:var(--bad)">−' + fmtMoney(r.amount, r.currency) + '</div>';
+        + '<div class="amt num" style="color:' + (r.category === 'Payment' ? 'var(--ink-soft)' : 'var(--bad)') + '">−' + fmtMoney(r.amount, r.currency) + '</div>';
       b.onclick = () => openEditDaily(r);
     } else {
       const inc = r.type === 'income';
@@ -1773,7 +1821,7 @@ function selectEl(opts, val, onChange, noneLabel){
 function addRowEl(ph, onAdd){
   const d = document.createElement('div'); d.style.cssText = 'display:flex;gap:8px;margin-top:10px';
   d.innerHTML = '<input class="descinput" placeholder="' + esc(ph) + '" style="flex:1"><button class="btn-mini" type="button">Add</button>';
-  d.lastChild.onclick = () => { const v = d.firstChild.value.trim(); if (!v) { toast('type a name first'); return; } onAdd(v); };
+  d.lastChild.onclick = () => { const v = d.firstChild.value.trim(); if (!v) { toast('type a name first'); return; } if (!guard(d.lastChild)) return; onAdd(v); };
   return d;
 }
 function editInline(row, initial, onSave){
@@ -1805,7 +1853,7 @@ function renderSettings(){
     { icon:'💳', label:'Payment cards', cap: 'per-person, archivable', render: renderSetCards },
     { icon:'🏷️', label:'Categories', cap: 'add · rename · archive', render: renderSetCategories },
     { icon:'💵', label:'Income', cap: 'part of the monthly plan', render: renderSetIncome },
-    { icon:'⬇️', label:'Export data', cap: 'CSV of everything', render: renderSetExport },
+    { icon:'⬇️', label:'Export data', cap: 'full backup & CSV exports', render: renderSetExport },
   ];
   sections.forEach(s => {
     const row = document.createElement('button');
@@ -1888,11 +1936,14 @@ async function renderSetFunds(box){
     const cur = (funds.find(f => f.country === cc && f.is_leftover_target) || {}).id || '';
     box.appendChild(labeled(cc + ' leftover flows to',
       selectEl(active.filter(f => f.country === cc).map(f => [f.id, f.name]), cur, async v => {
-        const c1 = await sb.from('funds').update({ is_leftover_target: false }).eq('country', cc);
-        if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
-        if (v) {
+        if (v) {   // set the new target first, then clear the rest (QA-16)
           const c2 = await sb.from('funds').update({ is_leftover_target: true }).eq('id', v);
           if (c2.error) { toast('couldn’t update: ' + c2.error.message); return; }
+          const c1 = await sb.from('funds').update({ is_leftover_target: false }).eq('country', cc).neq('id', v);
+          if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
+        } else {
+          const c1 = await sb.from('funds').update({ is_leftover_target: false }).eq('country', cc);
+          if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
         }
         if (fundsInit) loadFunds();
         toast(cc + ' leftover fund updated 🐻');
@@ -1975,6 +2026,7 @@ async function renderSetFunds(box){
   };
   refreshGroups();
   af.querySelector('#afAdd').onclick = async () => {
+    if (!guard(af.querySelector('#afAdd'))) return;
     const v = af.firstChild.value.trim();
     if (!v) { toast('type a name first'); return; }
     let cc = cSel.value, cur;
@@ -2036,6 +2088,7 @@ async function renderSetCards(box){
   buildSeg('acSeg', payerNames(), 0);
   $('acTravel').onclick = () => $('acTravel').classList.toggle('sel');
   $('acAdd').onclick = async () => {
+    if (!guard($('acAdd'))) return;
     const v = af.firstChild.value.trim();
     if (!v) { toast('type a name first'); return; }
     const owner = segSel('acSeg');
@@ -2157,6 +2210,7 @@ async function renderSetCategories(box){
   $('acatGroup').onchange = () => { $('acatNewGroup').style.display = $('acatGroup').value === '__new__' ? 'block' : 'none'; };
   refreshGroups();
   $('acatAdd').onclick = async () => {
+    if (!guard($('acatAdd'))) return;
     const name = $('acatName').value.trim();
     if (!name) { toast('type a name first'); return; }
     const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
@@ -2227,7 +2281,7 @@ async function renderSetExport(box){
   fb.innerHTML = '<div class="rowicon">🗄️</div><span class="lbl">Full backup (everything)</span>';
   fb.onclick = () => fullBackup(fb);
   box.appendChild(fb);
-  box.appendChild(capEl('one file, all 13 tables — your monthly ritual until Pro-plan backups'));
+  box.appendChild(capEl('one file with everything in it — keep a copy somewhere safe'));
   const jobs = [
     ['🛒', 'Daily expenses', 'daily_expenses', 'daily-expenses.csv', null],
     ['💰', 'Fund transactions', 'fund_transactions', 'fund-transactions.csv', 'funds(name)'],
@@ -2251,7 +2305,12 @@ async function renderSetExport(box){
       });
       if (!rows.length) { toast('nothing to export'); return; }
       const cols = Object.keys(rows[0]);
-      const cell = v => v === null || v === undefined ? '' : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+      const cell = v => {
+        if (v === null || v === undefined) return '';
+        let sv = String(v);
+        if (/^[=+@]/.test(sv)) sv = "'" + sv;   // spreadsheet formula-injection guard (QA-34)
+        return /[",\n]/.test(sv) ? '"' + sv.replace(/"/g, '""') + '"' : sv;
+      };
       const csv = cols.join(',') + '\n' + rows.map(r => cols.map(c => cell(r[c])).join(',')).join('\n');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -2271,7 +2330,7 @@ function tripDates(t){
   if (!t.start_date) return '';
   const s = new Date(t.start_date + 'T00:00:00'), e = t.end_date ? new Date(t.end_date + 'T00:00:00') : null;
   return s.toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'})
-    + (e ? ' – ' + e.toLocaleDateString('en-AU', {day:'numeric', month:'short'}) : '');
+    + (e ? ' – ' + e.toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'}) : '');
 }
 function tripAgg(exps){
   const byCur = {};
@@ -2424,13 +2483,34 @@ function renderTripDetail(){
         : '<p class="cap" style="color:var(--good)">everything so far was paid from the joint pot ✓</p>')
       + '</div>';
     if (!tf)
-      html += '<p class="cap" style="margin-top:12px">no travel fund set for this household yet — choose one in Settings (arriving in 5.7)</p>';
+      html += '<p class="cap" style="margin-top:12px">no travel fund set yet — choose one in Settings → Funds</p>';
     else if (unsentTotal > 0.005)
       html += '<button class="btn btn-primary" id="sendFundBtn" style="width:100%;margin-top:14px;height:auto;padding:10px 20px;display:flex;flex-direction:column;align-items:center;gap:0" onclick="sendToTravelFund()">'
         + '<span class="num" style="font-size:20px;line-height:28px;font-weight:600">Send ' + fmtMoney(unsentTotal, tf.currency) + '</span>'
         + '<span style="font-size:11px;line-height:16px;font-weight:400;color:var(--accent)">to ' + esc(tf.name) + '</span></button>';
   }
+  const foreignUnsent = tf ? exps.filter(e => !e.sent_to_fund && e.currency !== tf.currency) : [];
+  if (exps.length && !allSent && foreignUnsent.length) {
+    const t2 = {};
+    foreignUnsent.forEach(e => t2[e.currency] = (t2[e.currency] || 0) + Number(e.amount));
+    html += '<button class="btn-tert" style="width:100%;margin-top:10px" onclick="settleForeign()">mark '
+      + Object.entries(t2).map(([c, v]) => fmtMoney(v, c)).join(' + ')
+      + ' settled — no fund transfer</button>';
+  }
   $('tripSettle').innerHTML = html;
+}
+// foreign-currency lines can't flow into the fund — let them settle flag-only (QA-6)
+function settleForeign(){
+  const tf = travelFund();
+  const exps = (travelState ? travelState.exps : []).filter(e =>
+    e.trip_id === curTripId && !e.sent_to_fund && tf && e.currency !== tf.currency);
+  if (!exps.length) return;
+  sb.from('travel_expenses').update({ sent_to_fund: true }).in('id', exps.map(e => e.id))
+    .then(({ error }) => {
+      if (error) { toast('couldn’t settle: ' + error.message); return; }
+      toast('marked settled — no money moved 🐻');
+      loadTravel(true);
+    });
 }
 function travelFund(){
   return CTX.funds.find(f => f.id === (CTX.hh && CTX.hh.travel_fund_id)) || null;
@@ -2449,16 +2529,13 @@ async function sendToTravelFund(){
     return;
   }
   sendArm = false;
-  const trip = tripById(curTripId);
   btn.innerHTML = '<span class="spin"></span>';
-  const m = await sb.from('travel_expenses').update({ sent_to_fund: true }).in('id', exps.map(e => e.id));
-  if (m.error) { toast('couldn’t mark as sent: ' + m.error.message); return; }
-  const w = await sb.from('fund_transactions').insert({
-    household_id: CTX.hh.id, fund_id: tf.id, type: 'expense',
-    date: isoDate(new Date()), amount: total, remarks: 'Travel: ' + (trip ? trip.name : ''), origin: 'manual',
+  // one server-side transaction: money moves and lines flip together (QA-4)
+  const { data: sent, error } = await sb.rpc('send_trip_to_fund', {
+    p_trip: curTripId, p_fund: tf.id, p_date: isoDate(new Date()),
   });
-  if (w.error) { toast('marked as sent, but the fund write failed: ' + w.error.message); return; }
-  toast('sent ' + fmtMoney(total, tf.currency) + ' to ' + tf.name + ' 🐻');
+  if (error) { toast('couldn’t send: ' + error.message); renderTripDetail(); return; }
+  toast('sent ' + fmtMoney(sent, tf.currency) + ' to ' + tf.name + ' 🐻');
   loadTravel(true);
 }
 
@@ -2482,6 +2559,8 @@ function ntChip(box, label, list, value, onToggle){
 function openNewTripSheet(){
   ntSel = { countries: [], currencies: [] };
   $('ntName').value = ''; $('ntStart').value = ''; $('ntEnd').value = '';
+  $('ntEnd').min = '';
+  $('ntStart').onchange = () => { $('ntEnd').min = $('ntStart').value || ''; };
   const cb = $('ntCountries'); cb.innerHTML = '';
   NT_COUNTRIES.forEach(([cc, cur]) => ntChip(cb, flagOf(cc) + ' ' + cc, ntSel.countries, cc, on => {
     // picking a country auto-picks its currency (except the two home ones)
@@ -2506,10 +2585,12 @@ async function createTrip(){
   if (!name) { toast('give the trip a name'); return; }
   if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
   creatingTrip = true; $('ntGo').innerHTML = '<span class="spin"></span>';
+  let ds = $('ntStart').value || null, de = $('ntEnd').value || null;
+  if (ds && de && de < ds) { const sw = ds; ds = de; de = sw; toast('dates swapped — the end can’t be before the start'); }
   const { error } = await sb.from('trips').insert({
     household_id: CTX.hh.id, name,
-    start_date: $('ntStart').value || null, end_date: $('ntEnd').value || null,
-    currency: ntSel.currencies[0] || 'AUD',
+    start_date: ds, end_date: de,
+    currency: ntSel.currencies[0] || primaryCur(),
     currencies: ntSel.currencies, countries: ntSel.countries,
   });
   creatingTrip = false; $('ntGo').textContent = 'Create trip';
@@ -2526,7 +2607,8 @@ async function loadContext(){
   const cached = localStorage.getItem('bh-ctx');
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
   if (CTX.cats) applyCategories(CTX.cats);   // instant catalogue from the last visit
-  const [hh, profiles, funds, trips, cards, cats, dCats, tCats] = await Promise.all([
+  if (CTX.firstMonth) BUD_MIN = CTX.firstMonth;
+  const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD] = await Promise.all([
     sb.from('households').select('id, name, travel_fund_id, joint_label').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('funds').select('id, name, country, currency').eq('is_active', true).order('sort_order'),
@@ -2535,6 +2617,7 @@ async function loadContext(){
     sb.from('categories').select('kind, name, group_name, icon').eq('is_active', true).order('sort_order'),
     sb.from('daily_expenses').select('description, category').order('date', {ascending:false}).limit(300),
     sb.from('travel_expenses').select('description, category').order('date', {ascending:false}).limit(120),
+    sb.from('daily_expenses').select('date').order('date', {ascending:true}).limit(1),
   ]);
   if (!hh.error) {
     // table may predate the categories migration — fall back to built-ins
@@ -2545,6 +2628,9 @@ async function loadContext(){
             topDaily: topCats(dCats.data, FALLBACK_DAILY),
             topTravel: topCats(tCats.data, FALLBACK_TRAVEL),
             histDaily: histFrom(dCats.data), histTravel: histFrom(tCats.data) };
+    CTX.firstMonth = (!firstD.error && firstD.data && firstD.data[0])
+      ? firstD.data[0].date.slice(0, 7) + '-01' : curMonthIso();
+    BUD_MIN = CTX.firstMonth;
   }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
 }
@@ -2605,6 +2691,7 @@ function applyCategories(cats){
       seen[c.group_name] = true;
       BUDGET_ROWS.push({ icon: c.icon, group: c.group_name, blabel: c.group_name });
     });
+    CHART_GROUPS = BUDGET_ROWS.slice(0, 4).map(b => b.group);
   }
   if (travel.length) {
     TRAVEL_GROUPED = {};
@@ -2612,7 +2699,7 @@ function applyCategories(cats){
     FALLBACK_TRAVEL = travel.slice(0, 7).map(c => c.name);
   }
   (cats || []).forEach(c => {
-    CAT_ICON[c.name] = c.icon || CAT_ICON[c.name] || '🛍️';
+    CAT_ICON[c.name] = esc(String(c.icon || CAT_ICON[c.name] || '🛍️').slice(0, 8));
     if (c.kind === 'daily') GROUP_OF[c.name] = c.group_name;   // legacy names keep their old mapping
   });
 }
@@ -2643,7 +2730,7 @@ function refreshCards(payerName){
   if (opts.length) $('cardSel').value = opts[0].name;
 }
 
-let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '';
+let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false;
 
 function openSheet(){
   $('sh-chooser').style.display = 'block';
@@ -2766,7 +2853,7 @@ function tripById(id){ return CTX.trips.find(t => t.id === id); }
 function renderTripPick(){
   const box = $('tripPick'); box.innerHTML = '';
   const sel = tripById(selectedTripId) || CTX.trips[0];
-  if (!sel) { box.innerHTML = '<p class="cap">no trips yet — trip creation arrives with the Travel tab (5.6)</p>'; return; }
+  if (!sel) { box.innerHTML = '<p class="cap">no trips yet — create one in the Travel tab first</p>'; return; }
   selectedTripId = sel.id;
   const mk = (t, isHeader) => {
     const b = document.createElement('button'); b.type = 'button';
@@ -2781,12 +2868,19 @@ function renderTripPick(){
       + (isHeader ? '<span class="chev">' + (tripListOpen ? '▴' : '▾') + '</span>' : '');
     b.onclick = () => {
       if (isHeader) { tripListOpen = !tripListOpen; renderTripPick(); }
-      else { selectedTripId = t.id; tripListOpen = false; localStorage.setItem('bh-trip', t.id); renderTripPick(); refreshTripCurrencies(); }
+      else { selectedTripId = t.id; tripListOpen = false; localStorage.setItem('bh-trip', t.id); renderTripPick(); refreshTripCurrencies(); tripDateDefault(); }
     };
     return b;
   };
   box.appendChild(mk(sel, true));
   if (tripListOpen) CTX.trips.filter(t => t.id !== selectedTripId).forEach(t => box.appendChild(mk(t, false)));
+}
+// a trip expense logged outside the trip's dates defaults to the trip start (QA-31)
+function tripDateDefault(){
+  const t = tripById(selectedTripId);
+  const today = isoDate(new Date());
+  if (t && t.start_date && (today < t.start_date || (t.end_date && today > t.end_date))) $('dateInput').value = t.start_date;
+  else $('dateInput').value = today;
 }
 function refreshTripCurrencies(){
   const t = tripById(selectedTripId);
@@ -2803,7 +2897,7 @@ function refreshTripCurrencies(){
 }
 
 function openForm(m){
-  mode = m; amt = ''; renderAmt(); saving = false; $('saveBtn').textContent = 'Save';
+  mode = m; amt = ''; renderAmt(); saving = false; overdrawOk = false; $('saveBtn').textContent = 'Save';
   editingExp = null; $('deleteBtn').style.display = 'none';
   $('descInput').value = ''; $('commentsInput').value = '';
   $('dateInput').value = isoDate(new Date());
@@ -2870,6 +2964,7 @@ function openForm(m){
     tripListOpen = false;
     renderTripPick();
     refreshTripCurrencies();
+    tripDateDefault();
     selectedCat = (CTX.topTravel || FALLBACK_TRAVEL)[0];
     renderCatChip();
   }
@@ -2929,13 +3024,25 @@ async function saveEntry(){
   if (!CTX.hh) { toast('still connecting — try again in a second'); await loadContext(); return; }
 
   saving = true; $('saveBtn').innerHTML = '<span class="spin"></span>';
-  const done = (ok, msg) => { saving = false; $('saveBtn').textContent = 'Save';
-    if (ok) { closeSheet(); toast(msg); loadHome(); } else { toast('couldn’t save: ' + msg); } };
+  // stay locked after success — a tap during the close animation must not
+  // write twice (QA-2); the form re-arms when it is next opened
+  const done = (ok, msg) => {
+    if (ok) { closeSheet(); toast(msg); loadHome(); }
+    else { saving = false; $('saveBtn').textContent = 'Save'; toast('couldn’t save: ' + msg); } };
 
   const date = $('dateInput').value || isoDate(new Date());
   try {
     if (mode === 'fund') {
       const fundId = $('fundSel').value;
+      if (segSel('segType') !== 'Into the fund' && !overdrawOk) {
+        const bal = await sb.from('fund_balances').select('balance, name, currency').eq('fund_id', fundId).maybeSingle();
+        const b0 = bal.data ? Number(bal.data.balance) : null;
+        if (b0 !== null && b0 >= 0 && b0 - cost < -0.005) {
+          overdrawOk = true;
+          done(false, 'this takes ' + bal.data.name + ' to −' + fmtMoney(Math.abs(b0 - cost), bal.data.currency) + ' — tap Save again to continue');
+          return;
+        }
+      }
       const { error } = await sb.from('fund_transactions').insert({
         household_id: CTX.hh.id, fund_id: fundId,
         type: segSel('segType') === 'Into the fund' ? 'income' : 'expense',
@@ -2956,6 +3063,15 @@ async function saveEntry(){
       const crossCur = from.currency !== to.currency;
       const received = crossCur ? parseFloat($('recvInput').value) : cost;
       if (!(received > 0)) { done(false, 'enter the amount received in ' + (CURSYM[to.currency] || to.currency)); return; }
+      if (!overdrawOk) {
+        const bal = await sb.from('fund_balances').select('balance').eq('fund_id', from.id).maybeSingle();
+        const b0 = bal.data ? Number(bal.data.balance) : null;
+        if (b0 !== null && b0 >= 0 && b0 - cost < -0.005) {
+          overdrawOk = true;
+          done(false, 'this takes ' + from.name + ' to −' + fmtMoney(Math.abs(b0 - cost), from.currency) + ' — tap Save again to continue');
+          return;
+        }
+      }
       const note = desc ? ' · ' + desc : '';
       const { error } = await sb.from('fund_transactions').insert([
         { household_id: CTX.hh.id, fund_id: from.id, type: 'expense', date,
@@ -2988,33 +3104,25 @@ async function saveEntry(){
     if (!cat) { done(false, 'pick a category'); return; }
     const pid = (CTX.profiles.find(x => x.display_name === payer) || {}).id || null;
     if (mode === 'edit') {
-      // update the travel expense in place, then rebuild its splits
-      const { error } = await sb.from('travel_expenses').update({
-        date, description: desc, category: cat, amount: cost, currency,
-        payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
-      }).eq('id', editingExp.id);
+      // one server-side transaction: row + splits can never diverge (QA-5)
+      const { error } = await sb.rpc('save_expense', {
+        p_kind: 'travel', p_id: editingExp.id, p_date: date, p_description: desc,
+        p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
+        p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
+      });
       if (error) throw error;
-      const del = await sb.from('travel_expense_splits').delete().eq('expense_id', editingExp.id);
-      if (del.error) throw del.error;
-      const sp = buildSplits(payer, cost).map(s => ({ household_id: CTX.hh.id, expense_id: editingExp.id, ...s }));
-      const ins = await sb.from('travel_expense_splits').insert(sp);
-      if (ins.error) throw ins.error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
       if (travelInit) loadTravel(true);
       return;
     }
     if (mode === 'editDaily') {
-      // update the daily expense in place, then rebuild its splits
-      const { error } = await sb.from('daily_expenses').update({
-        date, description: desc, category: cat, amount: cost, currency,
-        payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
-      }).eq('id', editingExp.id);
+      // one server-side transaction: row + splits can never diverge (QA-5)
+      const { error } = await sb.rpc('save_expense', {
+        p_kind: 'daily', p_id: editingExp.id, p_date: date, p_description: desc,
+        p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
+        p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
+      });
       if (error) throw error;
-      const del = await sb.from('daily_expense_splits').delete().eq('expense_id', editingExp.id);
-      if (del.error) throw del.error;
-      const sp = buildSplits(payer, cost).map(s => ({ household_id: CTX.hh.id, expense_id: editingExp.id, ...s }));
-      const ins = await sb.from('daily_expense_splits').insert(sp);
-      if (ins.error) throw ins.error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
       if (atx) loadAllTx(true);
       if (budgetInit) selectBudgetMonth(budgetMonth);
@@ -3199,12 +3307,14 @@ async function deleteExpense(){
     setTimeout(() => { delArm = false; if ($('deleteBtn')) $('deleteBtn').textContent = 'Delete'; }, 2500);
     return;
   }
+  if (saving) return;
+  saving = true;
   delArm = false; btn.textContent = 'Delete';
   const table = mode === 'editFund' ? 'fund_transactions'
               : mode === 'editDaily' ? 'daily_expenses'
               : 'travel_expenses';
   const { error } = await sb.from(table).delete().eq('id', editingExp.id);
-  if (error) { toast('couldn’t delete: ' + error.message); return; }
+  if (error) { saving = false; toast('couldn’t delete: ' + error.message); return; }
   closeSheet(); toast('deleted 🐻');
   if (mode === 'edit') { loadTravel(true); return; }
   loadHome();
@@ -3320,11 +3430,12 @@ function tutPlace(i, s){
   });
 }
 
-// installed-app feel: block iOS pinch-zoom gestures
-document.addEventListener('gesturestart', e => e.preventDefault());
+// Esc closes the sheet (keyboard users)
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('sheet').classList.contains('open')) closeSheet(); });
 
-// stay signed in across visits
-sb.auth.getSession().then(({ data }) => { if (data.session) boot(); });
+// stay signed in across visits (or explain why we can't even try)
+if (sb) sb.auth.getSession().then(({ data }) => { if (data.session) boot(); });
+else { const el = document.querySelector('#login .cap'); if (el) el.textContent = 'couldn’t load — check your connection, then reopen the app'; }
 </script>
 </body>
 </html>
