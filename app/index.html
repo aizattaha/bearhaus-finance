@@ -17,8 +17,8 @@
 <style>
 :root{
   --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
-  --canvas:#FFFFFF; --muted:#E6E5E5; --ink:#1A2B44; --ink-soft:#6B7A90; --field:#F7F9FC;
-  --good:#3E9C6E; --good-soft:#E3F4EA; --bad:#D25353; --bad-bar:#F0A8A8;
+  --canvas:#FFFFFF; --muted:#E6E5E5; --ink:#1A2B44; --ink-soft:#55657D; --field:#F7F9FC;
+  --good:#2E7D57; --good-soft:#E3F4EA; --bad:#D25353; --bad-bar:#F0A8A8;
   --shadow-soft:0 2px 12px rgba(0,74,152,.06); --shadow-lift:0 8px 28px rgba(0,74,152,.12);
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -53,7 +53,7 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 /* ── app shell ─────────────────────────────── */
 #app{display:none;min-height:100dvh;flex-direction:column;max-width:520px;margin:0 auto}
 .screens{flex:1;position:relative}
-.screen{display:none;flex-direction:column;gap:16px;padding:28px 20px 110px}
+.screen{display:none;flex-direction:column;gap:16px;padding:28px 20px 140px}
 .screen.active{display:flex}
 .scr-head{display:flex;align-items:flex-start;justify-content:space-between}
 .duo{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -231,10 +231,12 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .tab{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;line-height:14px;color:var(--ink-soft);width:64px;background:none;border:none;cursor:pointer;padding:6px 0;font-family:inherit}
 .tab .ti{font-size:16px;line-height:18px}
 .tab.active{color:var(--primary);font-weight:500}
-.fab{width:56px;height:56px;border-radius:999px;background:var(--primary);color:#fff;font-size:26px;border:none;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-lift);margin-top:-32px;cursor:pointer}
+.fab{width:56px;height:56px;border-radius:999px;background:var(--primary);color:#fff;font-size:26px;border:none;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-lift);margin-top:-32px;cursor:pointer;transition:transform .08s}
+.fab:active{transform:scale(.92)}
 
 /* toast */
-.toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,16px);background:var(--ink);color:#fff;font-size:13px;font-weight:500;line-height:18px;border-radius:999px;padding:10px 20px;opacity:0;transition:all .25s;z-index:30;pointer-events:none;white-space:nowrap;max-width:88%;overflow:hidden;text-overflow:ellipsis}
+.toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,16px);background:var(--ink);color:#fff;font-size:13px;font-weight:500;line-height:18px;border-radius:999px;padding:10px 20px;opacity:0;transition:all .25s;z-index:30;pointer-events:none;white-space:nowrap;max-width:88%;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.toast.show{pointer-events:auto}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:99px;animation:sp .7s linear infinite;vertical-align:-3px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -257,12 +259,16 @@ input[type="date"].descinput{min-width:0}
     </div>
     <form id="loginForm">
       <input class="field" id="email" type="email" placeholder="email" autocomplete="username" required>
-      <input class="field" id="password" type="password" placeholder="password" autocomplete="current-password" required>
+      <div style="position:relative">
+        <input class="field" id="password" type="password" placeholder="password" autocomplete="current-password" required style="width:100%;padding-right:64px">
+        <button type="button" id="pwEye" class="btn-tert" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:12px" onclick="togglePw()">show</button>
+      </div>
       <input class="field" id="inviteCode" placeholder="invite code" autocomplete="off" style="display:none">
       <button class="btn btn-primary" id="loginBtn" type="submit">Sign in</button>
       <p id="loginError"></p>
     </form>
     <button class="btn-tert" id="modeToggle" type="button">joining the beta? create your account</button>
+    <button class="btn-tert" id="forgotBtn" type="button" style="font-size:12px" onclick="forgotPw()">forgot password?</button>
   </div>
 </div>
 
@@ -322,6 +328,11 @@ input[type="date"].descinput{min-width:0}
       <div class="card" id="errorCard" style="display:none;background:var(--bad-bar)">
         <p class="lbl" id="errorMsg">something went wrong</p>
         <button class="btn btn-primary" style="height:40px;padding:0 20px;font-size:13px;margin-top:10px" onclick="retryLoad()">Try again</button>
+      </div>
+
+      <div class="card" id="planNudge" style="display:none;background:var(--accent-soft);box-shadow:none;cursor:pointer" onclick="openPlanSheet()">
+        <p class="lbl" style="color:var(--primary)" id="planNudgeMsg"></p>
+        <p class="cap" style="margin-top:2px">tap to open the plan — it takes two minutes</p>
       </div>
 
       <div class="card">
@@ -430,7 +441,7 @@ input[type="date"].descinput{min-width:0}
         <input class="descinput" id="atxSearch" placeholder="search descriptions" autocomplete="off">
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
           <div class="seg" id="atxType"></div>
-          <select class="descinput" id="atxMonth" style="flex:1;min-width:0"></select>
+          <select class="descinput" id="atxMonth" style="flex:1 1 132px;min-width:0"></select>
         </div>
         <select class="descinput" id="atxWhat" style="margin-top:8px;width:100%;display:none"></select>
       </div>
@@ -473,7 +484,8 @@ input[type="date"].descinput{min-width:0}
 
   <div id="sh-form" style="display:none">
     <div class="sheet-head"><span class="h2" id="formTitle">Add expense</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
-    <div class="f-sec descwrap" style="margin-top:0">
+    <div class="f-sec" id="rowMode" style="margin-top:0"><div class="seg grow" id="segMode"></div></div>
+    <div class="f-sec descwrap">
       <input class="descinput" id="descInput" placeholder="description" autocomplete="off">
       <div class="descsug" id="descSug"></div>
     </div>
@@ -493,17 +505,17 @@ input[type="date"].descinput{min-width:0}
     <div class="f-sec" id="rowPayer"><div class="seg grow" id="segPayer"></div></div>
     <div class="f-sec" id="rowDetails" style="display:none">
       <div style="display:flex;gap:8px">
-        <input class="descinput" id="dateInput" type="date" style="flex:1">
-        <select class="descinput" id="cardSel" style="flex:1"></select>
+        <div style="flex:1;min-width:0"><p class="cap" style="margin-bottom:4px">date</p><input class="descinput" id="dateInput" type="date" style="width:100%"></div>
+        <div style="flex:1;min-width:0" id="cardWrap"><p class="cap" style="margin-bottom:4px">paid with</p><select class="descinput" id="cardSel" style="width:100%"></select></div>
       </div>
-      <input class="descinput" id="commentsInput" placeholder="note (optional)" style="margin-top:8px">
+      <div style="margin-top:8px"><p class="cap" style="margin-bottom:4px">note</p><input class="descinput" id="commentsInput" placeholder="optional" style="width:100%"></div>
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
       <button class="btn btn-primary" style="flex:1" id="saveBtn" onclick="saveEntry()">Save</button>
-      <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad)" onclick="deleteExpense()">Delete</button>
       <button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button>
     </div>
     <div class="keypad" id="keypad"></div>
+    <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px" onclick="deleteExpense()">Delete</button>
   </div>
 
   <div id="sh-apply" style="display:none"></div>
@@ -540,7 +552,11 @@ let toastTimer = null;
 function toast(msg){
   const t = $('toastEl');
   t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  clearTimeout(toastTimer);
+  // errors hang around until read (or tapped away); successes stay brisk (UX-8)
+  const isErr = /^couldn’t|failed|didn’t match/i.test(msg);
+  toastTimer = setTimeout(() => t.classList.remove('show'), isErr ? 8000 : 2600);
+  t.onclick = () => { clearTimeout(toastTimer); t.classList.remove('show'); };
 }
 // double-tap shield for one-shot buttons (QA-14)
 function guard(btn){
@@ -579,7 +595,34 @@ function primaryCur(){ return homeCurrencies()[0]; }
 const curLabel = c => CURSYM[c] || String(c || '').replace(/[^A-Za-z]/g, '').slice(0, 5);
 
 // ── auth flow ────────────────────────────────
-let authMode = 'signin';
+let authMode = 'signin', recoverMode = false;
+function togglePw(){
+  const pw = $('password');
+  pw.type = pw.type === 'password' ? 'text' : 'password';
+  $('pwEye').textContent = pw.type === 'password' ? 'show' : 'hide';
+}
+async function forgotPw(){
+  if (!sb) { toast('couldn’t load — check your connection'); return; }
+  const email = $('email').value.trim();
+  if (!email) { $('loginError').style.color = 'var(--bad)'; $('loginError').textContent = 'type your email above first, then tap forgot password'; return; }
+  if (!guard($('forgotBtn'))) return;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: 'https://aizattaha.github.io/bearhaus-finance/app/' });
+  $('loginError').style.color = error ? 'var(--bad)' : 'var(--good)';
+  $('loginError').textContent = error ? ('couldn’t send: ' + error.message) : 'reset link sent — check your email, then come back here';
+}
+// arriving from a reset email: the login card becomes a set-new-password card
+if (sb) sb.auth.onAuthStateChange(evt => {
+  if (evt !== 'PASSWORD_RECOVERY') return;
+  recoverMode = true;
+  $('login').style.display = 'flex'; $('app').style.display = 'none'; $('onboard').style.display = 'none';
+  $('email').style.display = 'none'; $('email').required = false;
+  $('inviteCode').style.display = 'none';
+  $('modeToggle').style.display = 'none'; $('forgotBtn').style.display = 'none';
+  $('password').value = ''; $('password').placeholder = 'new password (6+ characters)';
+  $('loginBtn').textContent = 'Set new password';
+  $('loginError').style.color = 'var(--good)';
+  $('loginError').textContent = 'welcome back — choose a new password';
+});
 $('modeToggle').onclick = () => {
   authMode = authMode === 'signin' ? 'signup' : 'signin';
   $('inviteCode').style.display = authMode === 'signup' ? 'block' : 'none';
@@ -598,6 +641,15 @@ $('loginForm').addEventListener('submit', async e => {
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
   errEl.textContent = '';
   const email = $('email').value.trim(), password = $('password').value;
+
+  if (recoverMode) {
+    const { error } = await sb.auth.updateUser({ password });
+    done();
+    if (error) { fail('couldn’t set the new password: ' + error.message); return; }
+    toast('password updated 🐻');
+    location.reload();
+    return;
+  }
 
   if (authMode === 'signup') {
     const code = $('inviteCode').value.trim();
@@ -735,12 +787,29 @@ async function enterApp(){
   const cached = localStorage.getItem('bh-home');
   if (cached) { try { renderHome(JSON.parse(cached)); } catch(e){} }
   loadHome();
+  checkPlanNudge();
   loadContext().then(() => {
     if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
     // the first paint guessed the home currency — repaint with the real one
     const c = localStorage.getItem('bh-home');
     if (c) { try { renderHome(JSON.parse(c)); } catch(e){} }
   });
+}
+
+// the ritual needs a cue: nudge until this month's plan is saved AND applied (WF-2)
+async function checkPlanNudge(){
+  try {
+    const m = curMonthIso(), next = addMonths(m, 1);
+    const [fb, applied] = await Promise.all([
+      sb.from('fund_budgets').select('id').eq('month', m).limit(1),
+      sb.from('fund_transactions').select('id').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
+    ]);
+    if (fb.error || applied.error) return;
+    const el = $('planNudge'), monthWord = monthName(m, true).split(' ')[0];
+    if (!fb.data.length) { $('planNudgeMsg').textContent = monthWord + '’s plan isn’t set up yet'; el.style.display = 'block'; }
+    else if (!applied.data.length) { $('planNudgeMsg').textContent = monthWord + '’s plan is saved — apply it when ready'; el.style.display = 'block'; }
+    else el.style.display = 'none';
+  } catch (e) {}
 }
 
 // ── error surfacing + self-heal ──────────────
@@ -836,12 +905,15 @@ function renderHome(state){
       <div style="min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.description)}</div>
       <div class="cap">${esc(r.category)} · ${esc(who)} · ${when}</div></div>
       <div class="amt num"${r.category === 'Payment' ? ' style="color:var(--ink-soft)"' : ''}>−${fmtMoney(r.amount, r.currency)}</div></div>`;
-  }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet this week 🐻</p>';
+  }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet — tap + to add your first 🐻</p>';
   // tap a recent line to fix it — fetches the full row, then opens the edit sheet
   [...$('recentList').children].forEach((el, i) => {
     const r = (state.recent || [])[i];
     if (!r || !r.id) return;
     el.style.cursor = 'pointer';
+    el.setAttribute('role', 'button'); el.tabIndex = 0;
+    el.setAttribute('aria-label', 'edit ' + r.description);
+    el.onkeydown = ev => { if (ev.key === 'Enter') el.click(); };
     el.onclick = async () => {
       const { data, error } = await sb.from('daily_expenses')
         .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id, daily_expense_splits(profile_id, amount)')
@@ -881,8 +953,8 @@ function renderHome(state){
   $('donutWrap').innerHTML = `
     <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Spending by category">
       <circle cx="60" cy="60" r="45" fill="none" stroke="#E6E5E5" stroke-width="13"/>${segs}
-      <text x="60" y="57" text-anchor="middle" font-size="14" font-weight="600" fill="#1A2B44" font-family="Poppins,sans-serif">${curLabel(PC)}${Math.round(monthAU).toLocaleString('en-AU')}</text>
-      <text x="60" y="73" text-anchor="middle" font-size="10" fill="#6B7A90" font-family="Poppins,sans-serif">so far</text>
+      <text x="60" y="57" text-anchor="middle" font-size="14" font-weight="600" fill="#1A2B44" font-family="Poppins,sans-serif">${monthAU % 1 ? '≈' : ''}${curLabel(PC)}${Math.round(monthAU).toLocaleString('en-AU')}</text>
+      <text x="60" y="73" text-anchor="middle" font-size="10" fill="#55657D" font-family="Poppins,sans-serif">so far</text>
     </svg>
     <div class="legend">${top.map(([g, v], i) =>
       `<div class="li"><span class="dot" style="background:${COLORS[i]}"></span><span>${esc(g)}</span><span class="amt">${curLabel(PC)}${Math.round(v).toLocaleString('en-AU')}</span></div>`).join('')
@@ -1007,9 +1079,11 @@ function renderBudget(st){
     }
     const sel = m === st.month;
     svg += `<text x="${x + 15}" y="137" text-anchor="middle" font-size="9" font-family="Poppins,sans-serif"
-      font-weight="${sel ? 600 : 400}" fill="${over ? '#D25353' : sel ? '#004A98' : '#6B7A90'}">${monthName(m).split(' ')[0]}</text>`;
+      font-weight="${sel ? 600 : 400}" fill="${over ? '#D25353' : sel ? '#004A98' : '#55657D'}">${monthName(m).split(' ')[0]}</text>`;
   });
-  $('budChart').innerHTML = `<svg viewBox="0 0 320 150" style="display:block;width:100%;height:auto" role="img" aria-label="Six months of spending vs budget">${svg}</svg>`;
+  const hasAnyChart = (st.exp || []).length > 0 || Object.values(budTot).some(v => v > 0);
+  if (!hasAnyChart) $('budChart').innerHTML = '<p class="cap" style="padding:16px 0">your chart fills in as you spend 🐻</p>';
+  else $('budChart').innerHTML = `<svg viewBox="0 0 320 150" style="display:block;width:100%;height:auto" role="img" aria-label="Six months of spending vs budget">${svg}</svg>`;
   $('budLegend').innerHTML = CHART_GROUPS.map((g, i) =>
     '<span class="li"><span class="dot" style="background:' + CHART_COLORS[i] + '"></span>' + esc(g) + '</span>').join('')
     + '<span class="li"><span class="dot" style="background:' + CHART_COLORS[4] + '"></span>Other</span>'
@@ -1195,6 +1269,8 @@ function renderFunds(st){
     sum.funds[f.currency] = (sum.funds[f.currency] || 0) + Number(r.amount);
     fundCount++;
   });
+  st.leftover = {};
+  CURS.forEach(c => st.leftover[c] = (sum.inc[c] || 0) - (sum.cat[c] || 0) - (sum.funds[c] || 0));
   const cell = (v, c, posColor, negColor) => {
     if (!v || Math.abs(v) < 0.005) return '<span class="num" style="color:var(--ink-soft)">—</span>';
     return '<span class="num" style="color:' + (v > 0 ? posColor : negColor) + '">'
@@ -1257,7 +1333,9 @@ function renderFundList(country, st){
   const all = st.bal.filter(b => b.country === country);
   const expanded = fundsExpanded[country] || editing;   // edit mode shows everything
   const anyBalance = all.some(b => Math.abs(Number(b.balance)) >= 0.005);
-  const visible = (expanded || !anyBalance) ? all : all.filter(b => Math.abs(Number(b.balance)) >= 0.005);
+  const visible = (expanded || !anyBalance) ? all : all.filter(b =>
+    Math.abs(Number(b.balance)) >= 0.005
+    || (b.is_leftover_target && st.leftover && st.leftover[b.currency] > 0.005));   // the earmarked fund stays visible (UX-14)
   // second-level grouping, ordered by each group's first fund
   const groups = {};
   visible.forEach(b => { const g = b.group_name || 'Other'; (groups[g] = groups[g] || []).push(b); });
@@ -1281,9 +1359,11 @@ function renderFundList(country, st){
     list.forEach(b => {
       const btn = document.createElement('button');
       btn.type = 'button'; btn.className = 'fundrow';
+      const earmark = (!editing && b.is_leftover_target && st.leftover && st.leftover[b.currency] > 0.005) ? st.leftover[b.currency] : 0;
       btn.innerHTML = (editing ? '<span class="dhandle">≡</span>' : '')
         + '<div class="rowicon">' + fundIcon(b.name) + '</div>'
-        + '<div class="lbl" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
+        + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
+        + (earmark ? '<div class="cap">≈ +' + fmtMoney(earmark, b.currency) + ' earmarked this month</div>' : '') + '</div>'
         + '<div class="amt num" style="color:' + (Number(b.balance) < 0 ? 'var(--bad)' : 'var(--ink)') + '">' + fmtMoney(b.balance, b.currency) + '</div>';
       if (editing) attachDrag(btn.querySelector('.dhandle'), b, country);
       else btn.onclick = () => toggleFundDrill(btn, b);
@@ -1385,13 +1465,17 @@ async function toggleFundDrill(btn, fund){
   d.innerHTML = '';
   (data || []).forEach(t => {
     const inc = t.type === 'income';
+    const isXfer = /^Transfer [→←]/.test(t.remarks || '');
     const row = document.createElement('div');
     row.className = 'drow';
     row.style.cursor = 'pointer';
+    row.setAttribute('role', 'button'); row.tabIndex = 0;
+    row.setAttribute('aria-label', 'edit ' + (t.remarks || 'fund transaction'));
+    row.onkeydown = ev => { if (ev.key === 'Enter') row.click(); };
     row.innerHTML = '<span class="dd">' + esc(t.remarks || (inc ? 'money in' : 'money out'))
       + (t.origin === 'planned' ? ' <span class="cap">· plan</span>' : '') + '</span>'
       + '<span class="cap">' + new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'}) + '</span>'
-      + '<span class="amt" style="color:' + (inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span>';
+      + '<span class="amt" style="color:' + (isXfer ? 'var(--ink-soft)' : inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span>';
     row.onclick = () => openEditFund({ id: t.id, date: t.date, type: t.type, amount: t.amount, remarks: t.remarks,
       origin: t.origin, fund_id: fund.fund_id, funds: { name: fund.name, currency: fund.currency } });
     d.appendChild(row);
@@ -1485,6 +1569,7 @@ function renderPlanSheet(){
   else { top.style.cssText = 'width:100%;background:var(--accent-soft);color:var(--primary)'; top.textContent = '✎ Edit'; top.onclick = () => { planEditMode = true; renderPlanSheet(); }; }
   box.appendChild(top);
   if (edit && d.prefilledFrom && !d.saved) box.appendChild(capEl('prefilled from ' + monthName(d.prefilledFrom, true) + ' — tweak anything, then save'));
+  if (!edit && d.saved && !d.appliedOn) box.appendChild(capEl('plan saved ✓ — nothing has moved yet. Apply below writes the fund contributions when you’re ready.'));
   if (edit && d.appliedOn) box.appendChild(capEl('heads-up: this month’s contributions were already applied — edits change the plan, not money already moved'));
 
   // money in
@@ -1651,6 +1736,7 @@ async function applyPlan(){
   if (error) { if ($('applyGo')) $('applyGo').textContent = 'Apply'; toast('couldn’t apply: ' + error.message); return; }
   closeSheet(); toast('applied — ' + rows.length + ' contributions written 🐻');
   loadFunds();
+  checkPlanNudge();
 }
 
 // Save — wipe-and-rewrite this month's three tables, then reload the sheet
@@ -1676,6 +1762,7 @@ async function savePlan(){
     if (budgetInit) selectBudgetMonth(budgetMonth);
     // stay in the sheet — reload fresh, landing back on the review
     await loadFunds();
+    checkPlanNudge();
     openPlanSheet();
   } catch (err) {
     planSaving = false;
@@ -1791,10 +1878,11 @@ function renderAllTx(type){
       b.onclick = () => openEditDaily(r);
     } else {
       const inc = r.type === 'income';
-      b.innerHTML = '<div class="rowicon">' + fundIcon(r.funds ? r.funds.name : '') + '</div>'
+      const isXfer = /^Transfer [→←]/.test(r.remarks || '');
+      b.innerHTML = '<div class="rowicon">' + (isXfer ? '⇄' : fundIcon(r.funds ? r.funds.name : '')) + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.remarks || (inc ? 'money in' : 'money out')) + '</div>'
         + '<div class="cap">' + esc(r.funds ? r.funds.name : 'fund') + (r.origin === 'planned' ? ' · plan' : '') + ' · ' + fmtDayMonYr(r.date) + '</div></div>'
-        + '<div class="amt num" style="color:' + (inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(r.amount, r.funds ? r.funds.currency : 'AUD') + '</div>';
+        + '<div class="amt num" style="color:' + (isXfer ? 'var(--ink-soft)' : inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(r.amount, r.funds ? r.funds.currency : 'AUD') + '</div>';
       b.onclick = () => openEditFund(r);
     }
     box.appendChild(b);
@@ -2268,6 +2356,7 @@ async function fullBackup(btn){
     a.click();
     URL.revokeObjectURL(a.href);
     btn.querySelector('.lbl').textContent = 'Full backup (everything)';
+    localStorage.setItem('bh-last-backup', isoDate(new Date()));
     toast(total.toLocaleString() + ' rows saved — keep this file somewhere safe 🐻');
   } catch (err) {
     btn.querySelector('.lbl').textContent = 'Full backup (everything)';
@@ -2282,6 +2371,10 @@ async function renderSetExport(box){
   fb.onclick = () => fullBackup(fb);
   box.appendChild(fb);
   box.appendChild(capEl('one file with everything in it — keep a copy somewhere safe'));
+  const lb = localStorage.getItem('bh-last-backup');
+  const days = lb ? Math.round((new Date() - new Date(lb + 'T00:00:00')) / 86400000) : null;
+  box.appendChild(capEl(days === null ? 'no backup taken on this device yet'
+    : 'last backup: ' + (days === 0 ? 'today' : days + ' day' + (days === 1 ? '' : 's') + ' ago') + (days > 30 ? ' — time for a fresh one' : '')));
   const jobs = [
     ['🛒', 'Daily expenses', 'daily_expenses', 'daily-expenses.csv', null],
     ['💰', 'Fund transactions', 'fund_transactions', 'fund-transactions.csv', 'funds(name)'],
@@ -2456,7 +2549,11 @@ function renderTripDetail(){
         + (e.sent_to_fund ? ' · sent ✓' : '') + '</span></div>'
         + '<span class="amt">−' + fmtMoney(e.amount, e.currency) + '</span>'
         + '<button class="edit" aria-label="Edit">✎</button>';
-      row.querySelector('.edit').onclick = () => openEditExpense(e);
+      row.style.cursor = 'pointer';
+      row.setAttribute('role', 'button'); row.tabIndex = 0;
+      row.setAttribute('aria-label', 'edit ' + (e.description || 'expense'));
+      row.onclick = () => openEditExpense(e);
+      row.onkeydown = ev => { if (ev.key === 'Enter') openEditExpense(e); };
       d.appendChild(row);
     });
     gbox.appendChild(d);
@@ -2733,13 +2830,14 @@ function refreshCards(payerName){
 let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false;
 
 function openSheet(){
-  $('sh-chooser').style.display = 'block';
-  $('sh-form').style.display = 'none';
+  if (navigator.vibrate) navigator.vibrate(10);
+  $('sh-chooser').style.display = 'none';
   $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none';
   $('sh-plan').style.display = 'none';
   $('backdrop').classList.add('open');
   $('sheet').classList.add('open');
+  openForm('daily');   // straight into the 90% case — other types are one tab away (WF-1)
 }
 function closeSheet(){
   $('backdrop').classList.remove('open');
@@ -2902,6 +3000,10 @@ function openForm(m){
   $('descInput').value = ''; $('commentsInput').value = '';
   $('dateInput').value = isoDate(new Date());
   $('rowDetails').style.display = 'none';
+  const MODE_TABS = [['Daily', 'daily'], ['Fund', 'fund'], ['Trip', 'trip'], ['Transfer', 'transfer']];
+  $('rowMode').style.display = 'block';
+  buildSeg('segMode', MODE_TABS.map(x => x[0]), Math.max(MODE_TABS.findIndex(x => x[1] === m), 0),
+    lbl => { const target = MODE_TABS.find(x => x[0] === lbl)[1]; if (target !== mode) openForm(target); });
   const names = payerNames();
   const lastPayer = localStorage.getItem('bh-payer') || names[0];
   const lastCur = localStorage.getItem('bh-cur') || 'A$';
@@ -2920,7 +3022,7 @@ function openForm(m){
   $('segCurrency').style.display = noCat ? 'none' : 'inline-flex';
   $('fundCurLabel').style.display = noCat ? 'inline' : 'none';
 
-  $('cardSel').style.display = noCat ? 'none' : 'block';   // funds/transfers have no card; date takes the row
+  $('cardWrap').style.display = noCat ? 'none' : 'block';   // funds/transfers have no card; date takes the row
 
   if (m === 'daily') {
     $('formTitle').textContent = 'Add expense';
@@ -3165,6 +3267,7 @@ function openEditExpense(exp){
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   renderAmt();
   $('formTitle').textContent = 'Edit expense';
+  $('rowMode').style.display = 'none';
   $('descInput').placeholder = 'description';
   $('descInput').value = exp.description || '';
   $('dateInput').value = exp.date;
@@ -3178,7 +3281,7 @@ function openEditExpense(exp){
   $('segCurrency').style.display = 'inline-flex';
   $('fundCurLabel').style.display = 'none';
   $('rowDetails').style.display = 'block';
-  $('cardSel').style.display = 'block';
+  $('cardWrap').style.display = 'block';
   // currencies: home set + the trip's locals + whatever this row already uses
   const trip = tripById(exp.trip_id);
   const codes = homeCurrencies().concat((trip && trip.currencies) || []).concat(exp.currency)
@@ -3199,7 +3302,7 @@ function openEditExpense(exp){
     const o = document.createElement('option'); o.textContent = exp.paid_with; $('cardSel').appendChild(o);
   }
   $('cardSel').value = exp.paid_with || '';
-  $('deleteBtn').style.display = 'inline'; $('deleteBtn').textContent = 'Delete';
+  $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   $('saveBtn').textContent = 'Save';
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
   $('sh-plan').style.display = 'none';
@@ -3213,6 +3316,7 @@ function openEditDaily(exp){
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   renderAmt();
   $('formTitle').textContent = 'Edit expense';
+  $('rowMode').style.display = 'none';
   $('descInput').placeholder = 'description';
   $('descInput').value = exp.description || '';
   $('dateInput').value = exp.date;
@@ -3225,7 +3329,7 @@ function openEditDaily(exp){
   $('segCurrency').style.display = 'inline-flex';
   $('fundCurLabel').style.display = 'none';
   $('rowDetails').style.display = 'block';
-  $('cardSel').style.display = 'block';
+  $('cardWrap').style.display = 'block';
   const codes = homeCurrencies().concat(exp.currency).filter((c, i, a) => a.indexOf(c) === i);
   SEG2CODE = {};
   const labels = codes.map(c => { let l = curLabel(c); if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
@@ -3245,7 +3349,7 @@ function openEditDaily(exp){
     const o = document.createElement('option'); o.textContent = exp.paid_with; $('cardSel').appendChild(o);
   }
   $('cardSel').value = exp.paid_with || '';
-  $('deleteBtn').style.display = 'inline'; $('deleteBtn').textContent = 'Delete';
+  $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   $('saveBtn').textContent = 'Save';
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
@@ -3260,6 +3364,7 @@ function openEditFund(tx){
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   renderAmt();
   $('formTitle').textContent = 'Edit fund transaction';
+  $('rowMode').style.display = 'none';
   $('descInput').placeholder = 'remarks';
   $('descInput').value = tx.remarks || '';
   $('dateInput').value = tx.date;
@@ -3274,7 +3379,7 @@ function openEditFund(tx){
   $('segCurrency').style.display = 'none';
   $('fundCurLabel').style.display = 'inline';
   $('rowDetails').style.display = 'block';
-  $('cardSel').style.display = 'none';
+  $('cardWrap').style.display = 'none';
   $('gridCategory').style.display = 'none';
   hideSug();
   $('fundSel').innerHTML = fundOptionsHtml(CTX.funds);
@@ -3288,7 +3393,7 @@ function openEditFund(tx){
   if (!$('fundCurLabel').textContent && tx.funds) $('fundCurLabel').textContent = curLabel(tx.funds.currency);
   $('fundSel').onchange = updateFundCur;
   buildSeg('segType', ['Into the fund', 'Out of the fund'], tx.type === 'income' ? 0 : 1);
-  $('deleteBtn').style.display = 'inline'; $('deleteBtn').textContent = 'Delete';
+  $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   $('saveBtn').textContent = 'Save';
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
@@ -3337,7 +3442,7 @@ const TUT_STEPS = [
   { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
     title:'Add', text:'everything starts here — tap + anytime.' },
   { scr:'scr-home', pre: () => openSheet(), el: () => $('sheet'),
-    title:'Add anything', text:'daily spending · fund money · trip expenses · transfers.' },
+    title:'Add anything', text:'daily · fund · trip · transfer — switch types with the tabs on top.' },
   { scr:'scr-home', pre: () => openForm('daily'), el: () => $('sheet'),
     title:'The 5-second expense', text:'describe it, tap a category, type the amount, save.' },
   { scr:'scr-budget', el: () => $('budTotalMain').closest('.total-card'),
@@ -3414,6 +3519,7 @@ function tutPlace(i, s){
   card.innerHTML = '<p class="h2">' + s.title + '</p><p class="cap">' + s.text + '</p>'
     + '<div class="tut-foot"><span class="cap num">' + (i + 1) + ' of ' + TUT_STEPS.length + '</span>'
     + '<div style="display:flex;align-items:center;gap:4px">'
+    + (i > 0 ? '<button class="btn-tert" type="button" aria-label="Back" onclick="tutStep(' + (i - 1) + ')">‹</button>' : '')
     + '<button class="btn-tert" type="button" onclick="endTutorial(true)">Skip</button>'
     + '<button class="btn btn-primary" type="button" style="height:40px;padding:0 20px;font-size:13px" onclick="tutStep(' + (i + 1) + ')">'
     + (i === TUT_STEPS.length - 1 ? 'Done' : 'Next') + '</button></div></div>';
