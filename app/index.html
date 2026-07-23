@@ -1645,10 +1645,14 @@ function renderPlanSheet(){
     box.appendChild(h);
     list.forEach(f => {
       if (edit) {
-        const cap2 = f.is_leftover_target ? 'leftover lands here on its own — usually leave blank' : null;
-        const r = row(fundIcon(f.name), esc(f.name), amtInput(d.fb[f.id] || 0, v => d.fb[f.id] = v), cap2);
-        if (!(d.fb[f.id] > 0)) r.style.opacity = '.6';
-        box.appendChild(r);
+        if (f.is_leftover_target) {
+          // no box: this fund receives exactly the computed leftover (see the footer)
+          box.appendChild(row(fundIcon(f.name), esc(f.name), '<span class="cap">receives the leftover</span>', null));
+        } else {
+          const r = row(fundIcon(f.name), esc(f.name), amtInput(d.fb[f.id] || 0, v => d.fb[f.id] = v), null);
+          if (!(d.fb[f.id] > 0)) r.style.opacity = '.6';
+          box.appendChild(r);
+        }
       } else {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'applyrow';
         b.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(f.name) + '</div>'
@@ -1728,7 +1732,7 @@ async function applyPlan(){
   if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
   const d = planDraft;
   const rows = d.funds
-    .filter(f => d.fb[f.id] > 0 && d.on[f.id] !== false)
+    .filter(f => d.fb[f.id] > 0 && d.on[f.id] !== false && !f.is_leftover_target)   // targets get the leftover, never a manual row
     .map(f => ({ fund_id: f.id, amount: d.fb[f.id] }));
   // leftover per currency = income − spending budget − applied contributions
   const inc = {}, cat = {}, fbSum = {};
@@ -1776,7 +1780,9 @@ async function savePlan(){
         const i = k.lastIndexOf('|');
         return { category_group: k.slice(0, i), currency: k.slice(i + 1), amount: v };
       }),
-      p_fb: Object.entries(d.fb).filter(([, v]) => v > 0).map(([id, v]) => ({ fund_id: id, amount: v })),
+      p_fb: Object.entries(d.fb)
+        .filter(([id, v]) => v > 0 && !(d.funds.find(f => f.id === id) || {}).is_leftover_target)
+        .map(([id, v]) => ({ fund_id: id, amount: v })),
     });
     if (error) throw error;
     planSaving = false;
