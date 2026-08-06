@@ -181,18 +181,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .seg.grow button{flex:1}
 #segType button:first-child.sel{background:var(--good)}
 #segType button:last-child.sel{background:var(--bad)}
-.catgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.cat{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;font-family:inherit;cursor:pointer;padding:0}
-.cat .ci{width:40px;height:40px;border-radius:13px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:18px;transition:all .15s}
-.cat .cl{font-size:10px;line-height:12px;color:var(--ink-soft);font-weight:500;white-space:nowrap;max-width:74px;overflow:hidden;text-overflow:ellipsis}
-.cat.sel .ci{background:var(--primary)}
-.cat.sel .cl{color:var(--primary)}
 .catgroup{grid-column:1/-1;margin:8px 0 -2px;font-weight:500}
-.tripcard{display:flex;align-items:center;gap:12px;width:100%;background:var(--field);border:2px solid transparent;border-radius:16px;padding:10px 14px;font-family:inherit;cursor:pointer;text-align:left;color:var(--ink);margin-top:6px;font-size:15px}
-.tripcard:first-child{margin-top:0}
-.tripcard.sel{border-color:var(--primary);background:var(--accent-soft)}
-.tripcard .tflags{font-size:22px;flex-shrink:0;line-height:1}
-.tripcard .chev{margin-left:auto;color:var(--ink-soft)}
 /* plan sheet — Review ⇄ Edit */
 .plansticky{position:sticky;bottom:0;background:#fff;padding:10px 0 8px;margin-top:14px;border-top:1px solid var(--muted)}
 .planeq{background:var(--primary);border-radius:16px;padding:12px 16px;color:#fff}
@@ -202,16 +191,39 @@ select.descinput{appearance:none;-webkit-appearance:none}
 /* description-first quick-add */
 .descwrap{position:relative}
 #descInput{font-size:17px;padding:13px 14px}
-.descsug{position:absolute;left:0;right:0;top:100%;margin-top:6px;background:#fff;border-radius:14px;box-shadow:var(--shadow-lift);z-index:6;overflow:hidden;display:none}
-.descsug button{display:flex;width:100%;gap:10px;align-items:center;padding:11px 14px;background:none;border:none;font-family:inherit;font-size:14px;color:var(--ink);cursor:pointer;text-align:left}
-.descsug button:active{background:var(--accent-soft)}
-.descsug .cap{margin-left:auto;flex-shrink:0}
-.catchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;background:var(--accent-soft);color:var(--primary);border:none;border-radius:999px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}
-.catchip .cn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+/* full-width option rows — the right-thumb rule: the whole row is the tap target */
+.arow{display:flex;align-items:center;gap:10px;width:100%;background:var(--field);border:2px solid transparent;border-radius:14px;padding:8px 12px;font-family:inherit;cursor:pointer;text-align:left;color:var(--ink);position:relative}
+.arow:active{background:var(--accent-soft)}
+.arow .ric{flex:0 0 auto;width:32px;height:32px;border-radius:11px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:15px}
+.arow .rlab{font-size:10px;color:var(--ink-soft);display:block;line-height:13px}
+.arow .rval{font-size:14px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:19px}
+.arow .rmid{min-width:0;flex:1}
+.arow .chev{margin-left:auto;color:var(--ink-soft);flex:0 0 auto}
+.dateghost{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;font-size:16px}
+/* takeover suggestions — matches replace the form while typing */
+.take .trow{display:flex;align-items:center;gap:10px;width:100%;padding:12px 4px;background:none;border:none;border-bottom:1px solid var(--field);font-family:inherit;color:var(--ink);cursor:pointer;text-align:left}
+.take .trow:active{background:var(--accent-soft)}
+.take .tic{flex:0 0 auto;width:34px;height:34px;border-radius:12px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:16px}
+.take .tnm{font-size:14px;font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.take .tct{font-size:11px;color:var(--ink-soft);display:block}
+.take .tam{margin-left:auto;font-size:12px;color:var(--ink-soft);white-space:nowrap;flex:0 0 auto}
+/* bottom pickers — one pattern for category / fund / trip */
+.prow{display:flex;align-items:center;gap:10px;width:100%;padding:11px 2px;background:none;border:none;border-bottom:1px solid var(--field);font-family:inherit;color:var(--ink);cursor:pointer;text-align:left}
+.prow:active{background:var(--accent-soft)}
+.prow .ric{flex:0 0 auto;width:34px;height:34px;border-radius:12px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:16px}
+.prow .pnm{font-size:14px;font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .pct{font-size:11px;color:var(--ink-soft);display:block}
+.prow .ptick{margin-left:auto;width:24px;height:24px;border-radius:99px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto}
+.pgroup{letter-spacing:.08em;text-transform:uppercase;padding:14px 2px 4px;font-weight:600}
+/* calculator dock — C ÷ × −, + spans, big ✓ saves, ⌫ under the thumb */
+.keypad{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
 .key{height:46px;border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:17px;font-weight:500;color:var(--ink);cursor:pointer}
 .key:active{background:var(--accent-soft)}
 .key.del{font-size:22px;background:var(--accent-soft);color:var(--primary)}
+.key.op{background:var(--accent-soft);color:var(--primary);font-weight:600;font-size:19px}
+.key.tall{grid-row:span 2;height:auto}
+.key.ok{background:var(--primary);color:#fff;font-size:24px}
+.key.ok:active{background:var(--primary-hover)}
 .f-sec{margin-top:10px}
 
 /* ── onboarding (new households) ───────────── */
@@ -483,39 +495,35 @@ input[type="date"].descinput{min-width:0}
   </div>
 
   <div id="sh-form" style="display:none">
-    <div class="sheet-head"><span class="h2" id="formTitle">Add expense</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
+    <div class="sheet-head"><span class="h2" id="formTitle">Add</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
     <div class="f-sec" id="rowMode" style="margin-top:0"><div class="seg grow" id="segMode"></div></div>
+    <div class="f-sec" id="rowScope"><div class="seg grow" id="segScope"></div></div>
     <div class="f-sec descwrap">
       <input class="descinput" id="descInput" placeholder="description" autocomplete="off">
-      <div class="descsug" id="descSug"></div>
     </div>
-    <div class="f-sec" id="rowCategory">
-      <button type="button" class="catchip" id="catChip" onclick="toggleCatGrid()"></button>
-      <div class="catgrid" id="gridCategory" style="display:none;margin-top:10px"></div>
-    </div>
-    <div class="f-sec" id="rowTrip" style="display:none"><div id="tripPick"></div></div>
-    <div class="f-sec" id="rowFund" style="display:none"><p class="cap" id="fundSelCap" style="display:none;margin-bottom:4px">from</p><select class="descinput" id="fundSel"></select></div>
-    <div class="f-sec" id="rowFund2" style="display:none"><p class="cap" style="margin-bottom:4px">to</p><select class="descinput" id="fundSel2"></select><input class="descinput" id="recvInput" type="number" step="0.01" placeholder="amount received" style="display:none;margin-top:8px"></div>
-    <div class="amount-line">
-      <div class="seg" id="segCurrency"></div>
-      <span class="lbl" id="fundCurLabel" style="display:none;color:var(--ink-soft)"></span>
-      <span class="disp num" id="amtDisp" style="color:var(--primary)">0</span>
-    </div>
-    <div class="f-sec" id="rowType" style="display:none"><div class="seg grow" id="segType"></div></div>
-    <div class="f-sec" id="rowPayer"><div class="seg grow" id="segPayer"></div></div>
-    <div class="f-sec" id="rowDetails" style="display:none">
-      <div style="display:flex;gap:8px">
-        <div style="flex:1;min-width:0"><p class="cap" style="margin-bottom:4px">date</p><input class="descinput" id="dateInput" type="date" style="width:100%"></div>
-        <div style="flex:1;min-width:0" id="cardWrap"><p class="cap" style="margin-bottom:4px">paid with</p><select class="descinput" id="cardSel" style="width:100%"></select></div>
+    <div class="take" id="takeBox" style="display:none"></div>
+    <div id="formBody">
+      <div class="f-sec" id="rowCategory"><button type="button" class="arow" id="catRow" onclick="openCatPicker()"></button></div>
+      <div class="f-sec" id="rowTrip" style="display:none"><button type="button" class="arow" id="tripRow" onclick="openTripPicker()"></button></div>
+      <div class="f-sec" id="rowFundFrom" style="display:none"><button type="button" class="arow" id="fundFromRow" onclick="openFundPicker('from')"></button></div>
+      <div class="f-sec" id="rowFundTo" style="display:none"><button type="button" class="arow" id="fundToRow" onclick="openFundPicker('to')"></button><input class="descinput" id="recvInput" type="number" step="0.01" placeholder="amount received" style="display:none;margin-top:8px"></div>
+      <div class="f-sec" id="rowDate"><div class="arow"><span class="ric">📅</span><span class="rmid"><span class="rlab">date</span><span class="rval" id="dateVal">Today</span></span><span class="chev">›</span><input id="dateInput" type="date" class="dateghost" aria-label="date"></div></div>
+      <div class="amount-line">
+        <div class="seg" id="segCurrency"></div>
+        <span class="lbl" id="fundCurLabel" style="display:none;color:var(--ink-soft)"></span>
+        <span class="disp num" id="amtDisp" style="color:var(--primary)">0</span>
       </div>
-      <div style="margin-top:8px"><p class="cap" style="margin-bottom:4px">note</p><input class="descinput" id="commentsInput" placeholder="optional" style="width:100%"></div>
+      <p class="cap num" id="exprLine" style="text-align:right;display:none;margin-top:2px"></p>
+      <div class="f-sec" id="rowType" style="display:none"><div class="seg grow" id="segType"></div></div>
+      <div class="f-sec" id="rowPayer"><div class="seg grow" id="segPayer"></div></div>
+      <div class="f-sec" id="rowDetails" style="display:none">
+        <div id="cardWrap"><p class="cap" style="margin-bottom:4px">paid with</p><select class="descinput" id="cardSel" style="width:100%"></select></div>
+        <div style="margin-top:8px"><p class="cap" style="margin-bottom:4px">note</p><input class="descinput" id="commentsInput" placeholder="optional" style="width:100%"></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button></div>
+      <div class="keypad" id="keypad"></div>
+      <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px" onclick="deleteExpense()">Delete</button>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
-      <button class="btn btn-primary" style="flex:1" id="saveBtn" onclick="saveEntry()">Save</button>
-      <button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button>
-    </div>
-    <div class="keypad" id="keypad"></div>
-    <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px" onclick="deleteExpense()">Delete</button>
   </div>
 
   <div id="sh-apply" style="display:none"></div>
@@ -536,6 +544,13 @@ input[type="date"].descinput{min-width:0}
     <div class="sheet-head"><span class="h2" id="planEdTitle">Monthly plan</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
     <div id="planEdBody"><p class="cap">loading…</p></div>
   </div>
+</div>
+
+<!-- bottom picker: one pattern for category / fund / trip choices (rides above the form sheet) -->
+<div class="backdrop" id="backdrop2" onclick="closePicker()" style="z-index:22"></div>
+<div class="sheet" id="pickSheet" role="dialog" aria-modal="true" style="z-index:23">
+  <div class="sheet-head"><span class="h2" id="pickTitle"></span><button class="btn-tert" onclick="closePicker()">Close</button></div>
+  <div id="pickBody"></div>
 </div>
 
 <div class="toast" id="toastEl"></div>
@@ -2736,12 +2751,12 @@ async function loadContext(){
   const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD] = await Promise.all([
     sb.from('households').select('id, name, travel_fund_id, joint_label').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
-    sb.from('funds').select('id, name, country, currency').eq('is_active', true).order('sort_order'),
+    sb.from('funds').select('id, name, country, currency, group_name, sort_order').eq('is_active', true).order('sort_order'),
     sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
     sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order').eq('is_archived', false).order('sort_order'),
     sb.from('categories').select('kind, name, group_name, icon').eq('is_active', true).order('sort_order'),
-    sb.from('daily_expenses').select('description, category').order('date', {ascending:false}).limit(300),
-    sb.from('travel_expenses').select('description, category').order('date', {ascending:false}).limit(120),
+    sb.from('daily_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(300),
+    sb.from('travel_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(120),
     sb.from('daily_expenses').select('date').order('date', {ascending:true}).limit(1),
   ]);
   if (!hh.error) {
@@ -2759,7 +2774,7 @@ async function loadContext(){
   }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
 }
-// unique past descriptions with their usual category — feeds the type-ahead
+// unique past descriptions with their usual category + last amount — feeds the takeover
 function histFrom(rows){
   const seen = new Set(), out = [];
   (rows || []).forEach(r => {
@@ -2768,7 +2783,7 @@ function histFrom(rows){
     const k = d.toLowerCase();
     if (seen.has(k)) return;
     seen.add(k);
-    out.push({ d, c: r.category });
+    out.push({ d, c: r.category, a: r.amount ? Number(r.amount) : null, cur: r.currency || null });
   });
   return out;
 }
@@ -2856,6 +2871,7 @@ function refreshCards(payerName){
 }
 
 let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false;
+let pendOp = null, pendVal = null;   // calculator: pendVal ⟨pendOp⟩ amt, evaluated left-to-right
 
 function openSheet(){
   if (navigator.vibrate) navigator.vibrate(10);
@@ -2870,15 +2886,21 @@ function openSheet(){
 function closeSheet(){
   $('backdrop').classList.remove('open');
   $('sheet').classList.remove('open');
-  hideSug();
+  closePicker();
+  hideTake();
 }
 
-// ── description type-ahead: match past descriptions, auto-pick the category ──
-function hideSug(){ const b = $('descSug'); if (b) b.style.display = 'none'; }
-$('descInput').addEventListener('input', () => {
-  if (mode === 'fund' || mode === 'transfer') { hideSug(); return; }
+// ── takeover suggestions: while typing, matches replace the form (Option 2, Aug 2026) ──
+// the dock swap lives here too: description focused → the keypad hides so the
+// OS keyboard takes its space; blur → the keypad returns. nothing is covered.
+function hideTake(){
+  $('takeBox').style.display = 'none';
+  $('formBody').style.display = 'block';
+}
+function updateTake(){
+  if (mode !== 'daily' && mode !== 'trip' && mode !== 'edit' && mode !== 'editDaily') { hideTake(); return; }
   const q = $('descInput').value.trim().toLowerCase();
-  if (q.length < 2) { hideSug(); return; }
+  if (q.length < 2) { hideTake(); return; }
   const hist = (mode === 'trip' || mode === 'edit') ? (CTX.histTravel || []) : (CTX.histDaily || []);
   const starts = [], contains = [];
   hist.forEach(h => {
@@ -2886,26 +2908,32 @@ $('descInput').addEventListener('input', () => {
     if (l.startsWith(q)) starts.push(h);
     else if (l.includes(q)) contains.push(h);
   });
-  const m = starts.concat(contains).slice(0, 4);
-  if (!m.length || (m.length === 1 && m[0].d.toLowerCase() === q)) { hideSug(); return; }
-  const box = $('descSug'); box.innerHTML = '';
+  const m = starts.concat(contains).slice(0, 5);
+  if (!m.length || (m.length === 1 && m[0].d.toLowerCase() === q)) { hideTake(); return; }
+  const box = $('takeBox'); box.innerHTML = '';
   m.forEach(h => {
-    const b = document.createElement('button'); b.type = 'button';
-    b.innerHTML = '<span>' + (CAT_ICON[h.c] || '🛍️') + '</span>'
-      + '<span class="lbl" style="font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(h.d) + '</span>'
-      + '<span class="cap">' + esc(h.c) + '</span>';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'trow';
+    b.innerHTML = '<span class="tic">' + (CAT_ICON[h.c] || '🛍️') + '</span>'
+      + '<span style="min-width:0;flex:1"><span class="tnm">' + esc(h.d) + '</span><span class="tct">' + esc(h.c) + '</span></span>'
+      + (h.a ? '<span class="tam num">last ' + fmtMoney(h.a, h.cur || primaryCur()) + '</span>' : '');
     b.addEventListener('pointerdown', e => {
       e.preventDefault();                       // beat the input's blur
       $('descInput').value = h.d;
-      selectedCat = h.c; renderCatChip();
-      $('gridCategory').style.display = 'none';
-      hideSug();
+      selectedCat = h.c; renderCatRow();
+      hideTake();
+      $('descInput').blur();                    // the numpad comes back
     });
     box.appendChild(b);
   });
   box.style.display = 'block';
-});
-$('descInput').addEventListener('blur', () => setTimeout(hideSug, 200));
+  $('formBody').style.display = 'none';
+}
+$('descInput').addEventListener('input', updateTake);
+$('descInput').addEventListener('focus', () => { $('keypad').style.display = 'none'; });
+$('descInput').addEventListener('blur', () => setTimeout(() => {
+  hideTake();
+  $('keypad').style.display = 'grid';
+}, 200));
 function buildSeg(id, items, selIdx, onPick){
   const box = $(id); box.innerHTML = '';
   items.forEach((c, i) => {
@@ -2916,47 +2944,52 @@ function buildSeg(id, items, selIdx, onPick){
   });
 }
 function segSel(id){ const b = document.querySelector('#' + id + ' .sel'); return b ? b.textContent : ''; }
-function buildGrid(spec, selName){
-  // spec = array of names (top-used view) OR grouped object (after "More").
-  // picking a tile collapses the grid back into the chip.
-  const box = $('gridCategory'); box.innerHTML = '';
-  const okName = n => n !== 'Payment' || payerNames().length >= 2;   // settle-up is meaningless solo
-  const addTile = name => {
-    const b = document.createElement('button'); b.type = 'button';
-    b.className = 'cat' + (name === selName ? ' sel' : '');
-    b.dataset.name = name;
-    const label = name === '__MORE__' ? 'More' : name;
-    b.innerHTML = '<span class="ci">' + (CAT_ICON[name] || '🛍️') + '</span><span class="cl">' + esc(label) + '</span>';
-    b.onclick = () => {
-      if (name === '__MORE__') { buildGrid(mode === 'trip' || mode === 'edit' ? TRAVEL_GROUPED : DAILY_GROUPED, selectedCat); return; }
-      selectedCat = name; renderCatChip();
-      box.style.display = 'none';
-    };
+// ── bottom pickers: one pattern for category / fund / trip (right-thumb rule) ──
+function openPicker(title, items, onPick){
+  $('pickTitle').textContent = title;
+  const box = $('pickBody'); box.innerHTML = '';
+  items.forEach(it => {
+    if (it.hdr) {
+      const h = document.createElement('p');
+      h.className = 'cap pgroup'; h.textContent = it.hdr;
+      box.appendChild(h); return;
+    }
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'prow';
+    b.innerHTML = '<span class="ric">' + (it.icon || '🛍️') + '</span>'
+      + '<span style="min-width:0;flex:1"><span class="pnm">' + esc(it.name) + '</span>'
+      + (it.cap ? '<span class="pct">' + esc(it.cap) + '</span>' : '') + '</span>'
+      + (it.sel ? '<span class="ptick">✓</span>' : '');
+    b.onclick = () => { closePicker(); onPick(it); };
     box.appendChild(b);
-  };
-  if (Array.isArray(spec)) spec.filter(okName).forEach(addTile);
-  else Object.entries(spec).forEach(([group, names]) => {
-    const show = names.filter(okName);
-    if (!show.length) return;
-    const h = document.createElement('p');
-    h.className = 'cap catgroup'; h.textContent = group;
-    box.appendChild(h);
-    show.forEach(addTile);
   });
+  $('backdrop2').classList.add('open');
+  $('pickSheet').classList.add('open');
+  $('pickSheet').scrollTop = 0;
+}
+function closePicker(){
+  $('backdrop2').classList.remove('open');
+  $('pickSheet').classList.remove('open');
 }
 function gridSel(){ return selectedCat; }
-function renderCatChip(){
-  $('catChip').innerHTML = '<span>' + (CAT_ICON[selectedCat] || '🛍️') + '</span>'
-    + '<span class="cn">' + esc(selectedCat || 'pick a category') + '</span>'
-    + '<span style="opacity:.7">▾</span>';
+function renderCatRow(){
+  $('catRow').innerHTML = '<span class="ric">' + (CAT_ICON[selectedCat] || '🛍️') + '</span>'
+    + '<span class="rmid"><span class="rlab">category</span><span class="rval">' + esc(selectedCat || 'pick a category') + '</span></span>'
+    + '<span class="chev">›</span>';
 }
-function toggleCatGrid(){
-  const g = $('gridCategory');
-  if (g.style.display === 'none') {
-    const top = (mode === 'trip' || mode === 'edit' ? (CTX.topTravel || FALLBACK_TRAVEL) : (CTX.topDaily || FALLBACK_DAILY));
-    buildGrid(top.concat('__MORE__'), selectedCat);
-    g.style.display = 'grid';
-  } else g.style.display = 'none';
+function openCatPicker(){
+  const travel = mode === 'trip' || mode === 'edit';
+  const top = travel ? (CTX.topTravel || FALLBACK_TRAVEL) : (CTX.topDaily || FALLBACK_DAILY);
+  const grouped = travel ? TRAVEL_GROUPED : DAILY_GROUPED;
+  const okName = n => n !== 'Payment' || payerNames().length >= 2;   // settle-up is meaningless solo
+  const items = [{ hdr: 'most used' }];
+  top.filter(okName).forEach(n => items.push({ name: n, icon: CAT_ICON[n] || '🛍️', sel: n === selectedCat }));
+  Object.entries(grouped).forEach(([group, names]) => {
+    const all = names.filter(okName);
+    if (!all.length) return;
+    items.push({ hdr: group });
+    all.forEach(n => items.push({ name: n, icon: CAT_ICON[n] || '🛍️', sel: n === selectedCat }));
+  });
+  openPicker('Category', items, it => { selectedCat = it.name; renderCatRow(); });
 }
 
 // the joint pot is a household setting — its label is data, and it can be turned off
@@ -2965,41 +2998,114 @@ function payerNames(){
   const names = CTX.profiles.map(p => p.display_name);
   return jointLabel() ? names.concat(jointLabel()) : names;
 }
-function fundOptionsHtml(funds){
-  const byC = {};
-  (funds || []).forEach(f => (byC[f.country] = byC[f.country] || []).push(f));
-  return Object.keys(byC).map(c =>
-    '<optgroup label="' + esc(c) + '">' + byC[c].map(f => '<option value="' + f.id + '">' + esc(f.name) + '</option>').join('') + '</optgroup>').join('');
+// ── fund rows + picker: funds listed EXACTLY as the Funds tab shows them ──
+// (country in first-appearance order, groups by their first fund, funds by sort_order)
+let fundFromId = null, fundToId = null, editExtraFund = null;   // editExtraFund = archived fund kept selectable for one row
+function fundById(id){
+  if (editExtraFund && editExtraFund.id === id) return editExtraFund;
+  return CTX.funds.find(f => f.id === id) || null;
 }
+function fundPickerItems(selId){
+  const items = [];
+  const funds = CTX.funds || [];        // already ordered by sort_order (same as the Funds tab)
+  const countries = [];
+  funds.forEach(f => { if (!countries.includes(f.country)) countries.push(f.country); });
+  countries.forEach(cc => {
+    const inC = funds.filter(f => f.country === cc);
+    const groups = {};
+    inC.forEach(f => { const g = f.group_name || 'Other'; (groups[g] = groups[g] || []).push(f); });
+    const order = Object.keys(groups).sort((a, b) => {
+      const m = k => Math.min(...groups[k].map(x => x.sort_order ?? 9999));
+      return m(a) - m(b);
+    });
+    order.forEach(g => {
+      items.push({ hdr: cc + ' · ' + g });
+      groups[g].forEach(f => items.push({
+        id: f.id, name: f.name, icon: fundIcon(f.name),
+        cap: curLabel(f.currency), sel: f.id === selId,
+      }));
+    });
+  });
+  if (editExtraFund && !funds.some(f => f.id === editExtraFund.id)) {
+    items.push({ hdr: 'archived' });
+    items.push({ id: editExtraFund.id, name: editExtraFund.name, icon: fundIcon(editExtraFund.name),
+                 cap: curLabel(editExtraFund.currency), sel: editExtraFund.id === selId });
+  }
+  return items;
+}
+function renderFundRow(which){
+  const isFrom = which === 'from';
+  const f = fundById(isFrom ? fundFromId : fundToId);
+  const lab = mode === 'income' ? 'lands in' : (mode === 'transfer' ? (isFrom ? 'from' : 'to') : 'from fund');
+  const el = $(isFrom ? 'fundFromRow' : 'fundToRow');
+  el.innerHTML = '<span class="ric">' + (f ? fundIcon(f.name) : '💰') + '</span>'
+    + '<span class="rmid"><span class="rlab">' + lab + '</span><span class="rval">'
+    + (f ? esc(f.name) + ' · ' + curLabel(f.currency) : 'pick a fund') + '</span></span>'
+    + '<span class="chev">›</span>';
+}
+function openFundPicker(which){
+  const selId = which === 'from' ? fundFromId : fundToId;
+  openPicker(mode === 'income' ? 'Lands in' : (which === 'from' ? 'From fund' : 'To fund'),
+    fundPickerItems(selId), it => {
+      if (which === 'from') fundFromId = it.id; else fundToId = it.id;
+      renderFundRow(which); afterFundChange();
+    });
+}
+// currency labels + cross-currency received box follow the picked funds
+function afterFundChange(){
+  const from = fundById(fundFromId), to = fundById(fundToId);
+  if (mode === 'transfer') {
+    $('fundCurLabel').textContent = from ? curLabel(from.currency) : '';
+    const differ = from && to && from.currency !== to.currency;
+    $('recvInput').style.display = differ ? 'block' : 'none';
+    if (differ) $('recvInput').placeholder = 'amount received in ' + curLabel(to.currency);
+  } else if (mode === 'income') {
+    $('fundCurLabel').textContent = to ? curLabel(to.currency) : '';
+  } else {
+    $('fundCurLabel').textContent = from ? curLabel(from.currency) : '';
+  }
+}
+function updateDateVal(){
+  const v = $('dateInput').value;
+  const today = isoDate(new Date());
+  $('dateVal').textContent = !v || v === today ? 'Today'
+    : new Date(v + 'T00:00:00').toLocaleDateString('en-AU', {weekday:'short', day:'numeric', month:'short', year:'numeric'});
+}
+$('dateInput').addEventListener('change', updateDateVal);
 
-// ── trip picker (large cards) + per-trip currencies ──
-let selectedTripId = null, tripListOpen = false;
+// ── trip row + picker + per-trip currencies ──
+let selectedTripId = null;
 let SEG2CODE = { 'A$':'AUD', 'S$':'SGD' };
 function tripById(id){ return CTX.trips.find(t => t.id === id); }
-function renderTripPick(){
-  const box = $('tripPick'); box.innerHTML = '';
+function tripWhen(t){
+  return t.start_date
+    ? new Date(t.start_date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'})
+      + (t.end_date ? ' – ' + new Date(t.end_date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'}) : '')
+    : '';
+}
+function renderTripRow(){
   const sel = tripById(selectedTripId) || CTX.trips[0];
-  if (!sel) { box.innerHTML = '<p class="cap">no trips yet — create one in the Travel tab first</p>'; return; }
+  if (!sel) {
+    $('tripRow').innerHTML = '<span class="ric">✈️</span><span class="rmid"><span class="rlab">trip</span>'
+      + '<span class="rval">no trips yet — create one in Travel</span></span>';
+    return;
+  }
   selectedTripId = sel.id;
-  const mk = (t, isHeader) => {
-    const b = document.createElement('button'); b.type = 'button';
-    b.className = 'tripcard' + (!isHeader ? '' : ' sel');
-    const flags = (t.countries || []).map(flagOf).join('') || '✈️';
-    const when = t.start_date
-      ? new Date(t.start_date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'})
-        + (t.end_date ? ' – ' + new Date(t.end_date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'}) : '')
-      : '';
-    b.innerHTML = '<span class="tflags">' + flags + '</span>'
-      + '<span style="min-width:0"><span class="lbl">' + esc(t.name) + '</span><br><span class="cap">' + when + '</span></span>'
-      + (isHeader ? '<span class="chev">' + (tripListOpen ? '▴' : '▾') + '</span>' : '');
-    b.onclick = () => {
-      if (isHeader) { tripListOpen = !tripListOpen; renderTripPick(); }
-      else { selectedTripId = t.id; tripListOpen = false; localStorage.setItem('bh-trip', t.id); renderTripPick(); refreshTripCurrencies(); tripDateDefault(); }
-    };
-    return b;
-  };
-  box.appendChild(mk(sel, true));
-  if (tripListOpen) CTX.trips.filter(t => t.id !== selectedTripId).forEach(t => box.appendChild(mk(t, false)));
+  const flags = (sel.countries || []).map(flagOf).join('') || '✈️';
+  $('tripRow').innerHTML = '<span class="ric">' + flags + '</span>'
+    + '<span class="rmid"><span class="rlab">trip</span><span class="rval">' + esc(sel.name) + '</span></span>'
+    + '<span class="chev">›</span>';
+}
+function openTripPicker(){
+  if (!CTX.trips.length) { toast('no trips yet — create one in the Travel tab first'); return; }
+  openPicker('Trip', CTX.trips.map(t => ({
+    id: t.id, name: t.name, cap: tripWhen(t),
+    icon: (t.countries || []).map(flagOf).join('') || '✈️',
+    sel: t.id === selectedTripId,
+  })), it => {
+    selectedTripId = it.id; localStorage.setItem('bh-trip', it.id);
+    renderTripRow(); refreshTripCurrencies(); tripDateDefault();
+  });
 }
 // a trip expense logged outside the trip's dates defaults to the trip start (QA-31)
 function tripDateDefault(){
@@ -3007,6 +3113,7 @@ function tripDateDefault(){
   const today = isoDate(new Date());
   if (t && t.start_date && (today < t.start_date || (t.end_date && today > t.end_date))) $('dateInput').value = t.start_date;
   else $('dateInput').value = today;
+  updateDateVal();
 }
 function refreshTripCurrencies(){
   const t = tripById(selectedTripId);
@@ -3023,82 +3130,83 @@ function refreshTripCurrencies(){
 }
 
 function openForm(m){
-  mode = m; amt = ''; renderAmt(); saving = false; overdrawOk = false; $('saveBtn').textContent = 'Save';
-  editingExp = null; $('deleteBtn').style.display = 'none';
+  mode = m; amt = ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; armSaveKey();
+  editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none';
   $('descInput').value = ''; $('commentsInput').value = '';
-  $('dateInput').value = isoDate(new Date());
+  $('dateInput').value = isoDate(new Date()); updateDateVal();
   $('rowDetails').style.display = 'none';
-  const MODE_TABS = [['Daily', 'daily'], ['Fund', 'fund'], ['Trip', 'trip'], ['Transfer', 'transfer']];
+  hideTake();
+  // three tabs (Aug 2026): Expense · Income · Transfer — Expense splits into Daily / Fund / Trip below
+  const TABS = [['Expense', 'daily'], ['Income', 'income'], ['Transfer', 'transfer']];
+  const tabOf = x => (x === 'income' || x === 'transfer') ? x : 'expense';
   $('rowMode').style.display = 'block';
-  buildSeg('segMode', MODE_TABS.map(x => x[0]), Math.max(MODE_TABS.findIndex(x => x[1] === m), 0),
-    lbl => { const target = MODE_TABS.find(x => x[0] === lbl)[1]; if (target !== mode) openForm(target); });
+  buildSeg('segMode', TABS.map(x => x[0]), Math.max(TABS.findIndex(x => tabOf(x[1]) === tabOf(m)), 0),
+    lbl => { const target = TABS.find(x => x[0] === lbl)[1]; if (tabOf(target) !== tabOf(mode)) openForm(target); });
+  const isExp = tabOf(m) === 'expense';
+  $('rowScope').style.display = isExp ? 'block' : 'none';
+  if (isExp) {
+    const SCOPES = [['Daily', 'daily'], ['Fund', 'fund'], ['Trip', 'trip']];
+    buildSeg('segScope', SCOPES.map(x => x[0]), Math.max(SCOPES.findIndex(x => x[1] === m), 0),
+      lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) openForm(target); });
+  }
   const names = payerNames();
   const lastPayer = localStorage.getItem('bh-payer') || names[0];
   const lastCur = localStorage.getItem('bh-cur') || 'A$';
 
-  const noCat = m === 'fund' || m === 'transfer';
+  const fundish = m === 'fund' || m === 'transfer' || m === 'income';   // no category; the currency follows the fund
   $('rowTrip').style.display = m === 'trip' ? 'block' : 'none';
-  $('rowFund').style.display = noCat ? 'block' : 'none';
-  $('fundSelCap').style.display = m === 'transfer' ? 'block' : 'none';
-  $('rowFund2').style.display = m === 'transfer' ? 'block' : 'none';
-  $('rowType').style.display = m === 'fund' ? 'block' : 'none';
-  $('rowCategory').style.display = noCat ? 'none' : 'block';
-  $('gridCategory').style.display = 'none';
-  hideSug();
+  $('rowFundFrom').style.display = (m === 'fund' || m === 'transfer') ? 'block' : 'none';
+  $('rowFundTo').style.display = (m === 'transfer' || m === 'income') ? 'block' : 'none';
+  $('recvInput').style.display = 'none'; $('recvInput').value = '';
+  $('rowType').style.display = 'none';   // the in/out toggle only exists when editing old rows
+  $('rowCategory').style.display = fundish ? 'none' : 'block';
   // a one-person household has nobody to split with — skip the payer row
-  $('rowPayer').style.display = (noCat || payerNames().length < 2) ? 'none' : 'block';
-  $('segCurrency').style.display = noCat ? 'none' : 'inline-flex';
-  $('fundCurLabel').style.display = noCat ? 'inline' : 'none';
-
-  $('cardWrap').style.display = noCat ? 'none' : 'block';   // funds/transfers have no card; date takes the row
+  $('rowPayer').style.display = (fundish || names.length < 2) ? 'none' : 'block';
+  $('segCurrency').style.display = fundish ? 'none' : 'inline-flex';
+  $('fundCurLabel').style.display = fundish ? 'inline' : 'none';
+  $('cardWrap').style.display = fundish ? 'none' : 'block';
+  $('detailsBtn').style.display = m === 'transfer' ? 'none' : 'inline-block';   // a transfer has no card or note
+  $('amtDisp').style.color = m === 'income' ? 'var(--good)' : 'var(--primary)';
 
   if (m === 'daily') {
-    $('formTitle').textContent = 'Add expense';
+    $('formTitle').textContent = 'Add';
     $('descInput').placeholder = 'description — e.g. Woolworths';
     SEG2CODE = {};
     const homeLabels = homeCurrencies().map(c => { let l = curLabel(c); if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
     buildSeg('segCurrency', homeLabels, Math.max(homeLabels.indexOf(lastCur), 0));
     selectedCat = (CTX.topDaily || FALLBACK_DAILY)[0];
-    renderCatChip();
+    renderCatRow();
   } else if (m === 'fund') {
-    $('formTitle').textContent = 'Fund transaction';
+    $('formTitle').textContent = 'Add';
     $('descInput').placeholder = 'remarks — e.g. groceries top-up';
-    buildSeg('segType', ['Into the fund','Out of the fund'], 1);   // spending is the everyday case
-    $('fundSel').innerHTML = fundOptionsHtml(CTX.funds);
     const lastFund = localStorage.getItem('bh-fund');
-    if (lastFund && CTX.funds.some(f => f.id === lastFund)) $('fundSel').value = lastFund;
-    updateFundCur();
-    $('fundSel').onchange = updateFundCur;
+    fundFromId = (lastFund && CTX.funds.some(f => f.id === lastFund)) ? lastFund : ((CTX.funds[0] || {}).id || null);
+    renderFundRow('from'); afterFundChange();
+  } else if (m === 'income') {
+    $('formTitle').textContent = 'Add income';
+    $('descInput').placeholder = 'source — e.g. Salary';
+    const lastInc = localStorage.getItem('bh-incfund');
+    fundToId = (lastInc && CTX.funds.some(f => f.id === lastInc)) ? lastInc
+      : ((CTX.funds.find(f => /float/i.test(f.name)) || CTX.funds[0] || {}).id || null);
+    renderFundRow('to'); afterFundChange();
   } else if (m === 'transfer') {
     $('formTitle').textContent = 'Transfer';
     $('descInput').placeholder = 'remarks (optional)';
-    $('fundSel').innerHTML = fundOptionsHtml(CTX.funds);
-    $('fundSel2').innerHTML = fundOptionsHtml(CTX.funds);
-    if (CTX.funds.length > 1) $('fundSel2').value = CTX.funds[1].id;
-    const xferCur = () => {
-      const a = CTX.funds.find(f => f.id === $('fundSel').value);
-      const b = CTX.funds.find(f => f.id === $('fundSel2').value);
-      $('fundCurLabel').textContent = a ? (CURSYM[a.currency] || a.currency) : '';
-      const differ = a && b && a.currency !== b.currency;
-      $('recvInput').style.display = differ ? 'block' : 'none';
-      if (differ) $('recvInput').placeholder = 'amount received in ' + (CURSYM[b.currency] || b.currency);
-    };
-    $('fundSel').onchange = xferCur;
-    $('fundSel2').onchange = xferCur;
-    xferCur();
+    fundFromId = (CTX.funds[0] || {}).id || null;
+    fundToId = ((CTX.funds[1] || CTX.funds[0] || {}).id || null);
+    renderFundRow('from'); renderFundRow('to'); afterFundChange();
   } else {
-    $('formTitle').textContent = 'Trip expense';
+    $('formTitle').textContent = 'Add';
     $('descInput').placeholder = 'description — e.g. beach club';
     const lastTrip = localStorage.getItem('bh-trip');
     selectedTripId = (lastTrip && tripById(lastTrip)) ? lastTrip : null;
-    tripListOpen = false;
-    renderTripPick();
+    renderTripRow();
     refreshTripCurrencies();
     tripDateDefault();
     selectedCat = (CTX.topTravel || FALLBACK_TRAVEL)[0];
-    renderCatChip();
+    renderCatRow();
   }
-  if (m !== 'fund') {
+  if (!fundish) {
     buildSeg('segPayer', names, Math.max(names.indexOf(lastPayer), 0),
       p => refreshCards(p));
     refreshCards(lastPayer);
@@ -3106,35 +3214,71 @@ function openForm(m){
   $('sh-chooser').style.display = 'none';
   $('sh-form').style.display = 'block';
 }
-function updateFundCur(){
-  const f = CTX.funds.find(x => x.id === $('fundSel').value);
-  $('fundCurLabel').textContent = f ? curLabel(f.currency) : '';
-}
 function toggleDetails(){
   const r = $('rowDetails');
   r.style.display = r.style.display === 'none' ? 'block' : 'none';
 }
 
-// keypad
+// calculator dock — C ÷ × −, + spans two rows, big ✓ saves (it IS the Save button), ⌫ bottom
+function armSaveKey(){ const k = $('saveBtn'); if (k) k.innerHTML = '✓'; }
 (function(){
   const pad = $('keypad');
-  ['1','2','3','4','5','6','7','8','9','.','0','⌫'].forEach(k => {
+  // grid order matters: 4 columns, + and ✓ span two rows each in the right column
+  ['C','÷','×','−','1','2','3','+','4','5','6','7','8','9','✓','.','0','⌫'].forEach(k => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'key'; b.textContent = k;
     if (k === '⌫') b.classList.add('del');
-    b.onclick = () => {
-      if (k === '⌫') amt = amt.slice(0, -1);
-      else if (k === '.') { if (!amt.includes('.')) amt = (amt || '0') + '.'; }
-      else { if (amt.includes('.') && amt.split('.')[1].length >= 2) return; if (amt.replace('.', '').length >= 8) return; amt += k; }
-      renderAmt();
-    };
+    if ('C÷×−+'.includes(k)) b.classList.add('op');
+    if (k === '+') b.classList.add('tall');
+    if (k === '✓') { b.classList.add('ok', 'tall'); b.id = 'saveBtn'; }
+    b.onclick = () => keyTap(k);
     pad.appendChild(b);
   });
 })();
+function keyTap(k){
+  if (k === '✓') {
+    if (pendOp !== null) { calcEval(); renderAmt(); return; }   // ✓ acts as “=” first…
+    saveEntry(); return;                                        // …then saves
+  }
+  if (k === 'C') { amt = ''; pendOp = null; pendVal = null; renderAmt(); return; }
+  if (k === '⌫') {
+    if (amt) amt = amt.slice(0, -1);
+    else if (pendOp !== null) { amt = calcStr(pendVal); pendOp = null; pendVal = null; }
+    renderAmt(); return;
+  }
+  if ('÷×−+'.includes(k)) {
+    if (!amt && pendVal === null) return;
+    if (pendOp !== null && amt) calcEval();
+    else if (pendVal === null) pendVal = parseFloat(amt || '0');
+    pendOp = k; amt = '';
+    renderAmt(); return;
+  }
+  if (k === '.') { if (!amt.includes('.')) amt = (amt || '0') + '.'; }
+  else { if (amt.includes('.') && amt.split('.')[1].length >= 2) return; if (amt.replace('.', '').length >= 8) return; amt += k; }
+  renderAmt();
+}
+function calcStr(n){ return (n % 1 === 0) ? String(n) : String(Math.round(n * 100) / 100); }
+function calcEval(){
+  const b = parseFloat(amt || '0');
+  let r = pendOp === '+' ? pendVal + b
+        : pendOp === '−' ? pendVal - b
+        : pendOp === '×' ? pendVal * b
+        : (b === 0 ? pendVal : pendVal / b);   // ÷0 keeps the running value
+  if (!isFinite(r) || r < 0) r = 0;            // money can’t go negative
+  r = Math.round(r * 100) / 100;
+  amt = r ? calcStr(r) : '';
+  pendOp = null; pendVal = null;
+}
 function renderAmt(){
   const d = $('amtDisp');
-  if (!amt) { d.textContent = '0'; return; }
-  const [i, f] = amt.split('.');
-  d.textContent = Number(i || 0).toLocaleString('en-AU') + (f !== undefined ? '.' + f : '');
+  const show = amt || (pendVal !== null ? calcStr(pendVal) : '');
+  if (!show) d.textContent = '0';
+  else {
+    const [i, f] = show.split('.');
+    d.textContent = Number(i || 0).toLocaleString('en-AU') + (f !== undefined ? '.' + f : '');
+  }
+  const e = $('exprLine');
+  if (pendOp !== null) { e.style.display = 'block'; e.textContent = calcStr(pendVal) + ' ' + pendOp + ' ' + (amt || '…'); }
+  else e.style.display = 'none';
 }
 
 // who-owes-what rows for one expense (payer +cost, joint −cost)
@@ -3150,7 +3294,9 @@ async function saveEntry(){
   const cost = parseFloat(amt);
   if (!(cost > 0)) { toast('enter an amount first'); return; }
   const desc = $('descInput').value.trim();
-  if (mode !== 'fund' && mode !== 'transfer' && mode !== 'editFund' && !desc) { toast('add a description — the shop or what it was'); return; }
+  if (mode !== 'fund' && mode !== 'transfer' && mode !== 'editFund' && !desc) {
+    toast(mode === 'income' ? 'name the source — e.g. Salary' : 'add a description — the shop or what it was'); return;
+  }
   if (!CTX.hh) { toast('still connecting — try again in a second'); await loadContext(); return; }
 
   saving = true; $('saveBtn').innerHTML = '<span class="spin"></span>';
@@ -3158,36 +3304,52 @@ async function saveEntry(){
   // write twice (QA-2); the form re-arms when it is next opened
   const done = (ok, msg) => {
     if (ok) { closeSheet(); toast(msg); loadHome(); }
-    else { saving = false; $('saveBtn').textContent = 'Save'; toast('couldn’t save: ' + msg); } };
+    else { saving = false; armSaveKey(); toast('couldn’t save: ' + msg); } };
 
   const date = $('dateInput').value || isoDate(new Date());
   try {
     if (mode === 'fund') {
-      const fundId = $('fundSel').value;
-      if (segSel('segType') !== 'Into the fund' && !overdrawOk) {
+      // Expense → Fund scope: always money OUT of the fund (income has its own tab now)
+      const fundId = fundFromId;
+      if (!fundId) { done(false, 'pick a fund'); return; }
+      if (!overdrawOk) {
         const bal = await sb.from('fund_balances').select('balance, name, currency').eq('fund_id', fundId).maybeSingle();
         const b0 = bal.data ? Number(bal.data.balance) : null;
         if (b0 !== null && b0 >= 0 && b0 - cost < -0.005) {
           overdrawOk = true;
-          done(false, 'this takes ' + bal.data.name + ' to −' + fmtMoney(Math.abs(b0 - cost), bal.data.currency) + ' — tap Save again to continue');
+          done(false, 'this takes ' + bal.data.name + ' to −' + fmtMoney(Math.abs(b0 - cost), bal.data.currency) + ' — tap ✓ again to continue');
           return;
         }
       }
       const { error } = await sb.from('fund_transactions').insert({
-        household_id: CTX.hh.id, fund_id: fundId,
-        type: segSel('segType') === 'Into the fund' ? 'income' : 'expense',
+        household_id: CTX.hh.id, fund_id: fundId, type: 'expense',
         date, amount: cost, remarks: desc, origin: 'manual',
       });
       if (error) throw error;
       localStorage.setItem('bh-fund', fundId);
-      const f = CTX.funds.find(x => x.id === fundId);
+      const f = fundById(fundId);
       done(true, 'saved — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
       if (fundsInit) loadFunds();
       return;
     }
+    if (mode === 'income') {
+      // income = money that actually arrived, dropped straight into a fund
+      const fundId = fundToId;
+      if (!fundId) { done(false, 'pick where it lands'); return; }
+      const { error } = await sb.from('fund_transactions').insert({
+        household_id: CTX.hh.id, fund_id: fundId, type: 'income',
+        date, amount: cost, remarks: desc, origin: 'manual',
+      });
+      if (error) throw error;
+      localStorage.setItem('bh-incfund', fundId);
+      const f = fundById(fundId);
+      done(true, 'income in — ' + desc + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD') + ' → ' + (f ? f.name : 'fund'));
+      if (fundsInit) loadFunds();
+      return;
+    }
     if (mode === 'transfer') {
-      const from = CTX.funds.find(x => x.id === $('fundSel').value);
-      const to = CTX.funds.find(x => x.id === $('fundSel2').value);
+      const from = fundById(fundFromId);
+      const to = fundById(fundToId);
       if (!from || !to) { done(false, 'pick both funds'); return; }
       if (from.id === to.id) { done(false, 'pick two different funds'); return; }
       const crossCur = from.currency !== to.currency;
@@ -3198,7 +3360,7 @@ async function saveEntry(){
         const b0 = bal.data ? Number(bal.data.balance) : null;
         if (b0 !== null && b0 >= 0 && b0 - cost < -0.005) {
           overdrawOk = true;
-          done(false, 'this takes ' + from.name + ' to −' + fmtMoney(Math.abs(b0 - cost), from.currency) + ' — tap Save again to continue');
+          done(false, 'this takes ' + from.name + ' to −' + fmtMoney(Math.abs(b0 - cost), from.currency) + ' — tap ✓ again to continue');
           return;
         }
       }
@@ -3215,14 +3377,14 @@ async function saveEntry(){
       return;
     }
     if (mode === 'editFund') {
-      const fundId = $('fundSel').value;
+      const fundId = fundFromId;
       const { error } = await sb.from('fund_transactions').update({
         fund_id: fundId,
         type: segSel('segType') === 'Into the fund' ? 'income' : 'expense',
         date, amount: cost, remarks: desc,
       }).eq('id', editingExp.id);
       if (error) throw error;
-      const f = CTX.funds.find(x => x.id === fundId) || (editingExp.funds ? { currency: editingExp.funds.currency } : null);
+      const f = fundById(fundId) || (editingExp.funds ? { currency: editingExp.funds.currency } : null);
       done(true, 'updated — ' + fmtMoney(cost, f ? f.currency : 'AUD'));
       if (fundsInit) loadFunds();
       if (atx) loadAllTx(true);
@@ -3293,23 +3455,25 @@ function openEditExpense(exp){
   mode = 'edit'; editingExp = exp; saving = false;
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
-  renderAmt();
+  pendOp = null; pendVal = null; renderAmt();
   $('formTitle').textContent = 'Edit expense';
   $('rowMode').style.display = 'none';
+  $('rowScope').style.display = 'none';
   $('descInput').placeholder = 'description';
   $('descInput').value = exp.description || '';
-  $('dateInput').value = exp.date;
+  $('dateInput').value = exp.date; updateDateVal();
   $('commentsInput').value = exp.comments || '';
   $('rowTrip').style.display = 'none';
-  $('rowFund').style.display = 'none';
-  $('rowFund2').style.display = 'none';
+  $('rowFundFrom').style.display = 'none';
+  $('rowFundTo').style.display = 'none';
   $('rowType').style.display = 'none';
   $('rowCategory').style.display = 'block';
-  $('rowPayer').style.display = 'block';
   $('segCurrency').style.display = 'inline-flex';
   $('fundCurLabel').style.display = 'none';
   $('rowDetails').style.display = 'block';
   $('cardWrap').style.display = 'block';
+  $('detailsBtn').style.display = 'none';   // details are already open
+  $('amtDisp').style.color = 'var(--primary)';
   // currencies: home set + the trip's locals + whatever this row already uses
   const trip = tripById(exp.trip_id);
   const codes = homeCurrencies().concat((trip && trip.currencies) || []).concat(exp.currency)
@@ -3317,11 +3481,10 @@ function openEditExpense(exp){
   SEG2CODE = {};
   const labels = codes.map(c => { let l = CURSYM[c] || c; if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
   buildSeg('segCurrency', labels, Math.max(codes.indexOf(exp.currency), 0));
-  // this row's category shows in the chip; tap it to change
+  // this row's category shows in the row; tap it to change
   selectedCat = exp.category;
-  renderCatChip();
-  $('gridCategory').style.display = 'none';
-  hideSug();
+  renderCatRow();
+  hideTake();
   $('rowPayer').style.display = payerNames().length < 2 ? 'none' : 'block';
   const payer = payerFromSplits(exp);
   buildSeg('segPayer', payerNames(), Math.max(payerNames().indexOf(payer), 0), p => refreshCards(p));
@@ -3331,7 +3494,7 @@ function openEditExpense(exp){
   }
   $('cardSel').value = exp.paid_with || '';
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
-  $('saveBtn').textContent = 'Save';
+  armSaveKey();
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
   $('sh-plan').style.display = 'none';
   $('sh-form').style.display = 'block';
@@ -3342,30 +3505,32 @@ function openEditDaily(exp){
   mode = 'editDaily'; editingExp = exp; saving = false;
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
-  renderAmt();
+  pendOp = null; pendVal = null; renderAmt();
   $('formTitle').textContent = 'Edit expense';
   $('rowMode').style.display = 'none';
+  $('rowScope').style.display = 'none';
   $('descInput').placeholder = 'description';
   $('descInput').value = exp.description || '';
-  $('dateInput').value = exp.date;
+  $('dateInput').value = exp.date; updateDateVal();
   $('commentsInput').value = exp.comments || '';
   $('rowTrip').style.display = 'none';
-  $('rowFund').style.display = 'none';
-  $('rowFund2').style.display = 'none';
+  $('rowFundFrom').style.display = 'none';
+  $('rowFundTo').style.display = 'none';
   $('rowType').style.display = 'none';
   $('rowCategory').style.display = 'block';
   $('segCurrency').style.display = 'inline-flex';
   $('fundCurLabel').style.display = 'none';
   $('rowDetails').style.display = 'block';
   $('cardWrap').style.display = 'block';
+  $('detailsBtn').style.display = 'none';
+  $('amtDisp').style.color = 'var(--primary)';
   const codes = homeCurrencies().concat(exp.currency).filter((c, i, a) => a.indexOf(c) === i);
   SEG2CODE = {};
   const labels = codes.map(c => { let l = curLabel(c); if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
   buildSeg('segCurrency', labels, Math.max(codes.indexOf(exp.currency), 0));
   selectedCat = exp.category;
-  renderCatChip();
-  $('gridCategory').style.display = 'none';
-  hideSug();
+  renderCatRow();
+  hideTake();
   const pos = (exp.daily_expense_splits || []).find(s => s.profile_id && Number(s.amount) > 0);
   const payer = pos
     ? ((CTX.profiles.find(p => p.id === pos.profile_id) || {}).display_name || (jointLabel() || 'Joint'))
@@ -3378,7 +3543,7 @@ function openEditDaily(exp){
   }
   $('cardSel').value = exp.paid_with || '';
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
-  $('saveBtn').textContent = 'Save';
+  armSaveKey();
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
   $('sh-form').style.display = 'block';
@@ -3390,17 +3555,18 @@ function openEditFund(tx){
   mode = 'editFund'; editingExp = tx; saving = false;
   const n = Number(tx.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
-  renderAmt();
+  pendOp = null; pendVal = null; renderAmt();
   $('formTitle').textContent = 'Edit fund transaction';
   $('rowMode').style.display = 'none';
+  $('rowScope').style.display = 'none';
   $('descInput').placeholder = 'remarks';
   $('descInput').value = tx.remarks || '';
-  $('dateInput').value = tx.date;
+  $('dateInput').value = tx.date; updateDateVal();
   $('commentsInput').value = '';
   $('rowTrip').style.display = 'none';
-  $('rowFund').style.display = 'block';
-  $('fundSelCap').style.display = 'none';
-  $('rowFund2').style.display = 'none';
+  $('rowFundFrom').style.display = 'block';
+  $('rowFundTo').style.display = 'none';
+  $('recvInput').style.display = 'none';
   $('rowType').style.display = 'block';
   $('rowCategory').style.display = 'none';
   $('rowPayer').style.display = 'none';
@@ -3408,21 +3574,18 @@ function openEditFund(tx){
   $('fundCurLabel').style.display = 'inline';
   $('rowDetails').style.display = 'block';
   $('cardWrap').style.display = 'none';
-  $('gridCategory').style.display = 'none';
-  hideSug();
-  $('fundSel').innerHTML = fundOptionsHtml(CTX.funds);
-  if (!CTX.funds.some(f => f.id === tx.fund_id) && tx.funds) {
-    // the fund was archived — keep it selectable for this row
-    const o = document.createElement('option'); o.value = tx.fund_id; o.textContent = tx.funds.name;
-    $('fundSel').appendChild(o);
-  }
-  $('fundSel').value = tx.fund_id;
-  updateFundCur();
+  $('detailsBtn').style.display = 'none';
+  $('amtDisp').style.color = tx.type === 'income' ? 'var(--good)' : 'var(--primary)';
+  hideTake();
+  // the fund was archived — keep it selectable for this row
+  editExtraFund = (!CTX.funds.some(f => f.id === tx.fund_id) && tx.funds)
+    ? { id: tx.fund_id, name: tx.funds.name, currency: tx.funds.currency } : null;
+  fundFromId = tx.fund_id;
+  renderFundRow('from'); afterFundChange();
   if (!$('fundCurLabel').textContent && tx.funds) $('fundCurLabel').textContent = curLabel(tx.funds.currency);
-  $('fundSel').onchange = updateFundCur;
   buildSeg('segType', ['Into the fund', 'Out of the fund'], tx.type === 'income' ? 0 : 1);
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
-  $('saveBtn').textContent = 'Save';
+  armSaveKey();
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
   $('sh-form').style.display = 'block';
@@ -3470,7 +3633,7 @@ const TUT_STEPS = [
   { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
     title:'Add', text:'everything starts here — tap + anytime.' },
   { scr:'scr-home', pre: () => openSheet(), el: () => $('sheet'),
-    title:'Add anything', text:'daily · fund · trip · transfer — switch types with the tabs on top.' },
+    title:'Add anything', text:'expense · income · transfer — and inside Expense: daily, fund or trip.' },
   { scr:'scr-home', pre: () => openForm('daily'), el: () => $('sheet'),
     title:'The 5-second expense', text:'describe it, tap a category, type the amount, save.' },
   { scr:'scr-budget', el: () => $('budTotalMain').closest('.total-card'),
@@ -3565,7 +3728,11 @@ function tutPlace(i, s){
 }
 
 // Esc closes the sheet (keyboard users)
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('sheet').classList.contains('open')) closeSheet(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('pickSheet').classList.contains('open')) { closePicker(); return; }
+  if ($('sheet').classList.contains('open')) closeSheet();
+});
 
 // stay signed in across visits (or explain why we can't even try)
 if (sb) sb.auth.getSession().then(({ data }) => { if (data.session) boot(); });
