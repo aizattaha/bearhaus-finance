@@ -199,7 +199,6 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .arow .rval{font-size:14px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:19px}
 .arow .rmid{min-width:0;flex:1}
 .arow .chev{margin-left:auto;color:var(--ink-soft);flex:0 0 auto}
-.dateghost{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;font-size:16px}
 /* takeover suggestions — matches replace the form while typing */
 .take .trow{display:flex;align-items:center;gap:10px;width:100%;padding:12px 4px;background:none;border:none;border-bottom:1px solid var(--field);font-family:inherit;color:var(--ink);cursor:pointer;text-align:left}
 .take .trow:active{background:var(--accent-soft)}
@@ -215,15 +214,37 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .prow .pct{font-size:11px;color:var(--ink-soft);display:block}
 .prow .ptick{margin-left:auto;width:24px;height:24px;border-radius:99px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto}
 .pgroup{letter-spacing:.08em;text-transform:uppercase;padding:14px 2px 4px;font-weight:600}
-/* calculator dock — C ÷ × −, + spans, big ✓ saves, ⌫ under the thumb */
-.keypad{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
-.key{height:46px;border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:17px;font-weight:500;color:var(--ink);cursor:pointer}
+/* ── the dock: ONE bottom zone hosts numpad / pickers / date — same size, same skin.
+   the system keyboard (free text only) occupies the exact same zone. ── */
+.sheet.full{height:100dvh;max-height:100dvh;border-radius:0;padding:calc(10px + env(safe-area-inset-top)) 20px 0;overflow:hidden}
+#sh-form{flex-direction:column;height:100%;min-height:0}
+#sh-form>.f-sec,#sh-form>.sheet-head,#sh-form>.descwrap{flex:0 0 auto}
+#formBody{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+.sheet.full .take{flex:1 1 auto;min-height:0;overflow-y:auto}
+#dock{flex:0 0 auto;height:var(--dockH,300px);position:relative;margin:8px -20px 0;padding:0 20px calc(6px + env(safe-area-inset-bottom));border-top:1px solid var(--field)}
+.dockpane{position:absolute;inset:0;padding:6px 20px calc(6px + env(safe-area-inset-bottom));display:none;flex-direction:column;background:#fff}
+.dockpane.on{display:flex}
+.dockhead{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;padding:2px 0 4px}
+.docklist{flex:1 1 auto;min-height:0;overflow-y:auto}
+/* calculator pad — C ÷ × −, + spans, big ✓ saves, ⌫ under the thumb; fills the dock */
+.keypad{height:100%;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(5,1fr);gap:6px;padding-top:4px}
+.key{border-radius:14px;border:none;background:var(--field);font-family:inherit;font-size:18px;font-weight:500;color:var(--ink);cursor:pointer}
 .key:active{background:var(--accent-soft)}
 .key.del{font-size:22px;background:var(--accent-soft);color:var(--primary)}
-.key.op{background:var(--accent-soft);color:var(--primary);font-weight:600;font-size:19px}
-.key.tall{grid-row:span 2;height:auto}
-.key.ok{background:var(--primary);color:#fff;font-size:24px}
+.key.op{background:var(--accent-soft);color:var(--primary);font-weight:600;font-size:20px}
+.key.tall{grid-row:span 2}
+.key.ok{background:var(--primary);color:#fff;font-size:26px}
 .key.ok:active{background:var(--primary-hover)}
+/* dock calendar */
+.calhead{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;padding:2px 4px}
+.calhead .mr{background:none;border:none;font-family:inherit;font-size:18px;color:var(--primary);padding:4px 14px;cursor:pointer}
+.calhead .mt{font-size:14px;font-weight:600}
+.calgrid{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:repeat(7,1fr);gap:2px;align-content:stretch}
+.calgrid .dow{font-size:10px;color:var(--ink-soft);text-align:center;align-self:center;font-weight:600}
+.calgrid .day{border:none;background:none;font-family:inherit;font-size:14px;color:var(--ink);border-radius:10px;cursor:pointer;font-variant-numeric:tabular-nums}
+.calgrid .day:disabled{opacity:0}
+.calgrid .day.today{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.calgrid .day.sel{background:var(--primary);color:#fff;font-weight:600}
 .f-sec{margin-top:10px}
 
 /* ── onboarding (new households) ───────────── */
@@ -507,7 +528,7 @@ input[type="date"].descinput{min-width:0}
       <div class="f-sec" id="rowTrip" style="display:none"><button type="button" class="arow" id="tripRow" onclick="openTripPicker()"></button></div>
       <div class="f-sec" id="rowFundFrom" style="display:none"><button type="button" class="arow" id="fundFromRow" onclick="openFundPicker('from')"></button></div>
       <div class="f-sec" id="rowFundTo" style="display:none"><button type="button" class="arow" id="fundToRow" onclick="openFundPicker('to')"></button><input class="descinput" id="recvInput" type="number" step="0.01" placeholder="amount received" style="display:none;margin-top:8px"></div>
-      <div class="f-sec" id="rowDate"><div class="arow"><span class="ric">📅</span><span class="rmid"><span class="rlab">date</span><span class="rval" id="dateVal">Today</span></span><span class="chev">›</span><input id="dateInput" type="date" class="dateghost" aria-label="date"></div></div>
+      <div class="f-sec" id="rowDate"><button type="button" class="arow" onclick="openDatePick()"><span class="ric">📅</span><span class="rmid"><span class="rlab">date</span><span class="rval" id="dateVal">Today</span></span><span class="chev">›</span></button><input id="dateInput" type="hidden"></div>
       <div class="amount-line">
         <div class="seg" id="segCurrency"></div>
         <span class="lbl" id="fundCurLabel" style="display:none;color:var(--ink-soft)"></span>
@@ -517,12 +538,23 @@ input[type="date"].descinput{min-width:0}
       <div class="f-sec" id="rowType" style="display:none"><div class="seg grow" id="segType"></div></div>
       <div class="f-sec" id="rowPayer"><div class="seg grow" id="segPayer"></div></div>
       <div class="f-sec" id="rowDetails" style="display:none">
-        <div id="cardWrap"><p class="cap" style="margin-bottom:4px">paid with</p><select class="descinput" id="cardSel" style="width:100%"></select></div>
-        <div style="margin-top:8px"><p class="cap" style="margin-bottom:4px">note</p><input class="descinput" id="commentsInput" placeholder="optional" style="width:100%"></div>
+        <div id="cardWrap"><button type="button" class="arow" id="cardRow" onclick="openCardPicker()"></button><select id="cardSel" style="display:none"></select></div>
+        <div style="margin-top:8px"><input class="descinput" id="commentsInput" placeholder="note (optional)" style="width:100%"></div>
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button></div>
-      <div class="keypad" id="keypad"></div>
-      <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px" onclick="deleteExpense()">Delete</button>
+      <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px;flex:0 0 auto" onclick="deleteExpense()">Delete</button>
+    </div>
+    <div id="dock">
+      <div class="dockpane on" id="dock-pad"><div class="keypad" id="keypad"></div></div>
+      <div class="dockpane" id="dock-pick">
+        <div class="dockhead"><span class="h2" id="pickTitle" style="font-size:14px"></span><button class="btn-tert" onclick="dockShow('pad')">123 ›</button></div>
+        <div class="docklist" id="pickBody"></div>
+      </div>
+      <div class="dockpane" id="dock-date">
+        <div class="dockhead"><span class="h2" style="font-size:14px">Date</span><span><button class="btn-tert" onclick="datePickToday()">Today</button><button class="btn-tert" style="margin-left:14px" onclick="dockShow('pad')">123 ›</button></span></div>
+        <div class="calhead"><button class="mr" onclick="calShift(-1)">‹</button><span class="mt" id="calTitle"></span><button class="mr" onclick="calShift(1)">›</button></div>
+        <div class="calgrid" id="calGrid"></div>
+      </div>
     </div>
   </div>
 
@@ -544,13 +576,6 @@ input[type="date"].descinput{min-width:0}
     <div class="sheet-head"><span class="h2" id="planEdTitle">Monthly plan</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
     <div id="planEdBody"><p class="cap">loading…</p></div>
   </div>
-</div>
-
-<!-- bottom picker: one pattern for category / fund / trip choices (rides above the form sheet) -->
-<div class="backdrop" id="backdrop2" onclick="closePicker()" style="z-index:22"></div>
-<div class="sheet" id="pickSheet" role="dialog" aria-modal="true" style="z-index:23">
-  <div class="sheet-head"><span class="h2" id="pickTitle"></span><button class="btn-tert" onclick="closePicker()">Close</button></div>
-  <div id="pickBody"></div>
 </div>
 
 <div class="toast" id="toastEl"></div>
@@ -1510,6 +1535,7 @@ async function openPlanSheet(){
   $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none';
   $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
   $('sh-plan').style.display = 'block';
+  $('sheet').classList.remove('full');
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
   const m = curMonthIso(), next = addMonths(m, 1);
   $('planEdTitle').textContent = monthName(m, true) + ' plan';
@@ -2712,6 +2738,7 @@ function openNewTripSheet(){
   $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none'; $('sh-apply').style.display = 'none';
   $('sh-plan').style.display = 'none';
   $('sh-newtrip').style.display = 'block';
+  $('sheet').classList.remove('full');
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
 function renderNtCurrencies(){
@@ -2868,6 +2895,7 @@ function refreshCards(payerName){
   $('cardSel').innerHTML = opts.map(c => '<option>' + esc(c.name) + '</option>').join('')
     + '<option value="">no card</option>';
   if (opts.length) $('cardSel').value = opts[0].name;
+  renderCardRow();
 }
 
 let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false;
@@ -2886,6 +2914,7 @@ function openSheet(){
 function closeSheet(){
   $('backdrop').classList.remove('open');
   $('sheet').classList.remove('open');
+  $('sheet').classList.remove('full');
   closePicker();
   hideTake();
 }
@@ -2929,11 +2958,17 @@ function updateTake(){
   $('formBody').style.display = 'none';
 }
 $('descInput').addEventListener('input', updateTake);
-$('descInput').addEventListener('focus', () => { $('keypad').style.display = 'none'; });
+// dock swap: any text field focused → every pane hides, the system keyboard owns the zone;
+// blur → the numpad returns (unless a tap just opened a picker pane)
+$('descInput').addEventListener('focus', () => dockShow(null));
 $('descInput').addEventListener('blur', () => setTimeout(() => {
   hideTake();
-  $('keypad').style.display = 'grid';
+  if (!dockPaneOn()) dockShow('pad');
 }, 200));
+['commentsInput', 'recvInput'].forEach(id => {
+  $(id).addEventListener('focus', () => dockShow(null));
+  $(id).addEventListener('blur', () => setTimeout(() => { if (!dockPaneOn()) dockShow('pad'); }, 200));
+});
 function buildSeg(id, items, selIdx, onPick){
   const box = $(id); box.innerHTML = '';
   items.forEach((c, i) => {
@@ -2962,13 +2997,84 @@ function openPicker(title, items, onPick){
     b.onclick = () => { closePicker(); onPick(it); };
     box.appendChild(b);
   });
-  $('backdrop2').classList.add('open');
-  $('pickSheet').classList.add('open');
-  $('pickSheet').scrollTop = 0;
+  dockShow('pick');
+  $('pickBody').scrollTop = 0;
 }
-function closePicker(){
-  $('backdrop2').classList.remove('open');
-  $('pickSheet').classList.remove('open');
+function closePicker(){ dockShow('pad'); }
+
+// ── the dock state machine: exactly one occupant at a time ──
+// panes: 'pad' (numpad) · 'pick' (lists) · 'date' (calendar) · null (system keyboard)
+function dockShow(p){
+  ['pad', 'pick', 'date'].forEach(x => $('dock-' + x).classList.toggle('on', x === p));
+}
+function dockPaneOn(){ return ['pad', 'pick', 'date'].some(x => $('dock-' + x).classList.contains('on')); }
+// the system keyboard is measured once and the dock adopts its exact height,
+// so keyboard ⇄ numpad swaps never move the form above
+(function(){
+  const saved = Number(localStorage.getItem('bh-kb'));
+  if (saved > 180 && saved < 480) document.documentElement.style.setProperty('--dockH', saved + 'px');
+  if (window.visualViewport) visualViewport.addEventListener('resize', () => {
+    const kb = Math.round(window.innerHeight - visualViewport.height);
+    if (kb > 180 && kb < 480) {
+      document.documentElement.style.setProperty('--dockH', kb + 'px');
+      localStorage.setItem('bh-kb', kb);
+    }
+  });
+})();
+
+// ── dock calendar (no system date wheel) ──
+let calMonth = null;   // 'YYYY-MM'
+function openDatePick(){
+  calMonth = ($('dateInput').value || isoDate(new Date())).slice(0, 7);
+  renderCal(); dockShow('date');
+}
+function calShift(d){
+  const [y, m] = calMonth.split('-').map(Number);
+  const nd = new Date(y, m - 1 + d, 1);
+  calMonth = nd.getFullYear() + '-' + String(nd.getMonth() + 1).padStart(2, '0');
+  renderCal();
+}
+function datePickToday(){
+  $('dateInput').value = isoDate(new Date());
+  updateDateVal(); dockShow('pad');
+}
+function renderCal(){
+  const [y, m] = calMonth.split('-').map(Number);
+  $('calTitle').textContent = new Date(y, m - 1, 1).toLocaleDateString('en-AU', {month:'long', year:'numeric'});
+  const g = $('calGrid'); g.innerHTML = '';
+  ['M','T','W','T','F','S','S'].forEach(d => {
+    const s = document.createElement('span'); s.className = 'dow'; s.textContent = d; g.appendChild(s);
+  });
+  const first = new Date(y, m - 1, 1);
+  const lead = (first.getDay() + 6) % 7;   // Monday-first
+  const days = new Date(y, m, 0).getDate();
+  const today = isoDate(new Date()), sel = $('dateInput').value;
+  for (let i = 0; i < lead; i++) { const b = document.createElement('button'); b.className = 'day'; b.disabled = true; g.appendChild(b); }
+  for (let d = 1; d <= days; d++) {
+    const iso = calMonth + '-' + String(d).padStart(2, '0');
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'day';
+    if (iso === today) b.classList.add('today');
+    if (iso === sel) b.classList.add('sel');
+    b.textContent = d;
+    b.onclick = () => { $('dateInput').value = iso; updateDateVal(); dockShow('pad'); };
+    g.appendChild(b);
+  }
+}
+
+// ── card picker (no system list box) ──
+function renderCardRow(){
+  const v = $('cardSel').value;
+  $('cardRow').innerHTML = '<span class="ric">' + (v ? '💳' : '👛') + '</span>'
+    + '<span class="rmid"><span class="rlab">paid with</span><span class="rval">' + esc(v || 'no card') + '</span></span>'
+    + '<span class="chev">›</span>';
+}
+function openCardPicker(){
+  const cur = $('cardSel').value;
+  const items = [...$('cardSel').options].map(o => ({
+    id: o.value, name: o.value === '' ? 'no card' : o.textContent,
+    icon: o.value === '' ? '👛' : '💳', sel: o.value === cur,
+  }));
+  openPicker('Paid with', items, it => { $('cardSel').value = it.id; renderCardRow(); });
 }
 function gridSel(){ return selectedCat; }
 function renderCatRow(){
@@ -3211,8 +3317,10 @@ function openForm(m){
       p => refreshCards(p));
     refreshCards(lastPayer);
   }
+  dockShow('pad');
+  $('sheet').classList.add('full');
   $('sh-chooser').style.display = 'none';
-  $('sh-form').style.display = 'block';
+  $('sh-form').style.display = 'flex';
 }
 function toggleDetails(){
   const r = $('rowDetails');
@@ -3493,11 +3601,14 @@ function openEditExpense(exp){
     const o = document.createElement('option'); o.textContent = exp.paid_with; $('cardSel').appendChild(o);
   }
   $('cardSel').value = exp.paid_with || '';
+  renderCardRow();
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   armSaveKey();
+  dockShow('pad');
+  $('sheet').classList.add('full');
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
   $('sh-plan').style.display = 'none';
-  $('sh-form').style.display = 'block';
+  $('sh-form').style.display = 'flex';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
 // ── edit / delete a daily expense ────────────
@@ -3542,11 +3653,14 @@ function openEditDaily(exp){
     const o = document.createElement('option'); o.textContent = exp.paid_with; $('cardSel').appendChild(o);
   }
   $('cardSel').value = exp.paid_with || '';
+  renderCardRow();
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   armSaveKey();
+  dockShow('pad');
+  $('sheet').classList.add('full');
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
-  $('sh-form').style.display = 'block';
+  $('sh-form').style.display = 'flex';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
 
@@ -3586,9 +3700,11 @@ function openEditFund(tx){
   buildSeg('segType', ['Into the fund', 'Out of the fund'], tx.type === 'income' ? 0 : 1);
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   armSaveKey();
+  dockShow('pad');
+  $('sheet').classList.add('full');
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
-  $('sh-form').style.display = 'block';
+  $('sh-form').style.display = 'flex';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
   if (tx.origin === 'planned') toast('written by Review & apply — edits change this record, not the plan');
   else if (/^Transfer [→←]/.test(tx.remarks || '')) toast('this is half of a transfer — its pair won’t change');
@@ -3730,7 +3846,7 @@ function tutPlace(i, s){
 // Esc closes the sheet (keyboard users)
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if ($('pickSheet').classList.contains('open')) { closePicker(); return; }
+  if ($('dock-pick').classList.contains('on') || $('dock-date').classList.contains('on')) { dockShow('pad'); return; }
   if ($('sheet').classList.contains('open')) closeSheet();
 });
 
