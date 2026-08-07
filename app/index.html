@@ -529,7 +529,7 @@ input[type="date"].descinput{min-width:0}
       <div class="f-sec" id="rowFundFrom" style="display:none"><button type="button" class="arow" id="fundFromRow" onclick="openFundPicker('from')"></button></div>
       <div class="f-sec" id="rowFundTo" style="display:none"><button type="button" class="arow" id="fundToRow" onclick="openFundPicker('to')"></button><input class="descinput" id="recvInput" type="number" step="0.01" placeholder="amount received" style="display:none;margin-top:8px"></div>
       <div class="f-sec" id="rowDate"><button type="button" class="arow" onclick="openDatePick()"><span class="ric">📅</span><span class="rmid"><span class="rlab">date</span><span class="rval" id="dateVal">Today</span></span><span class="chev">›</span></button><input id="dateInput" type="hidden"></div>
-      <div class="amount-line">
+      <div class="amount-line" onclick="focusAmount()" role="button" tabindex="0" aria-label="amount — opens the numpad" style="cursor:pointer">
         <div class="seg" id="segCurrency"></div>
         <span class="lbl" id="fundCurLabel" style="display:none;color:var(--ink-soft)"></span>
         <span class="disp num" id="amtDisp" style="color:var(--primary)">0</span>
@@ -734,6 +734,7 @@ async function signOut(){
 
 // signed in, but which door? existing household → app, none yet → setup wizard
 async function boot(){
+  booted = true;   // whichever path got here first wins — no double boots
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem('bh-ctx')); } catch(e){}
   if (cached && cached.hh) { enterApp(); return; }   // known household: paint instantly
@@ -1500,7 +1501,7 @@ async function toggleFundDrill(btn, fund){
   d.innerHTML = '<p class="cap">loading…</p>';
   btn.after(d);
   const { data, error } = await sb.from('fund_transactions')
-    .select('id, date, type, amount, remarks, origin')
+    .select('id, date, type, amount, remarks, origin, income_source')
     .eq('fund_id', fund.fund_id)
     .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(8);
   if (error) { d.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
@@ -1898,7 +1899,7 @@ async function loadAllTx(reset){
     }
     if (type !== 'Daily' && !atx.fDone) {
       qf = sb.from('fund_transactions')
-        .select('id, date, type, amount, remarks, origin, fund_id, funds(name, currency)')
+        .select('id, date, type, amount, remarks, origin, income_source, fund_id, funds(name, currency)')
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.fOff, atx.fOff + ATX_PAGE - 1);
       if (q) qf = qf.ilike('remarks', '%' + q + '%');
@@ -2775,7 +2776,7 @@ async function loadContext(){
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
   if (CTX.cats) applyCategories(CTX.cats);   // instant catalogue from the last visit
   if (CTX.firstMonth) BUD_MIN = CTX.firstMonth;
-  const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD] = await Promise.all([
+  const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD, incSrc] = await Promise.all([
     sb.from('households').select('id, name, travel_fund_id, joint_label').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('funds').select('id, name, country, currency, group_name, sort_order').eq('is_active', true).order('sort_order'),
@@ -2785,16 +2786,23 @@ async function loadContext(){
     sb.from('daily_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(300),
     sb.from('travel_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(120),
     sb.from('daily_expenses').select('date').order('date', {ascending:true}).limit(1),
+    sb.from('income_budgets').select('source_name, month').order('month', {ascending:false}).limit(60),
   ]);
   if (!hh.error) {
     // table may predate the categories migration — fall back to built-ins
     const catRows = cats.error ? (CTX.cats || []) : (cats.data || []);
     applyCategories(catRows);
+    const srcSeen = new Set();
+    const incomeSources = (incSrc.error ? [] : incSrc.data || []).filter(r => {
+      const k = r.source_name.toLowerCase();
+      if (srcSeen.has(k)) return false; srcSeen.add(k); return true;
+    }).map(r => r.source_name);
     CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
             trips: trips.data || [], cards: cards.data || [], cats: catRows,
             topDaily: topCats(dCats.data, FALLBACK_DAILY),
             topTravel: topCats(tCats.data, FALLBACK_TRAVEL),
-            histDaily: histFrom(dCats.data), histTravel: histFrom(tCats.data) };
+            histDaily: histFrom(dCats.data), histTravel: histFrom(tCats.data),
+            incomeSources };
     CTX.firstMonth = (!firstD.error && firstD.data && firstD.data[0])
       ? firstD.data[0].date.slice(0, 7) + '-01' : curMonthIso();
     BUD_MIN = CTX.firstMonth;
@@ -2927,6 +2935,29 @@ function hideTake(){
   $('formBody').style.display = 'block';
 }
 function updateTake(){
+  // income: suggest the household's named sources (from the monthly plan), even before typing
+  if (mode === 'income') {
+    const q = $('descInput').value.trim().toLowerCase();
+    const src = CTX.incomeSources || [];
+    const m = (q ? src.filter(s => s.toLowerCase().includes(q)) : src).slice(0, 5);
+    if (!m.length || (m.length === 1 && m[0].toLowerCase() === q)) { hideTake(); return; }
+    const box = $('takeBox'); box.innerHTML = '';
+    m.forEach(s => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'trow';
+      b.innerHTML = '<span class="tic">💵</span>'
+        + '<span style="min-width:0;flex:1"><span class="tnm">' + esc(s) + '</span><span class="tct">income source</span></span>';
+      b.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        $('descInput').value = s;
+        hideTake();
+        $('descInput').blur();
+      });
+      box.appendChild(b);
+    });
+    box.style.display = 'block';
+    $('formBody').style.display = 'none';
+    return;
+  }
   if (mode !== 'daily' && mode !== 'trip' && mode !== 'edit' && mode !== 'editDaily') { hideTake(); return; }
   const q = $('descInput').value.trim().toLowerCase();
   if (q.length < 2) { hideTake(); return; }
@@ -2960,7 +2991,7 @@ function updateTake(){
 $('descInput').addEventListener('input', updateTake);
 // dock swap: any text field focused → every pane hides, the system keyboard owns the zone;
 // blur → the numpad returns (unless a tap just opened a picker pane)
-$('descInput').addEventListener('focus', () => dockShow(null));
+$('descInput').addEventListener('focus', () => { dockShow(null); if (mode === 'income') updateTake(); });
 $('descInput').addEventListener('blur', () => setTimeout(() => {
   hideTake();
   if (!dockPaneOn()) dockShow('pad');
@@ -2981,6 +3012,7 @@ function buildSeg(id, items, selIdx, onPick){
 function segSel(id){ const b = document.querySelector('#' + id + ' .sel'); return b ? b.textContent : ''; }
 // ── bottom pickers: one pattern for category / fund / trip (right-thumb rule) ──
 function openPicker(title, items, onPick){
+  blurInputs();   // a picker row tapped mid-typing must retire the keyboard itself
   $('pickTitle').textContent = title;
   const box = $('pickBody'); box.innerHTML = '';
   items.forEach(it => {
@@ -3007,6 +3039,16 @@ function closePicker(){ dockShow('pad'); }
 function dockShow(p){
   ['pad', 'pick', 'date'].forEach(x => $('dock-' + x).classList.toggle('on', x === p));
 }
+// tapping the amount ALWAYS summons the numpad — even mid-typing, iOS won't
+// dismiss the keyboard for a plain tap, so we do it ourselves (least actions)
+function focusAmount(){
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  hideTake();
+  dockShow('pad');
+}
+function blurInputs(){
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
+}
 function dockPaneOn(){ return ['pad', 'pick', 'date'].some(x => $('dock-' + x).classList.contains('on')); }
 // the system keyboard is measured once and the dock adopts its exact height,
 // so keyboard ⇄ numpad swaps never move the form above
@@ -3025,6 +3067,7 @@ function dockPaneOn(){ return ['pad', 'pick', 'date'].some(x => $('dock-' + x).c
 // ── dock calendar (no system date wheel) ──
 let calMonth = null;   // 'YYYY-MM'
 function openDatePick(){
+  blurInputs();
   calMonth = ($('dateInput').value || isoDate(new Date())).slice(0, 7);
   renderCal(); dockShow('date');
 }
@@ -3441,12 +3484,13 @@ async function saveEntry(){
       return;
     }
     if (mode === 'income') {
-      // income = money that actually arrived, dropped straight into a fund
+      // income = money that actually arrived, dropped straight into a fund.
+      // income_source labels it as a real income event (Home counts these)
       const fundId = fundToId;
       if (!fundId) { done(false, 'pick where it lands'); return; }
       const { error } = await sb.from('fund_transactions').insert({
         household_id: CTX.hh.id, fund_id: fundId, type: 'income',
-        date, amount: cost, remarks: desc, origin: 'manual',
+        date, amount: cost, remarks: desc, origin: 'manual', income_source: desc,
       });
       if (error) throw error;
       localStorage.setItem('bh-incfund', fundId);
@@ -3486,11 +3530,17 @@ async function saveEntry(){
     }
     if (mode === 'editFund') {
       const fundId = fundFromId;
-      const { error } = await sb.from('fund_transactions').update({
+      const upd = {
         fund_id: fundId,
         type: segSel('segType') === 'Into the fund' ? 'income' : 'expense',
         date, amount: cost, remarks: desc,
-      }).eq('id', editingExp.id);
+      };
+      // an income event keeps its label in sync with the remarks; flipping it
+      // to "out of the fund" stops it being income, so the label goes too
+      if ('income_source' in editingExp) {
+        upd.income_source = (editingExp.income_source && upd.type === 'income') ? desc : null;
+      }
+      const { error } = await sb.from('fund_transactions').update(upd).eq('id', editingExp.id);
       if (error) throw error;
       const f = fundById(fundId) || (editingExp.funds ? { currency: editingExp.funds.currency } : null);
       done(true, 'updated — ' + fmtMoney(cost, f ? f.currency : 'AUD'));
@@ -3850,8 +3900,28 @@ document.addEventListener('keydown', e => {
   if ($('sheet').classList.contains('open')) closeSheet();
 });
 
-// stay signed in across visits (or explain why we can't even try)
-if (sb) sb.auth.getSession().then(({ data }) => { if (data.session) boot(); });
+// stay signed in across visits (or explain why we can't even try).
+// cold PWA launches often race the network: the stored token looks expired for a
+// moment and a single getSession() returns nothing — so we listen for the restored
+// session AND retry while a refresh token is still sitting in storage. the login
+// page only wins when there is genuinely no one signed in.
+let booted = false;
+function tryBoot(session){ if (session && !booted && !recoverMode) { booted = true; boot(); } }
+if (sb) {
+  sb.auth.onAuthStateChange((evt, session) => {
+    if (evt === 'PASSWORD_RECOVERY' || evt === 'SIGNED_OUT') return;
+    tryBoot(session);
+  });
+  (async () => {
+    for (let i = 0; i < 4 && !booted; i++) {
+      const { data } = await sb.auth.getSession();
+      if (data && data.session) { tryBoot(data.session); return; }
+      const stored = Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('auth-token'));
+      if (!stored) return;                       // truly signed out — login page is correct
+      await new Promise(r => setTimeout(r, 800 * (i + 1)));
+    }
+  })();
+}
 else { const el = document.querySelector('#login .cap'); if (el) el.textContent = 'couldn’t load — check your connection, then reopen the app'; }
 </script>
 </body>
