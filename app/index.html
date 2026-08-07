@@ -75,7 +75,6 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .daylbl span{flex:1;text-align:center;font-size:12px;line-height:16px;color:var(--ink-soft)}
 .daylbl span.today{color:var(--primary);font-weight:500}
 /* donut */
-.donutwrap{display:flex;align-items:center;gap:18px;margin-top:14px}
 .legend{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
 .legend .li{display:flex;align-items:center;gap:8px;font-size:12px;line-height:16px;color:var(--ink-soft)}
 .legend .li span:first-of-type{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -384,12 +383,21 @@ input[type="date"].descinput{min-width:0}
         <div id="recentList"><p class="cap" style="padding:12px 0">loading…</p></div>
       </div>
 
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="h2" id="donutTitle">This month by category</span>
-          <span id="donutCur" style="display:inline-flex;font-size:12px;font-weight:500;border-radius:999px;padding:3px 12px;background:var(--accent-soft);color:var(--primary)">A$</span>
-        </div>
-        <div class="donutwrap" id="donutWrap"><p class="cap">loading…</p></div>
+      <div style="display:flex;gap:12px">
+        <button type="button" class="card" id="expCard" onclick="go('scr-budget')" aria-label="Spending this month — open Budget"
+          style="flex:1;min-width:0;text-align:center;border:none;font-family:inherit;cursor:pointer;padding:14px 10px">
+          <div id="expDonut"><p class="cap">…</p></div>
+          <p class="lbl" style="margin-top:2px">Expense</p>
+          <p class="lbl num" id="expTotal" style="color:var(--primary);font-size:16px">…</p>
+          <p class="cap num" id="expOther" style="min-height:15px"></p>
+        </button>
+        <button type="button" class="card" id="incCard" onclick="openIncomeSheet()" aria-label="Income this month — see the breakdown"
+          style="flex:1;min-width:0;text-align:center;border:none;font-family:inherit;cursor:pointer;padding:14px 10px">
+          <div id="incDonut"><p class="cap">…</p></div>
+          <p class="lbl" style="margin-top:2px">Income</p>
+          <p class="lbl num" id="incTotal" style="color:var(--good);font-size:16px">…</p>
+          <p class="cap num" id="incOther" style="min-height:15px"></p>
+        </button>
       </div>
     </section>
 
@@ -575,6 +583,12 @@ input[type="date"].descinput{min-width:0}
   <div id="sh-plan" style="display:none">
     <div class="sheet-head"><span class="h2" id="planEdTitle">Monthly plan</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
     <div id="planEdBody"><p class="cap">loading…</p></div>
+  </div>
+
+  <div id="sh-income" style="display:none">
+    <div class="sheet-head"><span class="h2" id="incSheetTitle">Money in</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
+    <p class="cap">money that actually arrived — logged with ＋ → Income. tap a row to edit.</p>
+    <div id="incBody" style="margin-top:10px"><p class="cap">loading…</p></div>
   </div>
 </div>
 
@@ -822,7 +836,6 @@ async function enterApp(){
   const now = new Date();
   $('todayLabel').textContent = now.toLocaleDateString('en-AU', {weekday:'long', day:'numeric', month:'long'});
   $('monthLabel').textContent = now.toLocaleDateString('en-AU', {month:'long'});
-  $('donutTitle').textContent = now.toLocaleDateString('en-AU', {month:'long'}) + ' by category';
 
   // instant paint from the last visit, then refresh live
   const cached = localStorage.getItem('bh-home');
@@ -875,7 +888,7 @@ async function loadHome(){
     const weekStart = new Date(now); weekStart.setDate(now.getDate() - 6);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [week, recent, month] = await Promise.all([
+    const [week, recent, month, inc] = await Promise.all([
       sb.from('daily_expenses').select('date, amount, currency, category')
         .gte('date', isoDate(weekStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
       sb.from('daily_expenses')
@@ -883,12 +896,16 @@ async function loadHome(){
         .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(5),
       sb.from('daily_expenses').select('category, amount, currency')
         .gte('date', isoDate(monthStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
+      sb.from('fund_transactions').select('amount, income_source, funds(currency)')
+        .not('income_source', 'is', null)
+        .gte('date', isoDate(monthStart)).lte('date', isoDate(now)),
     ]);
     if (week.error) throw week.error;
     if (recent.error) throw recent.error;
     if (month.error) throw month.error;
+    if (inc.error) throw inc.error;
 
-    const state = { week: week.data, recent: recent.data, month: month.data, today: isoDate(now) };
+    const state = { week: week.data, recent: recent.data, month: month.data, inc: inc.data, today: isoDate(now) };
     localStorage.setItem('bh-home', JSON.stringify(state));
     $('errorCard').style.display = 'none';
     homeRetried = false;   // a success re-arms the one-shot token refresh (QA-34)
@@ -900,8 +917,14 @@ async function loadHome(){
       homeRetried = true;
       const { error } = await sb.auth.refreshSession();
       if (!error) return loadHome();
-      await sb.auth.signOut();
-      location.reload();            // refresh failed → back to login, cleanly
+      // only a DEFINITIVELY dead session earns a sign-out — a network blip must
+      // never wipe the stored login (that was the "always at the login page" bug)
+      if (/invalid|revoked|not.?found|already.?used/i.test(String(error.message || ''))) {
+        await sb.auth.signOut();
+        location.reload();
+        return;
+      }
+      showError('couldn’t reach the server — tap to retry');
       return;
     }
     showError('couldn’t load your data: ' + msg);
@@ -964,12 +987,30 @@ function renderHome(state){
     };
   });
 
-  // donut: this month, home currency, grouped
-  $('donutCur').textContent = curLabel(PC);
+  // twin cards: spending (blues) · income that actually arrived (greens) — Design B, Aug 2026
+  const C = 2 * Math.PI * 45;
+  const ring = (list, total, colors) => {
+    let off = 0;
+    return list.map(([, v], i) => {
+      const len = total > 0 ? v / total * C : 0;
+      const s = `<circle cx="60" cy="60" r="45" fill="none" stroke="${colors[i]}" stroke-width="14"
+        stroke-dasharray="${len.toFixed(1)} ${(C - len).toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}" transform="rotate(-90 60 60)"/>`;
+      off += len;
+      return s;
+    }).join('');
+  };
+  const donutSvg = (inner, label) => `
+    <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="${label}">
+      <circle cx="60" cy="60" r="45" fill="none" stroke="#E6E5E5" stroke-width="14"/>${inner}
+      <text x="60" y="69" text-anchor="middle" font-size="26" fill="#55657D" font-family="Poppins,sans-serif">›</text>
+    </svg>`;
+
+  // expense: this month by category group, primary currency
   const byGroup = {};
-  let monthAU = 0;
+  let monthAU = 0; const expOther = {};
   (state.month || []).forEach(r => {
-    if (r.currency !== PC || r.category === 'Payment') return;
+    if (r.category === 'Payment') return;
+    if (r.currency !== PC) { expOther[r.currency] = (expOther[r.currency] || 0) + Number(r.amount); return; }
     const g = GROUP_OF[r.category] || 'Other';
     byGroup[g] = (byGroup[g] || 0) + Number(r.amount);
     monthAU += Number(r.amount);
@@ -982,24 +1023,64 @@ function renderHome(state){
     if (other) other[1] += restVal; else top.push(['Other', restVal]);
   }
   const COLORS = ['#004A98', '#5A8AC7', '#B4CEFF', '#E4EEFF', '#E6E5E5'];
-  const C = 2 * Math.PI * 45;
-  let offset = 0;
-  const segs = top.map(([g, v], i) => {
-    const len = monthAU > 0 ? v / monthAU * C : 0;
-    const seg = `<circle cx="60" cy="60" r="45" fill="none" stroke="${COLORS[i]}" stroke-width="13"
-      stroke-dasharray="${len.toFixed(1)} ${(C - len).toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 60 60)"/>`;
-    offset += len;
-    return seg;
-  }).join('');
-  $('donutWrap').innerHTML = `
-    <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Spending by category">
-      <circle cx="60" cy="60" r="45" fill="none" stroke="#E6E5E5" stroke-width="13"/>${segs}
-      <text x="60" y="57" text-anchor="middle" font-size="14" font-weight="600" fill="#1A2B44" font-family="Poppins,sans-serif">${monthAU % 1 ? '≈' : ''}${curLabel(PC)}${Math.round(monthAU).toLocaleString('en-AU')}</text>
-      <text x="60" y="73" text-anchor="middle" font-size="10" fill="#55657D" font-family="Poppins,sans-serif">so far</text>
-    </svg>
-    <div class="legend">${top.map(([g, v], i) =>
-      `<div class="li"><span class="dot" style="background:${COLORS[i]}"></span><span>${esc(g)}</span><span class="amt">${curLabel(PC)}${Math.round(v).toLocaleString('en-AU')}</span></div>`).join('')
-      || '<p class="cap">no spending yet this month</p>'}</div>`;
+  $('expDonut').innerHTML = donutSvg(ring(top, monthAU, COLORS), 'Spending by category — open Budget');
+  $('expTotal').textContent = fmtMoney(monthAU, PC);
+  $('expOther').textContent = Object.keys(expOther).length
+    ? '+ ' + Object.entries(expOther).map(([c, v]) => fmtMoney(v, c)).join(' · ') : '';
+
+  // income: labelled income events this month, by source
+  const GREENS = ['#2E7D57', '#7FBF9E', '#A5D6BC', '#C9E7D6', '#E3F4EA'];
+  const bySrc = {};
+  let incPC = 0; const incOther = {};
+  (state.inc || []).forEach(r => {
+    const cur = r.funds ? r.funds.currency : PC;
+    const a = Number(r.amount);
+    if (cur !== PC) { incOther[cur] = (incOther[cur] || 0) + a; return; }
+    incPC += a;
+    const s = r.income_source || 'Other';
+    bySrc[s] = (bySrc[s] || 0) + a;
+  });
+  const iSorted = Object.entries(bySrc).sort((a, b) => b[1] - a[1]);
+  const iTop = iSorted.slice(0, 4);
+  const iRest = iSorted.slice(4).reduce((s, [, v]) => s + v, 0);
+  if (iRest > 0) iTop.push(['Other', iRest]);
+  $('incDonut').innerHTML = donutSvg(ring(iTop, incPC, GREENS), 'Income by source — see the breakdown');
+  $('incTotal').textContent = fmtMoney(incPC, PC);
+  $('incOther').textContent = Object.keys(incOther).length
+    ? '+ ' + Object.entries(incOther).map(([c, v]) => fmtMoney(v, c)).join(' · ')
+    : (incPC > 0 ? '' : 'log it with ＋ → Income');
+}
+
+// ── income breakdown sheet (tap the green donut) ──
+async function openIncomeSheet(){
+  ['sh-chooser', 'sh-form', 'sh-apply', 'sh-newtrip', 'sh-plan'].forEach(id => $(id).style.display = 'none');
+  $('sheet').classList.remove('full');
+  $('sh-income').style.display = 'block';
+  $('backdrop').classList.add('open'); $('sheet').classList.add('open');
+  $('incSheetTitle').textContent = 'Money in — ' + new Date().toLocaleDateString('en-AU', {month:'long'});
+  const box = $('incBody');
+  box.innerHTML = '<p class="cap">loading…</p>';
+  const m = curMonthIso(), next = addMonths(m, 1);
+  const { data, error } = await sb.from('fund_transactions')
+    .select('id, date, type, amount, remarks, origin, income_source, fund_id, funds(name, currency)')
+    .not('income_source', 'is', null).gte('date', m).lt('date', next)
+    .order('date', {ascending:false}).order('created_at', {ascending:false});
+  if (error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
+  if (!data.length) { box.innerHTML = '<p class="cap">nothing yet this month — tap ＋, then Income.</p>'; return; }
+  const tot = {};
+  data.forEach(r => { const c = r.funds ? r.funds.currency : 'AUD'; tot[c] = (tot[c] || 0) + Number(r.amount); });
+  box.innerHTML = '<p class="lbl num" style="color:var(--good);margin-bottom:6px">'
+    + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join(' · ') + '</p>';
+  data.forEach(r => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'prow';
+    const when = new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
+    b.innerHTML = '<span class="ric">💵</span>'
+      + '<span style="min-width:0;flex:1"><span class="pnm">' + esc(r.income_source) + '</span>'
+      + '<span class="pct">' + when + ' · ' + esc(r.funds ? r.funds.name : 'fund') + '</span></span>'
+      + '<span class="lbl num" style="color:var(--good);flex:0 0 auto">+' + fmtMoney(r.amount, r.funds ? r.funds.currency : 'AUD') + '</span>';
+    b.onclick = () => openEditFund(r);
+    box.appendChild(b);
+  });
 }
 
 // ══ BUDGET ══════════════════════════════════
@@ -1535,6 +1616,7 @@ async function openPlanSheet(){
   if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
   $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none';
   $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
+  $('sh-income').style.display = 'none';
   $('sh-plan').style.display = 'block';
   $('sheet').classList.remove('full');
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
@@ -2737,7 +2819,7 @@ function openNewTripSheet(){
   }));
   renderNtCurrencies();
   $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none'; $('sh-apply').style.display = 'none';
-  $('sh-plan').style.display = 'none';
+  $('sh-plan').style.display = 'none'; $('sh-income').style.display = 'none';
   $('sh-newtrip').style.display = 'block';
   $('sheet').classList.remove('full');
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
@@ -2914,7 +2996,7 @@ function openSheet(){
   $('sh-chooser').style.display = 'none';
   $('sh-apply').style.display = 'none';
   $('sh-newtrip').style.display = 'none';
-  $('sh-plan').style.display = 'none';
+  $('sh-plan').style.display = 'none'; $('sh-income').style.display = 'none';
   $('backdrop').classList.add('open');
   $('sheet').classList.add('open');
   openForm('daily');   // straight into the 90% case — other types are one tab away (WF-1)
@@ -3657,7 +3739,7 @@ function openEditExpense(exp){
   dockShow('pad');
   $('sheet').classList.add('full');
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none'; $('sh-newtrip').style.display = 'none';
-  $('sh-plan').style.display = 'none';
+  $('sh-plan').style.display = 'none'; $('sh-income').style.display = 'none';
   $('sh-form').style.display = 'flex';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
@@ -3709,7 +3791,7 @@ function openEditDaily(exp){
   dockShow('pad');
   $('sheet').classList.add('full');
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
-  $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
+  $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none'; $('sh-income').style.display = 'none';
   $('sh-form').style.display = 'flex';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
 }
@@ -3753,7 +3835,7 @@ function openEditFund(tx){
   dockShow('pad');
   $('sheet').classList.add('full');
   $('sh-chooser').style.display = 'none'; $('sh-apply').style.display = 'none';
-  $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none';
+  $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none'; $('sh-income').style.display = 'none';
   $('sh-form').style.display = 'flex';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
   if (tx.origin === 'planned') toast('written by Review & apply — edits change this record, not the plan');
@@ -3794,8 +3876,8 @@ const TUT_STEPS = [
     text:'every month: plan the income, give spending a cap, move the rest into funds. what’s left over is truly free to spend.' },
   { scr:'scr-home', el: () => $('weekTotal').closest('.card'),
     title:'Home', text:'what you spent this week, day by day.' },
-  { scr:'scr-home', el: () => $('donutWrap').closest('.card'),
-    title:'By category', text:'this month so far, split by where it went.' },
+  { scr:'scr-home', el: () => $('expCard').parentElement,
+    title:'At a glance', text:'spending and income this month — tap either card for the story.' },
   { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
     title:'Add', text:'everything starts here — tap + anytime.' },
   { scr:'scr-home', pre: () => openSheet(), el: () => $('sheet'),
