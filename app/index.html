@@ -161,6 +161,9 @@ details.grp[open] summary .arr{transform:rotate(90deg)}
 /* ── quick-add sheet ───────────────────────── */
 .backdrop{position:fixed;inset:0;background:rgba(26,43,68,.35);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
 .backdrop.open{opacity:1;pointer-events:auto}
+/* wide screens (tablets/desktop): the full-screen form's margins are calm canvas,
+   not a dimmed void that looks tappable */
+body:has(#sheet.full.open) .backdrop{background:#E9F1FD}
 .sheet{position:fixed;left:50%;transform:translate(-50%,105%);bottom:0;width:100%;max-width:520px;background:#fff;border-radius:24px 24px 0 0;box-shadow:var(--shadow-lift);padding:18px 20px calc(22px + env(safe-area-inset-bottom));transition:transform .25s cubic-bezier(.4,0,.2,1);z-index:21;max-height:93dvh;overflow-y:auto}
 .sheet.open{transform:translate(-50%,0)}
 .grab{width:36px;height:4px;border-radius:999px;background:var(--muted);margin:0 auto 14px}
@@ -277,6 +280,10 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .srow .edit,.trow .edit{position:relative}
 .srow .edit::after,.trow .edit::after{content:"";position:absolute;inset:-9px}
 input[type="date"].descinput{min-width:0}
+/* the app column breathes a little on big screens (tablets — Winnell, 8 Aug) */
+@media (min-width: 700px){
+  #app, .tabbar, .sheet{max-width:620px}
+}
 </style>
 </head>
 <body>
@@ -511,7 +518,7 @@ input[type="date"].descinput{min-width:0}
 </div>
 
 <!-- ══ QUICK-ADD SHEET ══ -->
-<div class="backdrop" id="backdrop" onclick="closeSheet()"></div>
+<div class="backdrop" id="backdrop" onclick="backdropTap()"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true">
   <div class="grab"></div>
 
@@ -3195,6 +3202,12 @@ function openSheet(){
   $('backdrop').classList.add('open');
   $('sheet').classList.add('open');
   openForm('daily');   // straight into the 90% case — other types are one tab away (WF-1)
+}
+// a tap OUTSIDE the sheet: dialogs may close, but the full-screen quick-add is a
+// PAGE — a stray touch beside it must never eat a half-typed entry (Winnell, 8 Aug)
+function backdropTap(){
+  if ($('sheet').classList.contains('full')) return;
+  closeSheet();
 }
 function closeSheet(){
   $('backdrop').classList.remove('open');
