@@ -630,8 +630,15 @@ function go(id){
   if (id === 'scr-travel' && !travelInit) initTravel();
   if (id === 'scr-settings') renderSettings();
 }
-const CURSYM = { AUD:'A$', SGD:'S$', IDR:'Rp', JPY:'¥', CNY:'¥', KRW:'₩', THB:'฿', MYR:'RM',
-                 VND:'₫', EUR:'€', GBP:'£', USD:'US$', NZD:'NZ$', TWD:'NT$', HKD:'HK$', INR:'₹' };
+const CURSYM = { AUD:'A$', SGD:'S$', IDR:'Rp', JPY:'¥', CNY:'CN¥', KRW:'₩', THB:'฿', MYR:'RM',
+                 VND:'₫', EUR:'€', GBP:'£', USD:'US$', NZD:'NZ$', TWD:'NT$', HKD:'HK$', INR:'₹',
+                 PHP:'₱', CHF:'CHF ', CAD:'C$', AED:'AED ', BND:'B$', LKR:'Rs ', SEK:'kr ',
+                 NOK:'kr ', DKK:'kr ', TRY:'₺', ZAR:'R ', BRL:'R$', MXN:'MX$' };
+// country → its everyday currency; feeds signup, Settings' "+ new country" and trips (Phase 6)
+const COUNTRY_CUR = { AU:'AUD', SG:'SGD', MY:'MYR', ID:'IDR', TH:'THB', VN:'VND', PH:'PHP', JP:'JPY',
+  KR:'KRW', CN:'CNY', TW:'TWD', HK:'HKD', IN:'INR', LK:'LKR', BN:'BND', NZ:'NZD', US:'USD', CA:'CAD',
+  GB:'GBP', IE:'EUR', FR:'EUR', DE:'EUR', ES:'EUR', IT:'EUR', NL:'EUR', PT:'EUR', CH:'CHF',
+  SE:'SEK', NO:'NOK', DK:'DKK', AE:'AED', TR:'TRY', ZA:'ZAR', BR:'BRL', MX:'MXN' };
 function fmtMoney(v, cur){
   const sym = CURSYM[cur] || (cur ? String(cur).replace(/[^A-Za-z]/g, '').slice(0, 5) + ' ' : 'A$');
   return sym + Number(v).toLocaleString('en-AU', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -758,14 +765,25 @@ async function boot(){
 }
 
 // ── onboarding (new households) ──────────────
-const obSel = { countries: ['AU'] };
+const obSel = { countries: [] };
+const OB_POPULAR = ['AU', 'SG', 'MY', 'ID', 'TH', 'JP', 'US', 'GB'];
+function obRenderCountries(showAll){
+  const box = $('obCountries'); box.innerHTML = '';
+  const list = showAll ? Object.keys(COUNTRY_CUR) : OB_POPULAR;
+  list.forEach(cc => ntChip(box, flagOf(cc) + ' ' + cc + ' · ' + curLabel(COUNTRY_CUR[cc]), obSel.countries, cc));
+  if (!showAll) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = 'more countries…';
+    b.onclick = () => obRenderCountries(true);
+    box.appendChild(b);
+  }
+}
 function showOnboard(){
   $('login').style.display = 'none';
   $('app').style.display = 'none';
   $('onboard').style.display = 'flex';
   $('obCode').value = localStorage.getItem('bh-invite') || '';
-  const box = $('obCountries'); box.innerHTML = '';
-  [['AU','A$'],['SG','S$']].forEach(([cc, sym]) => ntChip(box, flagOf(cc) + ' ' + cc + ' · ' + sym, obSel.countries, cc));
+  obRenderCountries(false);
 }
 function obAddPerson(){
   const inp = document.createElement('input');
@@ -790,6 +808,7 @@ async function createHousehold(){
     p_code: code, p_household: name, p_people: people,
     p_joint_label: $('obJoint').classList.contains('sel') ? 'Joint' : null,
     p_countries: obSel.countries,
+    p_currencies: obSel.countries.map(cc => COUNTRY_CUR[cc] || 'USD'),
   });
   obCreating = false; $('obGo').textContent = 'Create my household';
   if (error) { err(error.message); return; }
@@ -2349,6 +2368,11 @@ async function renderSetFunds(box){
     af.querySelector('#afNew').style.display = cSel.value === '__new__' ? 'flex' : 'none';
     refreshGroups();
   };
+  // typing a known country code fills its currency automatically (Phase 6)
+  af.querySelector('#afCC').addEventListener('input', e => {
+    const known = COUNTRY_CUR[e.target.value.trim().toUpperCase()];
+    if (known) af.querySelector('#afCur').value = known;
+  });
   refreshGroups();
   af.querySelector('#afAdd').onclick = async () => {
     if (!guard(af.querySelector('#afAdd'))) return;
@@ -2917,9 +2941,8 @@ async function sendToTravelFund(){
 }
 
 // new trip creation
-const NT_COUNTRIES = [['SG','SGD'],['MY','MYR'],['ID','IDR'],['TH','THB'],['JP','JPY'],['KR','KRW'],
-  ['CN','CNY'],['TW','TWD'],['VN','VND'],['NZ','NZD'],['US','USD'],['GB','GBP'],['AU','AUD']];
-const NT_CURRENCIES = ['MYR','IDR','THB','JPY','KRW','CNY','TWD','VND','NZD','USD','GBP','EUR'];
+const NT_COUNTRIES = Object.entries(COUNTRY_CUR);   // every supported country (Phase 6)
+const NT_CURRENCIES = [...new Set(Object.values(COUNTRY_CUR))];
 let ntSel = { countries: [], currencies: [] };
 function ntChip(box, label, list, value, onToggle){
   const b = document.createElement('button');
@@ -2940,8 +2963,8 @@ function openNewTripSheet(){
   $('ntStart').onchange = () => { $('ntEnd').min = $('ntStart').value || ''; };
   const cb = $('ntCountries'); cb.innerHTML = '';
   NT_COUNTRIES.forEach(([cc, cur]) => ntChip(cb, flagOf(cc) + ' ' + cc, ntSel.countries, cc, on => {
-    // picking a country auto-picks its currency (except the two home ones)
-    if (on && cur !== 'AUD' && cur !== 'SGD' && !ntSel.currencies.includes(cur)) {
+    // picking a country auto-picks its currency (home currencies are always on anyway)
+    if (on && !homeCurrencies().includes(cur) && !ntSel.currencies.includes(cur)) {
       ntSel.currencies.push(cur); renderNtCurrencies();
     }
   }));
@@ -2954,7 +2977,8 @@ function openNewTripSheet(){
 }
 function renderNtCurrencies(){
   const box = $('ntCurrencies'); box.innerHTML = '';
-  NT_CURRENCIES.forEach(c => ntChip(box, (CURSYM[c] || '') + ' ' + c, ntSel.currencies, c));
+  NT_CURRENCIES.filter(c => !homeCurrencies().includes(c))
+    .forEach(c => ntChip(box, (CURSYM[c] || '') + ' ' + c, ntSel.currencies, c));
 }
 let creatingTrip = false;
 async function createTrip(){
