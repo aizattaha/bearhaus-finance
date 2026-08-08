@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BearHaus — welcome to the beta 🐻</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
+  --muted:#E6E5E5; --ink:#1A2B44; --ink-soft:#55657D; --field:#F7F9FC;
+  --good:#2E7D57; --good-soft:#E3F4EA;
+  --shadow-soft:0 2px 12px rgba(0,74,152,.06); --shadow-lift:0 8px 28px rgba(0,74,152,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',-apple-system,sans-serif;background:linear-gradient(170deg,#DCE9FC 0%,#E9F1FD 45%,#F7F9FC 100%);color:var(--ink);line-height:1.55;padding:28px 20px calc(48px + env(safe-area-inset-bottom))}
+.wrap{max-width:430px;margin:0 auto}
+.hero{text-align:center;margin-bottom:22px}
+.hero .bear{width:72px;height:72px;border-radius:24px;background:#fff;box-shadow:var(--shadow-soft);display:inline-flex;align-items:center;justify-content:center;font-size:38px;margin-bottom:12px}
+h1{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.hero p{color:var(--ink-soft);font-size:14px;margin-top:8px}
+.pill{display:inline-block;background:var(--good-soft);color:var(--good);font-size:12px;font-weight:600;border-radius:999px;padding:4px 14px;margin-top:10px}
+.card{background:#fff;border-radius:20px;box-shadow:var(--shadow-soft);padding:18px 18px;margin-top:14px}
+h2{font-size:16px;font-weight:600}
+.cap{font-size:12px;color:var(--ink-soft)}
+.step{display:flex;gap:12px;margin-top:12px;align-items:flex-start}
+.step .n{flex:0 0 auto;width:26px;height:26px;border-radius:9px;background:var(--accent-soft);color:var(--primary);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.step p{font-size:13.5px}
+.step .cap{margin-top:2px}
+.feat{display:flex;gap:10px;align-items:center;margin-top:10px}
+.feat .ic{flex:0 0 auto;width:38px;height:38px;border-radius:13px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:18px}
+.feat b{font-size:13.5px;font-weight:600;display:block}
+.feat span{font-size:12px;color:var(--ink-soft)}
+.os{border:2px solid transparent;border-radius:16px;padding:12px 14px;margin-top:10px;background:var(--field)}
+.os.hl{border-color:var(--accent);background:var(--accent-soft)}
+.os h3{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+.os p{font-size:13px;margin-top:6px}
+.key{display:inline-block;background:#fff;border:1px solid var(--muted);border-radius:7px;padding:1px 8px;font-size:12px;white-space:nowrap}
+.warn{background:var(--accent-soft);border-radius:14px;padding:10px 14px;margin-top:12px;font-size:12.5px;color:var(--primary)}
+.foot{text-align:center;margin-top:26px}
+.foot .cap{margin-top:14px}
+a.btn{display:inline-block;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;font-size:15px;border-radius:999px;padding:14px 30px;box-shadow:var(--shadow-lift)}
+a.btn:active{background:var(--primary-hover)}
+ul{margin:8px 0 0 18px}
+li{font-size:13px;margin-top:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="bear">🐻</div>
+    <h1>BearHaus</h1>
+    <p>the little household-finance app Aizat &amp; Paige use every day — spending, budgets, savings funds and travel, all in one place.</p>
+    <span class="pill">you're invited to the beta ✓</span>
+  </div>
+
+  <div class="card">
+    <h2>What you're getting</h2>
+    <div class="feat"><span class="ic">⚡</span><div><b>The 5-second expense</b><span>describe it, tap the amount, done — with a calculator built into the numpad</span></div></div>
+    <div class="feat"><span class="ic">🎯</span><div><b>A monthly ritual, not a chore</b><span>plan the income, cap the spending, sweep the rest into savings funds</span></div></div>
+    <div class="feat"><span class="ic">💰</span><div><b>Funds &amp; travel</b><span>savings pots that stay current, and trips that keep their own currencies</span></div></div>
+    <div class="feat"><span class="ic">🏠</span><div><b>Built for households</b><span>one shared login — everyone adds from their own phone</span></div></div>
+  </div>
+
+  <div class="card">
+    <h2>Step 1 — put it on your home screen <span class="cap">(before signing up!)</span></h2>
+    <p class="cap" style="margin-top:6px">BearHaus is a web app that installs like a real one — full screen, its own icon, no app store. Install it <b>first</b>: your login sticks to the installed app, so signing up inside it means you sign in once, ever.</p>
+    <div class="os" id="os-ios">
+      <h3>📱 iPhone / iPad</h3>
+      <p>1 · open <span class="key">the app link from my message</span> in <b>Safari</b><br>
+         2 · tap the <b>Share</b> button <span class="key">□↑</span> at the bottom<br>
+         3 · scroll down → <b>Add to Home Screen</b> → <b>Add</b></p>
+    </div>
+    <div class="os" id="os-android">
+      <h3>🤖 Android</h3>
+      <p>1 · open <span class="key">the app link from my message</span> in <b>Chrome</b><br>
+         2 · tap the <b>⋮ menu</b> (top right)<br>
+         3 · tap <b>Add to Home screen</b> (some phones say <b>Install app</b>) → <b>Add</b></p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Step 2 — create your account</h2>
+    <div class="step"><span class="n">1</span><div><p>open the <b>🐻 bear icon</b> from your home screen — not the browser</p></div></div>
+    <div class="step"><span class="n">2</span><div><p>tap <b>“joining the beta? create your account”</b></p></div></div>
+    <div class="step"><span class="n">3</span><div><p>enter your email, a password, and your <b>invite code</b></p><p class="cap">it's in my message — one code per household</p></div></div>
+    <div class="step"><span class="n">4</span><div><p>a one-minute setup names your household and its people</p><p class="cap">partner? kids? just you? all fine — you can rename everything later</p></div></div>
+    <div class="step"><span class="n">5</span><div><p>the bear takes over 🐻</p><p class="cap">a 60-second tour walks you through every screen — replay it anytime from Settings → App tutorial. everything you see (funds, categories, cards, people) is yours to rename and rearrange in Settings.</p></div></div>
+  </div>
+
+  <div class="card">
+    <h2>Beta things worth knowing</h2>
+    <ul>
+      <li><b>your data is real and private</b> — only your household can ever see it</li>
+      <li>Australia + Singapore households for now — more countries are coming</li>
+      <li>the app improves weekly; the icon on your home screen always opens the newest version</li>
+      <li><b>your one job as a tester:</b> if anything confuses you for even a second, tell me — that's exactly what I need to hear 🐻</li>
+    </ul>
+  </div>
+
+  <div class="foot">
+    <a class="btn" href="https://aizattaha.github.io/bearhaus-finance/app/">Open BearHaus →</a>
+    <p class="cap">remember: install to your home screen first,<br>then create the account inside the installed app.</p>
+  </div>
+
+</div>
+<script>
+// gently highlight the visitor's own platform — both stay visible
+var ua = navigator.userAgent;
+if (/iPhone|iPad|iPod/.test(ua)) document.getElementById('os-ios').classList.add('hl');
+else if (/Android/.test(ua)) document.getElementById('os-android').classList.add('hl');
+</script>
+</body>
+</html>
