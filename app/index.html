@@ -1386,7 +1386,7 @@ async function loadFunds(){
   const m = curMonthIso(), next = addMonths(m, 1);
   try {
     const [bal, inc, cat, fb, applied] = await Promise.all([
-      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order, group_name, is_leftover_target').eq('is_active', true).order('sort_order'),
+      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order, group_name, is_leftover_target, is_spend_pot').eq('is_active', true).order('sort_order'),
       sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
       sb.from('category_budgets').select('currency, amount').eq('month', m),
       sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
@@ -1467,6 +1467,10 @@ function renderFunds(st){
     ? (st.appliedOn ? 'leftover moved to ' + lfNames + ' with the plan'
                     : 'leftover moves to ' + lfNames + ' when you apply the plan')
     : 'leftover stays in the pool — mark leftover funds in Settings';
+  const potFunds = st.bal.filter(b => b.is_spend_pot);
+  if (potFunds.length && CTX.hh && CTX.hh.pot_start && st.month >= CTX.hh.pot_start) {
+    cap += ' · budget sits in ' + potFunds.map(b => b.name).join(' & ') + ' and counts down as you spend';
+  }
   const btn = $('applyBtn');
   btn.disabled = false; btn.style.opacity = '1';
   if (st.appliedOn) {
@@ -1662,6 +1666,13 @@ async function toggleFundDrill(btn, fund){
     .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(8);
   if (error) { d.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
   d.innerHTML = '';
+  if (fund.is_spend_pot && CTX.hh && CTX.hh.pot_start) {
+    const p = document.createElement('p');
+    p.className = 'cap'; p.style.padding = '4px 0 8px';
+    p.textContent = 'spending pot — daily ' + curLabel(fund.currency) + ' spending counts this balance down automatically'
+      + (isoDate(new Date()) < CTX.hh.pot_start ? ' (from ' + monthName(CTX.hh.pot_start, true) + ')' : '');
+    d.appendChild(p);
+  }
   (data || []).forEach(t => {
     const inc = t.type === 'income';
     const isXfer = /^Transfer [→←]/.test(t.remarks || '');
@@ -1700,7 +1711,7 @@ async function openPlanSheet(){
   $('planEdBody').innerHTML = '<p class="cap">loading…</p>';
   try {
     const [funds, inc, cat, fb, applied] = await Promise.all([
-      sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_leftover_target').eq('is_active', true).order('sort_order'),
+      sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_leftover_target, is_spend_pot').eq('is_active', true).order('sort_order'),
       sb.from('income_budgets').select('id, source_name, currency, amount').eq('month', m),
       sb.from('category_budgets').select('id, category_group, currency, amount').eq('month', m),
       sb.from('fund_budgets').select('id, fund_id, amount').eq('month', m),
@@ -1947,19 +1958,30 @@ async function applyPlan(){
     const target = d.funds.find(f => f.is_leftover_target && f.currency === c);
     if (target && left > 0.005) leftoverRows.push({ fund_id: target.id, amount: left, leftover: true });
   });
-  if (!rows.length && !leftoverRows.length) { toast('everything is skipped — nothing to apply'); return; }
+  // money model v3: the spending budget is real cash — it lands in the currency's
+  // pot (Float) and daily spending counts it down live. From pot_start onward only.
+  const potRows = [];
+  if (CTX.hh.pot_start && d.month >= CTX.hh.pot_start) {
+    Object.entries(cat).forEach(([c, v]) => {
+      const pot = d.funds.find(f => f.is_spend_pot && f.currency === c);
+      if (pot && v > 0.005) potRows.push({ fund_id: pot.id, amount: Math.round(v * 100) / 100, pot: true });
+    });
+  }
+  if (!rows.length && !leftoverRows.length && !potRows.length) { toast('everything is skipped — nothing to apply'); return; }
   applying = true;
   if ($('applyGo')) $('applyGo').innerHTML = '<span class="spin"></span>';
   const remark = monthName(d.month, true) + ' plan';
-  const { error } = await sb.from('fund_transactions').insert(rows.concat(leftoverRows).map(r => ({
+  const { error } = await sb.from('fund_transactions').insert(rows.concat(leftoverRows, potRows).map(r => ({
     household_id: CTX.hh.id, fund_id: r.fund_id, type: 'income',
     date: isoDate(new Date()), amount: r.amount,
-    remarks: remark + (r.leftover ? ' — leftover' : ''), origin: 'planned',
+    remarks: remark + (r.leftover ? ' — leftover' : r.pot ? ' — spending budget' : ''), origin: 'planned',
   })));
   applying = false;
   if (error) { if ($('applyGo')) $('applyGo').textContent = 'Apply'; toast('couldn’t apply: ' + error.message); return; }
   closeSheet();
-  toast('applied — ' + rows.length + ' contributions' + (leftoverRows.length ? ' + leftover moved' : '') + ' 🐻');
+  toast('applied — ' + rows.length + ' contributions'
+    + (potRows.length ? ' + budget to ' + potRows.map(r => (d.funds.find(f => f.id === r.fund_id) || {}).name).join(' & ') : '')
+    + (leftoverRows.length ? ' + leftover moved' : '') + ' 🐻');
   loadFunds();
   checkPlanNudge();
 }
@@ -2265,7 +2287,7 @@ async function renderSetPeople(box){
 }
 
 async function renderSetFunds(box){
-  const r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, group_name, sort_order').order('sort_order');
+  const r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, is_spend_pot, group_name, sort_order').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const funds = r.data || [], active = funds.filter(f => f.is_active);
   box.innerHTML = '';
@@ -2292,6 +2314,27 @@ async function renderSetFunds(box){
         if (fundsInit) loadFunds();
         toast(cc + ' leftover fund updated 🐻');
       }, '— none —')));
+  });
+  // spending pot per country: the month's budget lands here and spending counts it down (v3)
+  countries.forEach(cc => {
+    const cur = (funds.find(f => f.country === cc && f.is_spend_pot) || {}).id || '';
+    box.appendChild(labeled(cc + ' spending budget sits in',
+      selectEl(active.filter(f => f.country === cc).map(f => [f.id, f.name]), cur, async v => {
+        if (v) {
+          const chosen = funds.find(f => f.id === v);
+          const c1 = await sb.from('funds').update({ is_spend_pot: false })
+            .eq('currency', chosen.currency).neq('id', v);
+          if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
+          const c2 = await sb.from('funds').update({ is_spend_pot: true }).eq('id', v);
+          if (c2.error) { toast('couldn’t update: ' + c2.error.message); return; }
+        } else {
+          const c1 = await sb.from('funds').update({ is_spend_pot: false }).eq('country', cc);
+          if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
+        }
+        await loadContext();
+        if (fundsInit) loadFunds();
+        toast(cc + ' spending pot updated 🐻');
+      }, '— none — (budget stays untracked)')));
   });
   const list = document.createElement('div'); list.style.marginTop = '12px';
   const addFundRow = (f, into) => {
@@ -3011,9 +3054,9 @@ async function loadContext(){
   if (CTX.cats) applyCategories(CTX.cats);   // instant catalogue from the last visit
   if (CTX.firstMonth) BUD_MIN = CTX.firstMonth;
   const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD, incSrc] = await Promise.all([
-    sb.from('households').select('id, name, travel_fund_id, joint_label').single(),
+    sb.from('households').select('id, name, travel_fund_id, joint_label, pot_start').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
-    sb.from('funds').select('id, name, country, currency, group_name, sort_order').eq('is_active', true).order('sort_order'),
+    sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot').eq('is_active', true).order('sort_order'),
     sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
     sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order').eq('is_archived', false).order('sort_order'),
     sb.from('categories').select('kind, name, group_name, icon').eq('is_active', true).order('sort_order'),
