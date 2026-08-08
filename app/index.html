@@ -2850,13 +2850,33 @@ function renderTripDetail(){
   if (exps.length && !allSent && foreignUnsent.length) {
     const t2 = {};
     foreignUnsent.forEach(e => t2[e.currency] = (t2[e.currency] || 0) + Number(e.amount));
-    html += '<button class="btn-tert" style="width:100%;margin-top:10px" onclick="settleForeign()">mark '
-      + Object.entries(t2).map(([c, v]) => fmtMoney(v, c)).join(' + ')
-      + ' settled — no fund transfer</button>';
+    const t2str = Object.entries(t2).map(([c, v]) => fmtMoney(v, c)).join(' + ');
+    html += '<div style="display:flex;gap:8px;margin-top:10px;align-items:center">'
+      + '<input class="descinput" id="convIn" type="number" step="0.01" inputmode="decimal" placeholder="' + t2str + ' as ' + curLabel(tf.currency) + '…" style="flex:1;min-width:0">'
+      + '<button class="btn-mini" id="convSend" type="button" onclick="sendForeignConverted()">Send</button></div>'
+      + '<button class="btn-tert" style="width:100%;margin-top:8px" onclick="settleForeign()">or mark ' + t2str + ' settled — no fund transfer</button>';
   }
   $('tripSettle').innerHTML = html;
 }
-// foreign-currency lines can't flow into the fund — let them settle flag-only (QA-6)
+// QA-6: foreign lines flow into the fund at the amount YOU say they cost (your card knows the rate)
+async function sendForeignConverted(){
+  const tf = travelFund();
+  if (!tf) return;
+  const exps = (travelState ? travelState.exps : []).filter(e =>
+    e.trip_id === curTripId && !e.sent_to_fund && e.currency !== tf.currency);
+  if (!exps.length) return;
+  const v = parseFloat($('convIn').value);
+  if (!(v > 0)) { toast('enter what it cost in ' + curLabel(tf.currency)); return; }
+  if (!guard($('convSend'))) return;
+  const { error } = await sb.rpc('send_foreign_to_fund', {
+    p_trip: curTripId, p_fund: tf.id, p_date: isoDate(new Date()),
+    p_ids: exps.map(e => e.id), p_amount: v,
+  });
+  if (error) { toast('couldn’t send: ' + error.message); return; }
+  toast('sent ' + fmtMoney(v, tf.currency) + ' to ' + tf.name + ' 🐻');
+  loadTravel(true);
+}
+// foreign-currency lines can also settle flag-only (no money moves)
 function settleForeign(){
   const tf = travelFund();
   const exps = (travelState ? travelState.exps : []).filter(e =>
