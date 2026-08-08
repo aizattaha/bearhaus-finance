@@ -888,7 +888,7 @@ async function loadHome(){
     const weekStart = new Date(now); weekStart.setDate(now.getDate() - 6);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [week, recent, month, inc] = await Promise.all([
+    const [week, recent, month, inc, pinc, applied] = await Promise.all([
       sb.from('daily_expenses').select('date, amount, currency, category')
         .gte('date', isoDate(weekStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
       sb.from('daily_expenses')
@@ -899,13 +899,21 @@ async function loadHome(){
       sb.from('fund_transactions').select('amount, income_source, funds(currency)')
         .not('income_source', 'is', null)
         .gte('date', isoDate(monthStart)).lte('date', isoDate(now)),
+      // the applied plan's income counts as income (Aizat's rule, Aug 2026):
+      // once the month is applied, its named sources ARE money that arrived
+      sb.from('income_budgets').select('source_name, currency, amount').eq('month', curMonthIso()),
+      sb.from('fund_transactions').select('id').eq('origin', 'planned')
+        .gte('date', curMonthIso()).lt('date', addMonths(curMonthIso(), 1)).limit(1),
     ]);
     if (week.error) throw week.error;
     if (recent.error) throw recent.error;
     if (month.error) throw month.error;
     if (inc.error) throw inc.error;
 
-    const state = { week: week.data, recent: recent.data, month: month.data, inc: inc.data, today: isoDate(now) };
+    const state = { week: week.data, recent: recent.data, month: month.data, inc: inc.data,
+                    planInc: pinc.error ? [] : pinc.data,
+                    planApplied: !applied.error && applied.data.length > 0,
+                    today: isoDate(now) };
     localStorage.setItem('bh-home', JSON.stringify(state));
     $('errorCard').style.display = 'none';
     homeRetried = false;   // a success re-arms the one-shot token refresh (QA-34)
@@ -1028,18 +1036,18 @@ function renderHome(state){
   $('expOther').textContent = Object.keys(expOther).length
     ? '+ ' + Object.entries(expOther).map(([c, v]) => fmtMoney(v, c)).join(' · ') : '';
 
-  // income: labelled income events this month, by source
+  // income: the applied plan's named sources + ad-hoc Income-tab events, by source.
+  // transfers never count (they carry no income_source and aren't plan income)
   const GREENS = ['#2E7D57', '#7FBF9E', '#A5D6BC', '#C9E7D6', '#E3F4EA'];
   const bySrc = {};
   let incPC = 0; const incOther = {};
-  (state.inc || []).forEach(r => {
-    const cur = r.funds ? r.funds.currency : PC;
-    const a = Number(r.amount);
+  const addInc = (src, a, cur) => {
     if (cur !== PC) { incOther[cur] = (incOther[cur] || 0) + a; return; }
     incPC += a;
-    const s = r.income_source || 'Other';
-    bySrc[s] = (bySrc[s] || 0) + a;
-  });
+    bySrc[src] = (bySrc[src] || 0) + a;
+  };
+  if (state.planApplied) (state.planInc || []).forEach(r => addInc(r.source_name, Number(r.amount), r.currency));
+  (state.inc || []).forEach(r => addInc(r.income_source || 'Other', Number(r.amount), r.funds ? r.funds.currency : PC));
   const iSorted = Object.entries(bySrc).sort((a, b) => b[1] - a[1]);
   const iTop = iSorted.slice(0, 4);
   const iRest = iSorted.slice(4).reduce((s, [, v]) => s + v, 0);
@@ -1061,17 +1069,35 @@ async function openIncomeSheet(){
   const box = $('incBody');
   box.innerHTML = '<p class="cap">loading…</p>';
   const m = curMonthIso(), next = addMonths(m, 1);
-  const { data, error } = await sb.from('fund_transactions')
-    .select('id, date, type, amount, remarks, origin, income_source, fund_id, funds(name, currency)')
-    .not('income_source', 'is', null).gte('date', m).lt('date', next)
-    .order('date', {ascending:false}).order('created_at', {ascending:false});
-  if (error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
-  if (!data.length) { box.innerHTML = '<p class="cap">nothing yet this month — tap ＋, then Income.</p>'; return; }
+  const [ev, pinc, applied] = await Promise.all([
+    sb.from('fund_transactions')
+      .select('id, date, type, amount, remarks, origin, income_source, fund_id, funds(name, currency)')
+      .not('income_source', 'is', null).gte('date', m).lt('date', next)
+      .order('date', {ascending:false}).order('created_at', {ascending:false}),
+    sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
+    sb.from('fund_transactions').select('id').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
+  ]);
+  if (ev.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(ev.error.message) + '</p>'; return; }
+  const planRows = (!applied.error && applied.data.length && !pinc.error) ? pinc.data : [];
+  if (!ev.data.length && !planRows.length) {
+    box.innerHTML = '<p class="cap">nothing yet this month — apply the monthly plan, or tap ＋ then Income.</p>';
+    return;
+  }
   const tot = {};
-  data.forEach(r => { const c = r.funds ? r.funds.currency : 'AUD'; tot[c] = (tot[c] || 0) + Number(r.amount); });
+  planRows.forEach(r => tot[r.currency] = (tot[r.currency] || 0) + Number(r.amount));
+  ev.data.forEach(r => { const c = r.funds ? r.funds.currency : 'AUD'; tot[c] = (tot[c] || 0) + Number(r.amount); });
   box.innerHTML = '<p class="lbl num" style="color:var(--good);margin-bottom:6px">'
     + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join(' · ') + '</p>';
-  data.forEach(r => {
+  planRows.forEach(r => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'prow';
+    b.innerHTML = '<span class="ric">📋</span>'
+      + '<span style="min-width:0;flex:1"><span class="pnm">' + esc(r.source_name) + '</span>'
+      + '<span class="pct">monthly plan — applied</span></span>'
+      + '<span class="lbl num" style="color:var(--good);flex:0 0 auto">+' + fmtMoney(r.amount, r.currency) + '</span>';
+    b.onclick = () => openPlanSheet();
+    box.appendChild(b);
+  });
+  ev.data.forEach(r => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'prow';
     const when = new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
     b.innerHTML = '<span class="ric">💵</span>'
