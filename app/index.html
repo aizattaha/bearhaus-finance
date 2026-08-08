@@ -1505,6 +1505,36 @@ function renderFundList(country, st){
     h.className = 'fgroup';
     h.innerHTML = '<span class="cap" style="letter-spacing:.05em;text-transform:uppercase">' + esc(g) + '</span>'
       + '<span class="lbl num" style="color:' + (sub < 0 ? 'var(--bad)' : 'var(--ink-soft)') + '">' + fmtMoney(sub, cur) + '</span>';
+    if (editing) {
+      // group reorder: swap blocks, re-using this country's existing sort slots so
+      // the country order (global sort_order space) never shifts
+      const cl = document.createElement('span');
+      cl.style.cssText = 'display:flex;gap:6px;margin-left:8px';
+      const gi = order.indexOf(g);
+      [['↑', -1], ['↓', 1]].forEach(([sym, dir]) => {
+        const j = gi + dir;
+        if (j < 0 || j >= order.length) return;
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'edit'; b.textContent = sym;
+        b.style.cssText = 'width:26px;height:26px;font-size:13px';
+        b.setAttribute('aria-label', dir < 0 ? 'Move group up' : 'Move group down');
+        b.onclick = async () => {
+          const ord = [...order];
+          [ord[gi], ord[j]] = [ord[j], ord[gi]];
+          const seq = ord.flatMap(gr => groups[gr]);
+          const slots = seq.map(f => f.sort_order).sort((a, b) => a - b);
+          const changed = seq.map((f, idx) => ({ f, v: slots[idx] })).filter(x => x.f.sort_order !== x.v);
+          const results = await Promise.all(changed.map(x =>
+            sb.from('funds').update({ sort_order: x.v }).eq('id', x.f.fund_id)));
+          const bad = results.find(x => x.error);
+          if (bad) { toast('couldn’t reorder: ' + bad.error.message); return; }
+          loadFunds();
+          toast('moved ' + g + (dir < 0 ? ' up' : ' down') + ' 🐻');
+        };
+        cl.appendChild(b);
+      });
+      h.appendChild(cl);
+    }
     zone.appendChild(h);
     list.forEach(b => {
       const btn = document.createElement('button');
@@ -2043,9 +2073,38 @@ function renderAllTx(type){
     if (cutoff) rows = rows.filter(x => x.r.date >= cutoff);
   }
   if (!rows.length) box.innerHTML = '<p class="cap" style="padding:12px 0">' + (atx.rows.length ? 'older items load below 🐻' : 'nothing matches 🐻') + '</p>';
-  rows.forEach(({ kind, r }) => {
+  // both halves of a transfer collapse into one neutral row when both are loaded
+  const paired = new Set();
+  const merged = [];
+  rows.forEach((x, i) => {
+    if (paired.has(i)) return;
+    if (x.kind === 'f' && /^Transfer → /.test(x.r.remarks || '')) {
+      const toName = (x.r.remarks || '').slice(11).split(' · ')[0];
+      const j = rows.findIndex((y, k) => k !== i && !paired.has(k) && y.kind === 'f'
+        && y.r.date === x.r.date
+        && /^Transfer ← /.test(y.r.remarks || '')
+        && (y.r.funds ? y.r.funds.name : '') === toName
+        && ((y.r.remarks || '').slice(11).split(' · ')[0]) === (x.r.funds ? x.r.funds.name : ''));
+      if (j >= 0) { paired.add(j); merged.push({ kind: 'x', r: x.r, inn: rows[j].r }); return; }
+    }
+    merged.push(x);
+  });
+  merged.forEach(({ kind, r, inn }) => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'fundrow';
+    if (kind === 'x') {
+      const oc = r.funds ? r.funds.currency : 'AUD', ic = inn.funds ? inn.funds.currency : 'AUD';
+      const note = (r.remarks || '').split(' · ').slice(1).join(' · ');
+      b.innerHTML = '<div class="rowicon">⇄</div>'
+        + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+        + esc(r.funds ? r.funds.name : 'fund') + ' → ' + esc(inn.funds ? inn.funds.name : 'fund') + '</div>'
+        + '<div class="cap">transfer' + (note ? ' · ' + esc(note) : '') + ' · ' + fmtDayMonYr(r.date) + '</div></div>'
+        + '<div class="amt num" style="color:var(--ink-soft)">'
+        + (oc === ic ? fmtMoney(r.amount, oc) : fmtMoney(r.amount, oc) + ' → ' + fmtMoney(inn.amount, ic)) + '</div>';
+      b.onclick = () => openEditFund(r);
+      box.appendChild(b);
+      return;
+    }
     if (kind === 'd') {
       const who = r.payer_profile_id
         ? ((CTX.profiles.find(p => p.id === r.payer_profile_id) || {}).display_name || '?') : (jointLabel() || 'Joint');
@@ -2384,12 +2443,35 @@ async function renderSetCategories(box){
     const list = cats.filter(c => c.kind === kind);
     const groups = {};
     list.forEach(c => (groups[c.group_name] = groups[c.group_name] || []).push(c));
-    Object.keys(groups).forEach(g => {
+    const kindGroups = Object.keys(groups);
+    kindGroups.forEach((g, gi) => {
       const gh = document.createElement('div');
       gh.style.cssText = 'display:flex;align-items:center;gap:8px;margin:8px 0 0';
       gh.innerHTML = '<span class="cap" style="letter-spacing:.05em;text-transform:uppercase">' + esc(g) + '</span>'
-        + (g === 'Transfers' ? '' : '<button class="edit" style="width:22px;height:22px;font-size:11px" aria-label="Rename group">✎</button>');
-      const geBtn = gh.querySelector('.edit');
+        + (g === 'Transfers' ? '' : '<button class="edit gren" style="width:22px;height:22px;font-size:11px" aria-label="Rename group">✎</button>')
+        + '<span style="margin-left:auto;display:flex;gap:6px">'
+        + (gi > 0 ? '<button class="edit gmv" data-d="-1" style="width:26px;height:26px" aria-label="Move group up">↑</button>' : '')
+        + (gi < kindGroups.length - 1 ? '<button class="edit gmv" data-d="1" style="width:26px;height:26px" aria-label="Move group down">↓</button>' : '')
+        + '</span>';
+      // group reorder: swap this group's block with its neighbour, renumber the kind
+      gh.querySelectorAll('.gmv').forEach(mb => mb.onclick = async () => {
+        const dir = Number(mb.dataset.d);
+        const order = [...kindGroups];
+        const i = order.indexOf(g), j = i + dir;
+        if (j < 0 || j >= order.length) return;
+        [order[i], order[j]] = [order[j], order[i]];
+        const seq = order.flatMap(gr => groups[gr]);
+        const changed = seq.map((c, idx) => ({ c, idx })).filter(x => x.c.sort_order !== x.idx);
+        const results = await Promise.all(changed.map(x =>
+          sb.from('categories').update({ sort_order: x.idx }).eq('id', x.c.id)));
+        const bad = results.find(x => x.error);
+        if (bad) { toast('couldn’t reorder: ' + bad.error.message); return; }
+        await loadContext();
+        if (budgetInit) selectBudgetMonth(budgetMonth);
+        renderSetCategories(box);
+        toast('moved ' + g + (dir < 0 ? ' up' : ' down') + ' 🐻');
+      });
+      const geBtn = gh.querySelector('.gren');
       if (geBtn) geBtn.onclick = () => {
         const input = document.createElement('input');
         input.className = 'descinput'; input.value = g; input.style.cssText = 'flex:1;min-width:0';
