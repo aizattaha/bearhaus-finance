@@ -2057,7 +2057,11 @@ const ATX_PAGE = 60;
 let atx = null, atxSeq = 0;
 const fmtDayMonYr = d => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'});
 const ATX_TYPES = ['All', 'Daily', 'Income', 'Funds'];
+let atxAux = null;                 // {inc: income_budgets rows, applied: {month: date}} — the plan's story
+let atxOpenPlans = new Set();      // months whose plan group is expanded
 function openAllTx(preset){
+  atxAux = null;
+  atxOpenPlans = new Set();
   if (!atx) {
     let opts = '<option value="">all months</option>';
     for (let m = curMonthIso(); m >= BUD_MIN; m = addMonths(m, -1)) opts += '<option value="' + m + '">' + monthName(m, true) + '</option>';
@@ -2097,6 +2101,16 @@ async function loadAllTx(reset){
   if (!atx.rows.length) $('atxList').innerHTML = '<p class="cap" style="padding:12px 0">loading…</p>';
   const mySeq = ++atxSeq;   // filters changed mid-flight? drop this response (QA-9)
   try {
+    if (!atxAux) {
+      const [pinc, pap] = await Promise.all([
+        sb.from('income_budgets').select('month, source_name, currency, amount').order('month', {ascending:false}).limit(400),
+        sb.from('fund_transactions').select('date').eq('origin', 'planned').order('date', {ascending:false}).limit(600),
+      ]);
+      if (mySeq !== atxSeq) return;
+      const applied = {};
+      (pap.error ? [] : pap.data || []).forEach(r => { const M = r.date.slice(0, 7); if (!applied[M]) applied[M] = r.date; });
+      atxAux = { inc: pinc.error ? [] : pinc.data || [], applied };
+    }
     let qd = null, qf = null;
     if (type !== 'Funds' && type !== 'Income' && !atx.dDone) {
       qd = sb.from('daily_expenses')
@@ -2162,9 +2176,75 @@ function renderAllTx(type){
     }
     merged.push(x);
   });
-  merged.forEach(({ kind, r, inn }) => {
+  // the plan's story (derived, never written): a month's applied writes collapse
+  // into one 🎯 line, with the plan's income sources shown as 📋 rows above it
+  const mFilter = ($('atxMonth').value || '').slice(0, 7);
+  let final = merged;
+  if (type === 'All') {
+    final = [];
+    const seenPlan = {};
+    merged.forEach(x => {
+      if (x.kind === 'f' && x.r.origin === 'planned') {
+        const M = x.r.date.slice(0, 7);
+        if (!seenPlan[M]) {
+          seenPlan[M] = { kind: 'pg', month: M, r: { date: x.r.date }, rows: [], open: atxOpenPlans.has(M) };
+          final.push(seenPlan[M]);
+        }
+        seenPlan[M].rows.push(x.r);
+        if (seenPlan[M].open) final.push(x);
+        return;
+      }
+      final.push(x);
+    });
+  }
+  if ((type === 'All' || type === 'Income') && atxAux) {
+    const dated = final.filter(x => x.r && x.r.date);
+    const oldest = dated.length ? dated[dated.length - 1].r.date : null;
+    const allLoaded = type === 'Income' ? atx.fDone : (atx.dDone && atx.fDone);
+    Object.entries(atxAux.applied).forEach(([M, aDate]) => {
+      const visible = mFilter ? M === mFilter : (oldest ? aDate >= oldest : allLoaded);
+      if (!visible) return;
+      atxAux.inc.filter(r => r.month.slice(0, 7) === M).forEach(r => {
+        final.push({ kind: 'pi', month: M, r: { date: aDate }, src: r });
+      });
+    });
+    const rank = k => k === 'pi' ? 0 : k === 'pg' ? 1 : 2;
+    final = final.map((x, i) => [x, i]).sort((a, b) => {
+      if (a[0].r.date !== b[0].r.date) return b[0].r.date > a[0].r.date ? 1 : -1;
+      const rk = rank(a[0].kind) - rank(b[0].kind);
+      return rk || (a[1] - b[1]);
+    }).map(x => x[0]);
+  }
+  final.forEach((row) => {
+    const { kind, r, inn } = row;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'fundrow';
+    if (kind === 'pg') {
+      const tot = {};
+      row.rows.forEach(t => { const c = t.funds ? t.funds.currency : 'AUD'; tot[c] = (tot[c] || 0) + Number(t.amount); });
+      b.innerHTML = '<div class="rowicon">🎯</div>'
+        + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + monthName(row.month + '-01', true) + ' plan applied</div>'
+        + '<div class="cap">split into ' + row.rows.length + ' deposits · tap to ' + (row.open ? 'collapse' : 'expand') + '</div></div>'
+        + '<div class="amt num" style="color:var(--ink-soft)">' + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join(' · ') + '</div>';
+      b.onclick = () => {
+        if (atxOpenPlans.has(row.month)) atxOpenPlans.delete(row.month); else atxOpenPlans.add(row.month);
+        renderAllTx(type);
+      };
+      box.appendChild(b);
+      return;
+    }
+    if (kind === 'pi') {
+      b.innerHTML = '<div class="rowicon">📋</div>'
+        + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(row.src.source_name) + '</div>'
+        + '<div class="cap">monthly plan · ' + monthName(row.month + '-01', true) + '</div></div>'
+        + '<div class="amt num" style="color:var(--good)">+' + fmtMoney(row.src.amount, row.src.currency) + '</div>';
+      b.onclick = () => {
+        if (row.month + '-01' === curMonthIso()) openPlanSheet();
+        else toast('from ' + monthName(row.month + '-01', true) + '’s applied plan');
+      };
+      box.appendChild(b);
+      return;
+    }
     if (kind === 'x') {
       const oc = r.funds ? r.funds.currency : 'AUD', ic = inn.funds ? inn.funds.currency : 'AUD';
       const note = (r.remarks || '').split(' · ').slice(1).join(' · ');
