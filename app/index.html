@@ -1124,14 +1124,36 @@ async function openIncomeSheet(){
     b.onclick = () => openPlanSheet();
     box.appendChild(b);
   });
+  // one line per source — eleven "Interest" deposits read as one number here;
+  // the full list lives one tap away in All transactions (Aizat, 10 Aug)
+  const srcOrder = [];
+  const srcMap = {};
   ev.data.forEach(r => {
+    const k = r.income_source;
+    if (!srcMap[k]) { srcMap[k] = { rows: [], tot: {} }; srcOrder.push(k); }
+    srcMap[k].rows.push(r);
+    const c = r.funds ? r.funds.currency : 'AUD';
+    srcMap[k].tot[c] = (srcMap[k].tot[c] || 0) + Number(r.amount);
+  });
+  srcOrder.forEach(k => {
+    const g = srcMap[k];
     const b = document.createElement('button'); b.type = 'button'; b.className = 'prow';
-    const when = new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
-    b.innerHTML = '<span class="ric">💵</span>'
-      + '<span style="min-width:0;flex:1"><span class="pnm">' + esc(r.income_source) + '</span>'
-      + '<span class="pct">' + when + ' · ' + esc(r.funds ? r.funds.name : 'fund') + '</span></span>'
-      + '<span class="lbl num" style="color:var(--good);flex:0 0 auto">+' + fmtMoney(r.amount, r.funds ? r.funds.currency : 'AUD') + '</span>';
-    b.onclick = () => openEditFund(r);
+    const amountHtml = '<span class="lbl num" style="color:var(--good);flex:0 0 auto">+'
+      + Object.entries(g.tot).map(([c, v]) => fmtMoney(v, c)).join(' +') + '</span>';
+    if (g.rows.length === 1) {
+      const r = g.rows[0];
+      const when = new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
+      b.innerHTML = '<span class="ric">💵</span>'
+        + '<span style="min-width:0;flex:1"><span class="pnm">' + esc(k) + '</span>'
+        + '<span class="pct">' + when + ' · ' + esc(r.funds ? r.funds.name : 'fund') + '</span></span>' + amountHtml;
+      b.onclick = () => openEditFund(r);
+    } else {
+      b.innerHTML = '<span class="ric">💵</span>'
+        + '<span style="min-width:0;flex:1"><span class="pnm">' + esc(k) + '</span>'
+        + '<span class="pct">' + g.rows.length + ' deposits · tap for the full list</span></span>'
+        + amountHtml + '<span class="chev" style="margin-left:8px;color:var(--ink-soft)">›</span>';
+      b.onclick = () => { closeSheet(); openAllTx({ type: 'Income', month: m }); };
+    }
     box.appendChild(b);
   });
 }
@@ -2034,9 +2056,9 @@ async function savePlan(){
 const ATX_PAGE = 60;
 let atx = null, atxSeq = 0;
 const fmtDayMonYr = d => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'});
-function openAllTx(){
+const ATX_TYPES = ['All', 'Daily', 'Income', 'Funds'];
+function openAllTx(preset){
   if (!atx) {
-    buildSeg('atxType', ['All', 'Daily', 'Funds'], 0, () => { refreshAtxWhat(); loadAllTx(true); });
     let opts = '<option value="">all months</option>';
     for (let m = curMonthIso(); m >= BUD_MIN; m = addMonths(m, -1)) opts += '<option value="' + m + '">' + monthName(m, true) + '</option>';
     $('atxMonth').innerHTML = opts;
@@ -2047,8 +2069,9 @@ function openAllTx(){
   }
   // fresh visit, fresh filters — a stale invisible search reads as lost data (QA-22)
   $('atxSearch').value = '';
-  $('atxMonth').value = '';
-  buildSeg('atxType', ['All', 'Daily', 'Funds'], 0, () => { refreshAtxWhat(); loadAllTx(true); });
+  $('atxMonth').value = (preset && preset.month) || '';
+  buildSeg('atxType', ATX_TYPES, preset ? Math.max(ATX_TYPES.indexOf(preset.type), 0) : 0,
+    () => { refreshAtxWhat(); loadAllTx(true); });
   refreshAtxWhat();
   go('scr-alltx');
   loadAllTx(true);
@@ -2075,7 +2098,7 @@ async function loadAllTx(reset){
   const mySeq = ++atxSeq;   // filters changed mid-flight? drop this response (QA-9)
   try {
     let qd = null, qf = null;
-    if (type !== 'Funds' && !atx.dDone) {
+    if (type !== 'Funds' && type !== 'Income' && !atx.dDone) {
       qd = sb.from('daily_expenses')
         .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id, daily_expense_splits(profile_id, amount)')
         .order('date', {ascending:false}).order('created_at', {ascending:false})
@@ -2092,6 +2115,7 @@ async function loadAllTx(reset){
       if (q) qf = qf.ilike('remarks', '%' + q + '%');
       if (m) qf = qf.gte('date', m).lt('date', addMonths(m, 1));
       if (type === 'Funds' && what) qf = qf.eq('fund_id', what);
+      if (type === 'Income') qf = qf.not('income_source', 'is', null);   // real income events only
     }
     const [dr, fr] = await Promise.all([qd || Promise.resolve(null), qf || Promise.resolve(null)]);
     if (mySeq !== atxSeq) return;
@@ -2173,7 +2197,9 @@ function renderAllTx(type){
     }
     box.appendChild(b);
   });
-  const done = type === 'Daily' ? atx.dDone : type === 'Funds' ? atx.fDone : (atx.dDone && atx.fDone);
+  const done = type === 'Daily' ? atx.dDone
+             : (type === 'Funds' || type === 'Income') ? atx.fDone
+             : (atx.dDone && atx.fDone);
   $('atxMore').style.display = done ? 'none' : 'inline';
 }
 
@@ -3061,7 +3087,7 @@ async function loadContext(){
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
   if (CTX.cats) applyCategories(CTX.cats);   // instant catalogue from the last visit
   if (CTX.firstMonth) BUD_MIN = CTX.firstMonth;
-  const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD, incSrc] = await Promise.all([
+  const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD, incSrc, incPast] = await Promise.all([
     sb.from('households').select('id, name, travel_fund_id, joint_label, pot_start').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot').eq('is_active', true).order('sort_order'),
@@ -3072,6 +3098,8 @@ async function loadContext(){
     sb.from('travel_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(120),
     sb.from('daily_expenses').select('date').order('date', {ascending:true}).limit(1),
     sb.from('income_budgets').select('source_name, month').order('month', {ascending:false}).limit(60),
+    sb.from('fund_transactions').select('income_source, created_at').not('income_source', 'is', null)
+      .order('created_at', {ascending:false}).limit(120),
   ]);
   if (!hh.error) {
     // table may predate the categories migration — fall back to built-ins
@@ -3082,6 +3110,12 @@ async function loadContext(){
       const k = r.source_name.toLowerCase();
       if (srcSeen.has(k)) return false; srcSeen.add(k); return true;
     }).map(r => r.source_name);
+    // sources you've actually used (Interest, a side hustle…) join the plan's named ones
+    (incPast.error ? [] : incPast.data || []).forEach(r => {
+      const k = r.income_source.toLowerCase();
+      if (srcSeen.has(k)) return; srcSeen.add(k);
+      incomeSources.push(r.income_source);
+    });
     CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
             trips: trips.data || [], cards: cards.data || [], cats: catRows,
             topDaily: topCats(dCats.data, FALLBACK_DAILY),
@@ -3230,7 +3264,7 @@ function updateTake(){
   if (mode === 'income') {
     const q = $('descInput').value.trim().toLowerCase();
     const src = CTX.incomeSources || [];
-    const m = (q ? src.filter(s => s.toLowerCase().includes(q)) : src).slice(0, 5);
+    const m = (q ? src.filter(s => s.toLowerCase().includes(q)) : src).slice(0, 8);
     if (!m.length || (m.length === 1 && m[0].toLowerCase() === q)) { hideTake(); return; }
     const box = $('takeBox'); box.innerHTML = '';
     m.forEach(s => {
