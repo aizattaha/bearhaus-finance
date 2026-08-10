@@ -219,12 +219,13 @@ select.descinput{appearance:none;-webkit-appearance:none}
 /* ── the dock: ONE bottom zone hosts numpad / pickers / date — same size, same skin.
    the system keyboard (free text only) occupies the exact same zone. ── */
 .sheet.full{height:100dvh;max-height:100dvh;border-radius:0;padding:calc(10px + env(safe-area-inset-top)) 20px 0;overflow:hidden}
+.sheet.full .grab{display:none}   /* a full-screen page has nothing to drag — and its 18px clipped the dock */
 #sh-form{flex-direction:column;height:100%;min-height:0}
 #sh-form>.f-sec,#sh-form>.sheet-head,#sh-form>.descwrap{flex:0 0 auto}
 #formBody{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
 .sheet.full .take{flex:1 1 auto;min-height:0;overflow-y:auto}
-#dock{flex:0 0 auto;height:var(--dockH,300px);position:relative;margin:8px -20px 0;padding:0 20px calc(6px + env(safe-area-inset-bottom));border-top:1px solid var(--field)}
-.dockpane{position:absolute;inset:0;padding:6px 20px calc(6px + env(safe-area-inset-bottom));display:none;flex-direction:column;background:#fff}
+#dock{flex:0 0 auto;height:var(--dockH,300px);position:relative;margin:8px -20px 0;padding:0 20px max(14px, calc(6px + env(safe-area-inset-bottom)));border-top:1px solid var(--field)}
+.dockpane{position:absolute;inset:0;padding:6px 20px max(14px, calc(6px + env(safe-area-inset-bottom)));display:none;flex-direction:column;background:#fff}
 .dockpane.on{display:flex}
 .dockhead{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;padding:2px 0 4px}
 .docklist{flex:1 1 auto;min-height:0;overflow-y:auto}
