@@ -285,6 +285,28 @@ input[type="date"].descinput{min-width:0}
 @media (min-width: 700px){
   #app, .tabbar, .sheet{max-width:620px}
 }
+/* shorter phones (iPhone 15 & down — Paige, 11 Aug): the quick-add compresses so
+   EVERYTHING fits above the dock with no scrolling. it only ever shrinks — big
+   screens keep today's layout exactly. */
+@media (max-height: 800px){
+  .sheet.full{padding-top:calc(6px + env(safe-area-inset-top))}
+  .sheet.full .sheet-head{margin-bottom:4px}
+  #sh-form .f-sec{margin-top:6px}
+  #descInput{font-size:15px;padding:8px 12px}
+  .sheet.full .seg button{padding:4px 8px;font-size:12px}
+  .arow{padding:5px 10px;border-radius:12px}
+  .arow .ric{width:26px;height:26px;font-size:12px;border-radius:9px}
+  .arow .rlab{font-size:9px;line-height:11px}
+  .arow .rval{font-size:12.5px;line-height:16px}
+  .amount-line{margin-top:6px}
+  .bignum{font-size:23px}
+  #exprLine{margin-top:0}
+  #sh-form .btn-tert{font-size:12px}
+  #dock{height:min(var(--dockH, 272px), 40dvh);margin-top:6px}
+  .key{font-size:16px}
+  .key.op{font-size:17px}
+  .key.ok{font-size:21px}
+}
 </style>
 </head>
 <body>
@@ -3374,7 +3396,11 @@ function updateTake(){
     else if (l.includes(q)) contains.push(h);
   });
   const m = starts.concat(contains).slice(0, 5);
-  if (!m.length || (m.length === 1 && m[0].d.toLowerCase() === q)) { hideTake(); return; }
+  // typed a known name in full? its usual category applies itself — zero extra taps
+  // (the category row sits right below if this one-off should be different)
+  const exact = hist.find(h => h.d.toLowerCase() === q);
+  if (exact) { selectedCat = exact.c; renderCatRow(); }
+  if (!m.length || (m.length === 1 && exact)) { hideTake(); return; }
   const box = $('takeBox'); box.innerHTML = '';
   m.forEach(h => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'trow';
