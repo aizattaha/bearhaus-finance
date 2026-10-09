@@ -88,6 +88,10 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
 .bkf select.descinput.changed{border-color:var(--primary);background:var(--accent-soft)}
 .bkf input.descinput.changed{border-color:var(--primary);background:var(--accent-soft)}
 .cap b{color:var(--ink)}
+.swapgrid{display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:14px;margin-top:14px;align-items:start}
+@media(max-width:1000px){.swapgrid{grid-template-columns:1fr}}
+tr.pick td{cursor:pointer}
+input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:pointer}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--accent);border-top-color:var(--primary);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(max-width:860px){#app{grid-template-columns:1fr}nav{position:static;height:auto;flex-direction:row;flex-wrap:wrap}nav .foot{margin-top:0}main{padding:18px 16px 60px}.grid3{grid-template-columns:1fr}}
@@ -111,6 +115,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
     <div class="brand">🐻 BearHaus <span class="tag blue">Desk</span></div>
     <button class="nv active" data-scr="statements" onclick="go('statements')">📄 Statements</button>
     <button class="nv" data-scr="nocard" onclick="go('nocard')">🗂️ Transactions</button>
+    <button class="nv" data-scr="swap" onclick="go('swap')">⇄ Pot swap</button>
     <button class="nv" data-scr="pots" onclick="go('pots')">🌊 Pots</button>
     <div class="foot">
       <a class="btn-tert" href="../app/" style="text-decoration:none">← mobile app</a>
@@ -199,6 +204,59 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
       </div>
     </section>
 
+    <!-- POT SWAP -->
+    <section class="screen" id="scr-swap">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><p class="cap">Paid with Singapore money</p><h1 class="h1">Pot swap</h1></div>
+        <p class="cap" style="max-width:560px">bought on an SG card for an AU pot? pick the purchase, check the rate, and the app moves the AUD (cover fund → Rainy Day) and the SGD (DreamHouse → your SG bank pot). Nothing crosses the border.</p>
+      </div>
+      <div class="swapgrid">
+        <div class="card" style="padding:0">
+          <div class="toolbar" style="padding:14px 16px 10px;margin:0">
+            <select class="descinput" id="swCur" style="min-width:110px"></select>
+            <input class="descinput" id="swSearch" placeholder="search purchases" style="flex:1;min-width:160px">
+            <button class="chip" id="swShowAll" title="by default only the last 120 days">older too</button>
+          </div>
+          <div class="tablewrap" style="max-height:58vh;border-radius:0 0 20px 20px;border:none;border-top:1px solid var(--muted)">
+            <table>
+              <thead><tr><th style="width:30px"></th><th style="width:96px">Date</th><th>Purchase</th><th style="width:70px">Who</th><th class="amt" style="width:100px">Amount</th></tr></thead>
+              <tbody id="swRows"><tr><td colspan="5" class="empty">loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" id="swForm">
+          <p class="h2">Record the swap</p>
+          <p class="cap" id="swPick" style="margin-top:4px">← pick a purchase first</p>
+          <div class="bkgrid" style="margin-top:12px">
+            <label class="bkf ro"><span class="cap">Date</span><input class="descinput" id="swDate" disabled></label>
+            <label class="bkf ro"><span class="cap">Paid (purchase currency)</span><input class="descinput" id="swSrc" disabled></label>
+            <label class="bkf"><span class="cap">Rate · <span id="swRateLbl">AUD per 1 SGD</span></span>
+              <div class="row" style="gap:6px;flex-wrap:nowrap"><input class="descinput num" id="swRate" type="number" step="0.0001" inputmode="decimal" placeholder="0.0000" style="flex:1;min-width:0"><button class="btn btn-soft" style="height:36px;padding:0 12px;white-space:nowrap" onclick="fetchRate()" id="swFetch">fetch</button></div>
+              <span class="cap" id="swRateSrc"></span></label>
+            <label class="bkf ro"><span class="cap">Equals</span><input class="descinput" id="swDst" disabled></label>
+            <label class="bkf"><span class="cap">Covered by (the fund this really belongs to)</span><select class="descinput" id="swCover"></select></label>
+            <label class="bkf"><span class="cap">Lands in</span><select class="descinput" id="swLand"></select></label>
+            <label class="bkf"><span class="cap">SG money comes from</span><select class="descinput" id="swFrom"></select></label>
+            <label class="bkf"><span class="cap">SG bank pot (pays the card later)</span><select class="descinput" id="swTo"></select></label>
+            <label class="bkf" style="grid-column:1 / -1"><span class="cap">Note (optional)</span><input class="descinput" id="swNote" placeholder="e.g. cheaper in SGD"></label>
+          </div>
+          <p class="cap" id="swPreview" style="margin-top:12px"></p>
+          <div class="row" style="justify-content:flex-end;margin-top:12px">
+            <button class="btn btn-primary" id="swGo" onclick="recordSwap()" disabled>Record swap</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;padding:0">
+        <p class="h2" style="padding:16px 18px 6px">Swaps recorded</p>
+        <div class="tablewrap" style="max-height:40vh;border:none;border-top:1px solid var(--muted);border-radius:0 0 20px 20px">
+          <table>
+            <thead><tr><th style="width:96px">Date</th><th>Purchase</th><th class="amt" style="width:100px">Paid</th><th style="width:110px">Rate</th><th class="amt" style="width:100px">Equals</th><th>AU side</th><th>SG side</th><th style="width:70px"></th></tr></thead>
+            <tbody id="swList"><tr><td colspan="8" class="empty">none yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- POTS -->
     <section class="screen" id="scr-pots">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
@@ -262,6 +320,7 @@ function go(scr){
   document.querySelectorAll('nav .nv').forEach(b => b.classList.toggle('active', b.dataset.scr === scr));
   if (scr === 'nocard' && !nc.init) { nc.init = true; loadNoCard(true); }
   if (scr === 'pots') loadPots();
+  if (scr === 'swap' && !sw.init) { sw.init = true; initSwap(); }
 }
 
 // ── auth ────────────────────────────────────────────────────
@@ -661,6 +720,136 @@ async function applyBulk(){
       nc.sel.clear(); renderNoCard();
     }
   } catch (err) { toast('couldn’t update: ' + (err.message || err)); $('bkApply').disabled = false; }
+}
+
+// ── pot swap ────────────────────────────────────────────────
+const sw = { init: false, rows: [], pick: null, swaps: [], all: false, rateSrc: null };
+const fundSel = (list, sel) => { const cc = [...new Set(list.map(f => f.country))]; return cc.map(c => '<optgroup label="' + esc(countryTitle(c)) + '">' + list.filter(f => f.country === c).map(f => '<option value="' + f.id + '"' + (f.id === sel ? ' selected' : '') + '>' + esc(f.name) + '</option>').join('') + '</optgroup>').join(''); };
+const fundByName = n => CTX.funds.find(f => f.name === n);
+function initSwap(){
+  const curs = [...new Set(CTX.funds.map(f => f.currency))];
+  $('swCur').innerHTML = curs.map(c => '<option value="' + c + '"' + (c === 'SGD' ? ' selected' : '') + '>' + c + '</option>').join('');
+  if (!curs.includes('SGD')) $('swCur').value = curs[0];
+  $('swCur').onchange = () => { sw.pick = null; loadSwapRows(); };
+  let deb; $('swSearch').oninput = () => { clearTimeout(deb); deb = setTimeout(loadSwapRows, 350); };
+  $('swShowAll').onclick = () => { sw.all = !sw.all; $('swShowAll').classList.toggle('sel', sw.all); loadSwapRows(); };
+  $('swRate').oninput = () => { sw.rateSrc = 'manual'; $('swRateSrc').textContent = $('swRate').value ? 'typed by hand' : ''; updateSwapPreview(); };
+  ['swCover', 'swLand', 'swFrom', 'swTo'].forEach(id => $(id).onchange = updateSwapPreview);
+  loadSwapRows(); loadSwaps();
+}
+async function loadSwapRows(){
+  const cur = $('swCur').value, q = $('swSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch);
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, pot_swap_id';
+  const mk = (t, extra) => { let qq = sb.from(t).select(sel + (extra || '')).eq('currency', cur).is('pot_swap_id', null).neq('category', 'Payment').order('date', {ascending:false}).limit(150); if (!sw.all) qq = qq.gte('date', addDays(todayIso(), -120)); if (q) qq = qq.ilike('description', '%' + q + '%'); return qq; };
+  const [d, t] = await Promise.all([mk('daily_expenses'), mk('travel_expenses', ', trip_id, trips(name)')]);
+  if (d.error || t.error) { toast('couldn’t load: ' + (d.error || t.error).message); return; }
+  sw.rows = (d.data || []).map(r => Object.assign({ kind: 'daily', key: 'd:' + r.id }, r)).concat((t.data || []).map(r => Object.assign({ kind: 'travel', key: 't:' + r.id }, r))).sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
+  renderSwapRows();
+}
+function renderSwapRows(){
+  const body = $('swRows');
+  if (!sw.rows.length) { body.innerHTML = '<tr><td colspan="5" class="empty">no ' + esc($('swCur').value) + ' purchases ' + (sw.all ? 'found' : 'in the last 120 days — try “older too”') + '</td></tr>'; return; }
+  body.innerHTML = sw.rows.map(r => '<tr class="pick' + (sw.pick && sw.pick.key === r.key ? ' sel' : '') + '" data-key="' + r.key + '">'
+    + '<td><input type="radio" name="swpick"' + (sw.pick && sw.pick.key === r.key ? ' checked' : '') + '></td>'
+    + '<td class="num">' + fmtDs(r.date) + ' ' + r.date.slice(2, 4) + '</td>'
+    + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : ' <span class="tag">' + esc(r.category) + '</span>') + '</span></td>'
+    + '<td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
+    + '<td class="amt">' + fmtMoney(r.amount, r.currency) + '</td></tr>').join('');
+  body.querySelectorAll('tr.pick').forEach(tr => tr.onclick = () => pickSwapRow(tr.dataset.key));
+}
+function pickSwapRow(key){
+  const r = sw.rows.find(x => x.key === key); if (!r) return;
+  sw.pick = r; renderSwapRows();
+  const src = r.currency;
+  const other = CTX.funds.filter(f => f.currency !== src && !f.is_spend_pot);
+  const same = CTX.funds.filter(f => f.currency === src);
+  const dstCur = (other.find(f => f.currency === 'AUD') || other[0] || {}).currency || 'AUD';
+  const aud = other.filter(f => f.currency === dstCur);
+  const lastCover = (() => { try { return localStorage.getItem('bh-swap-cover-' + r.kind); } catch (e) { return null; } })();
+  const coverDef = r.kind === 'travel' ? (fundByName('Travel Fund AU') || {}).id : (lastCover || (fundByName('Investment Fund AU (Aizat)') || {}).id);
+  $('swCover').innerHTML = fundSel(aud, coverDef);
+  $('swLand').innerHTML = fundSel(aud, (fundByName('BearHaus Rainy Day AU') || {}).id);
+  $('swFrom').innerHTML = fundSel(same.filter(f => !f.is_spend_pot), (fundByName('Future DreamHouse SG') || {}).id);
+  const payer = who(r.payer_profile_id);
+  const bank = same.filter(f => f.is_spend_pot), bankDef = (bank.find(f => f.name.includes('(' + payer + ')')) || bank[0] || {}).id;
+  $('swTo').innerHTML = fundSel(same, bankDef);
+  $('swRateLbl').textContent = dstCur + ' per 1 ' + src;
+  $('swDate').value = fmtD(r.date);
+  $('swSrc').value = fmtMoney(r.amount, src) + ' · ' + r.description;
+  $('swPick').innerHTML = (r.kind === 'travel' ? '✈️ trip line' : '🛍️ daily expense') + ' · ' + esc(payer) + (r.payment_method_id && cardById(r.payment_method_id) ? ' · ' + esc(cardById(r.payment_method_id).name) : '');
+  $('swRate').value = ''; $('swRateSrc').textContent = ''; sw.rateSrc = null; $('swNote').value = '';
+  updateSwapPreview();
+  fetchRate();
+}
+async function fetchRate(){
+  const r = sw.pick; if (!r) return;
+  const src = r.currency, dst = ($('swRateLbl').textContent.split(' ')[0]) || 'AUD';
+  const date = r.date > todayIso() ? todayIso() : r.date;
+  $('swFetch').disabled = true; $('swRateSrc').innerHTML = '<span class="spin"></span> fetching the ' + fmtDs(date) + ' rate…';
+  const urls = ['https://api.frankfurter.app/' + date + '?from=' + src + '&to=' + dst, 'https://api.frankfurter.dev/v1/' + date + '?base=' + src + '&symbols=' + dst];
+  let got = null;
+  for (const u of urls) { try { const res = await fetch(u); if (!res.ok) continue; const j = await res.json(); if (j && j.rates && j.rates[dst]) { got = { rate: j.rates[dst], date: j.date || date }; break; } } catch (e) {} }
+  $('swFetch').disabled = false;
+  if (got) { $('swRate').value = Number(got.rate).toFixed(4); sw.rateSrc = 'frankfurter ' + got.date; $('swRateSrc').textContent = 'ECB reference rate for ' + fmtD(got.date) + (got.date !== date ? ' (nearest business day)' : '') + ' — edit if your bank differs'; }
+  else { sw.rateSrc = null; $('swRateSrc').textContent = 'couldn’t fetch a rate — type it (e.g. from Google “' + src + ' to ' + dst + '”)'; }
+  updateSwapPreview();
+}
+function updateSwapPreview(){
+  const r = sw.pick, rate = parseFloat($('swRate').value);
+  if (!r) { $('swDst').value = ''; $('swPreview').textContent = ''; $('swGo').disabled = true; return; }
+  const dst = ($('swRateLbl').textContent.split(' ')[0]) || 'AUD';
+  const fn = id => (CTX.funds.find(f => f.id === $(id).value) || {}).name || '?';
+  const ok = rate > 0 && $('swCover').value !== $('swLand').value && $('swFrom').value !== $('swTo').value;
+  $('swDst').value = rate > 0 ? fmtMoney(r.amount * rate, dst) : '';
+  $('swPreview').innerHTML = rate > 0
+    ? '<b>' + fmtMoney(r.amount * rate, dst) + '</b> ' + esc(fn('swCover')) + ' → ' + esc(fn('swLand')) + '<br><b>' + fmtMoney(r.amount, r.currency) + '</b> ' + esc(fn('swFrom')) + ' → ' + esc(fn('swTo'))
+      + (r.kind === 'travel' ? '<br><span class="cap">trip line marked “sent” so Send-to-Travel-Fund and settle-up skip it; the bank pot pays it.</span>' : '<br><span class="cap">the daily row keeps counting its category down in ' + esc(fn('swTo')) + ' — which the DreamHouse money tops up.</span>')
+    : 'enter or fetch the rate';
+  $('swGo').disabled = !ok;
+}
+async function recordSwap(){
+  const r = sw.pick; if (!r) return;
+  const rate = parseFloat($('swRate').value); if (!(rate > 0)) return;
+  $('swGo').disabled = true;
+  const { data, error } = await sb.rpc('record_pot_swap', { p_kind: r.kind, p_expense: r.id, p_rate: rate, p_cover: $('swCover').value, p_land: $('swLand').value, p_bank_from: $('swFrom').value, p_bank_to: $('swTo').value, p_rate_source: sw.rateSrc, p_note: $('swNote').value || null });
+  if (error) { toast('couldn’t record: ' + error.message); $('swGo').disabled = false; return; }
+  try { localStorage.setItem('bh-swap-cover-' + r.kind, $('swCover').value); } catch (e) {}
+  toast('swap recorded ⇄');
+  sw.rows = sw.rows.filter(x => x.key !== r.key); sw.pick = null; renderSwapRows();
+  $('swDate').value = ''; $('swSrc').value = ''; $('swRate').value = ''; $('swDst').value = ''; $('swPick').textContent = '← pick a purchase first'; $('swPreview').textContent = ''; $('swRateSrc').textContent = '';
+  loadSwaps();
+}
+async function loadSwaps(){
+  const { data, error } = await sb.from('pot_swaps').select('*').order('date', {ascending:false}).limit(200);
+  if (error) { $('swList').innerHTML = '<tr><td colspan="8" class="empty">' + esc(error.message) + '</td></tr>'; return; }
+  sw.swaps = data || [];
+  if (!sw.swaps.length) { $('swList').innerHTML = '<tr><td colspan="8" class="empty">none yet</td></tr>'; return; }
+  const ids = { daily: sw.swaps.filter(s => s.expense_kind === 'daily').map(s => s.expense_id), travel: sw.swaps.filter(s => s.expense_kind === 'travel').map(s => s.expense_id) };
+  const [d, t] = await Promise.all([ids.daily.length ? sb.from('daily_expenses').select('id, description').in('id', ids.daily) : { data: [] }, ids.travel.length ? sb.from('travel_expenses').select('id, description').in('id', ids.travel) : { data: [] }]);
+  const desc = {}; [...(d.data || []), ...(t.data || [])].forEach(x => desc[x.id] = x.description);
+  const fn = id => (CTX.funds.find(f => f.id === id) || {}).name || '?';
+  $('swList').innerHTML = sw.swaps.map(s => '<tr data-id="' + s.id + '">'
+    + '<td class="num">' + fmtDs(s.date) + ' ' + s.date.slice(2, 4) + '</td>'
+    + '<td><span class="dsc">' + esc(desc[s.expense_id] || '(deleted row)') + (s.expense_kind === 'travel' ? ' <span class="tag blue">✈️</span>' : '') + (s.note ? ' <span class="cap">' + esc(s.note) + '</span>' : '') + '</span></td>'
+    + '<td class="amt">' + fmtMoney(s.src_amount, s.src_currency) + '</td>'
+    + '<td><input class="descinput num swrate" type="number" step="0.0001" value="' + Number(s.rate).toFixed(4) + '" style="width:100px;padding:4px 8px" title="' + esc(s.rate_source || '') + '"></td>'
+    + '<td class="amt">' + fmtMoney(s.dst_amount, s.dst_currency) + '</td>'
+    + '<td class="ell" title="' + esc(fn(s.cover_fund_id) + ' → ' + fn(s.land_fund_id)) + '">' + esc(fn(s.cover_fund_id)) + ' → ' + esc(fn(s.land_fund_id)) + '</td>'
+    + '<td class="ell" title="' + esc(fn(s.bank_from_fund_id) + ' → ' + fn(s.bank_to_fund_id)) + '">' + esc(fn(s.bank_from_fund_id)) + ' → ' + esc(fn(s.bank_to_fund_id)) + '</td>'
+    + '<td><button class="btn-tert swundo">undo</button></td></tr>').join('');
+  $('swList').querySelectorAll('.swrate').forEach(inp => inp.onchange = async () => {
+    const id = inp.closest('tr').dataset.id, v = parseFloat(inp.value); if (!(v > 0)) return;
+    const { data, error } = await sb.rpc('update_pot_swap_rate', { p_swap: id, p_rate: v, p_rate_source: 'manual' });
+    if (error) { toast('couldn’t update: ' + error.message); return; }
+    toast('rate updated — AUD side is now ' + fmtMoney(data, (sw.swaps.find(s => s.id === id) || {}).dst_currency)); loadSwaps();
+  });
+  $('swList').querySelectorAll('.swundo').forEach(b => b.onclick = async () => {
+    const id = b.closest('tr').dataset.id;
+    if (!confirm('Undo this swap? The four transfer rows are removed and the purchase goes back to normal.')) return;
+    const { error } = await sb.rpc('delete_pot_swap', { p_swap: id });
+    if (error) { toast('couldn’t undo: ' + error.message); return; }
+    toast('swap undone'); loadSwaps(); loadSwapRows();
+  });
 }
 
 // ── pots ────────────────────────────────────────────────────
