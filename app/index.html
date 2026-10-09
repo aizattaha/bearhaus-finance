@@ -109,6 +109,10 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .flowrow .num{display:inline-block;min-width:86px;text-align:right;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums}
 .fundrow{display:flex;align-items:center;gap:14px;min-height:56px;padding:6px 0;width:100%;background:none;border:none;font-family:inherit;font-size:15px;color:var(--ink);cursor:pointer;text-align:left}
 .fundrow+.fundrow,.funddrill+.fundrow{border-top:1px solid var(--muted)}
+.fundrow.recd .lbl,.fundrow.recd .cap,.fundrow.recd .amt,.fundrow.recd .rowicon{opacity:.5}
+.lockbtn{flex-shrink:0;width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--field);cursor:pointer;margin-left:-4px}
+.lockbtn.open{background:var(--accent-soft)}
+.lockbtn.muted{cursor:default;opacity:.6}
 .fundrow .amt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .funddrill{padding:0 0 10px 54px}
 .applyrow{display:flex;align-items:center;gap:12px;width:100%;background:var(--field);border:none;border-radius:14px;padding:10px 14px;margin-top:8px;font-family:inherit;font-size:14px;color:var(--ink);cursor:pointer;text-align:left}
@@ -516,6 +520,10 @@ input[type="date"].descinput{min-width:0}
           <select class="descinput" id="atxMonth" style="flex:1 1 132px;min-width:0"></select>
         </div>
         <select class="descinput" id="atxWhat" style="margin-top:8px;width:100%;display:none"></select>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="chip" id="atxOpenOnly" onclick="this.classList.toggle('sel');loadAllTx(true)">🔓 unreconciled only</button>
+          <span class="cap">🔒 reconciled rows are locked · tap the lock to un-reconcile</span>
+        </div>
       </div>
       <div class="card" id="atxList" style="padding-top:8px;padding-bottom:8px"><p class="cap" style="padding:12px 0">loading…</p></div>
       <button class="btn-tert" id="atxMore" style="align-self:center;display:none" onclick="loadAllTx(false)">Load more</button>
@@ -556,6 +564,7 @@ input[type="date"].descinput{min-width:0}
 
   <div id="sh-form" style="display:none">
     <div class="sheet-head"><span class="h2" id="formTitle">Add</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
+    <p class="cap" id="lockNote" style="display:none;background:var(--accent-soft);color:var(--primary);border-radius:12px;padding:8px 12px;margin:0 0 8px">🔒 reconciled — amount, date, currency, card and payer are locked. Description, category and comments can still change. Un-reconcile it from All transactions to edit the rest.</p>
     <div class="f-sec" id="rowMode" style="margin-top:0"><div class="seg grow" id="segMode"></div></div>
     <div class="f-sec" id="rowScope"><div class="seg grow" id="segScope"></div></div>
     <div class="f-sec descwrap">
@@ -1744,7 +1753,7 @@ async function toggleFundDrill(btn, fund){
   const isPot = fund.is_spend_pot && CTX.hh && CTX.hh.pot_start;
   const [{ data, error }, sp] = await Promise.all([
     sb.from('fund_transactions')
-      .select('id, date, type, amount, remarks, origin, income_source')
+      .select('id, date, type, amount, remarks, origin, income_source' + rc(true))
       .eq('fund_id', fund.fund_id)
       .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(isPot ? 12 : 8),
     // a spending pot also shows ONE computed line per month: "October 2026 spending − A$x"
@@ -1791,7 +1800,8 @@ async function toggleFundDrill(btn, fund){
       + '<span class="cap">' + new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'}) + '</span>'
       + '<span class="amt" style="color:' + (isXfer ? 'var(--ink-soft)' : inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span>';
     row.onclick = () => openEditFund({ id: t.id, date: t.date, type: t.type, amount: t.amount, remarks: t.remarks,
-      origin: t.origin, fund_id: fund.fund_id, funds: { name: fund.name, currency: fund.currency } });
+      origin: t.origin, fund_id: fund.fund_id, funds: { name: fund.name, currency: fund.currency },
+      reconciled_at: t.reconciled_at, reconciled_by: t.reconciled_by });
     d.appendChild(row);
   });
   if (!list.length) d.innerHTML = '<p class="cap">no transactions yet</p>';
@@ -2230,7 +2240,44 @@ async function savePlan(){
 // every daily expense and fund transaction, filterable, paged —
 // and the one place where any line can be edited or deleted.
 const ATX_PAGE = 60;
+const RECON_COLS = 'reconciled_at, reconciled_by, reconciled_statement_id';
+let reconOK = true;   // false until the reconciliation migration has landed (probed in loadContext)
+const rc = fund => reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '';
 let atx = null, atxSeq = 0;
+// 🔒 reconciled (locked) · 🔓 un-reconciled just now (tap to lock again) · nothing = never reconciled.
+// Internal fund rows (plan writes, transfers) are reconciled automatically and stay that way.
+function lockEl(kind, r){
+  const internal = kind === 'f' && r.reconciled_by === 'auto';
+  if (!r.reconciled_at && !r._wasLocked) return null;
+  const el = document.createElement('span');
+  el.className = 'lockbtn' + (r.reconciled_at ? '' : ' open') + (internal ? ' muted' : '');
+  el.setAttribute('role', 'button'); el.tabIndex = 0;
+  el.textContent = r.reconciled_at ? '🔒' : '🔓';
+  el.title = internal ? 'internal — reconciled automatically'
+           : r.reconciled_at ? 'reconciled' + (r.reconciled_by === 'auto' ? ' automatically (cash)' : '') + ' · tap to un-reconcile'
+           : 'un-reconciled · tap to lock again';
+  if (internal) return el;
+  el.onclick = async ev => {
+    ev.stopPropagation();
+    const pk = kind === 'd' ? 'daily' : kind === 't' ? 'travel' : 'fund';
+    if (r.reconciled_at) {
+      const { error } = await sb.rpc('unreconcile_rows', { p_kind: pk, p_ids: [r.id] });
+      if (error) { toast('couldn’t un-reconcile: ' + error.message); return; }
+      r._wasLocked = true; r._prevStatement = r.reconciled_statement_id;
+      r.reconciled_at = null; r.reconciled_by = null; r.reconciled_statement_id = null;
+      toast('un-reconciled — the row can be edited again 🔓');
+    } else {
+      const { error } = await sb.rpc('reconcile_rows', { p_kind: pk, p_ids: [r.id], p_statement: r._prevStatement || null });
+      if (error) { toast('couldn’t reconcile: ' + error.message); return; }
+      r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'manual'; r.reconciled_statement_id = r._prevStatement || null;
+      toast('reconciled again 🔒');
+    }
+    const type = segSel('atxType') || 'All';
+    renderAllTx(type);
+  };
+  el.onkeydown = ev => { if (ev.key === 'Enter') el.click(); };
+  return el;
+}
 function openBudgetMonthTx(){
   const m = ($('budTotalCard') && $('budTotalCard').dataset.month) || curMonthIso();
   openAllTx({ type: 'Daily', month: m });
@@ -2309,6 +2356,7 @@ async function loadAllTx(reset){
   const q = $('atxSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch);
   const m = $('atxMonth').value;
   const what = $('atxWhat').style.display === 'none' ? '' : $('atxWhat').value;
+  const openOnly = $('atxOpenOnly').classList.contains('sel');
   $('atxMore').style.display = 'none';
   if (!atx.rows.length) $('atxList').innerHTML = '<p class="cap" style="padding:12px 0">loading…</p>';
   const mySeq = ++atxSeq;   // filters changed mid-flight? drop this response (QA-9)
@@ -2326,31 +2374,34 @@ async function loadAllTx(reset){
     let qd = null, qf = null, qt = null;
     if (src.includes('d') && !atx.dDone) {
       qd = sb.from('daily_expenses')
-        .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id, daily_expense_splits(profile_id, amount)')
+        .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)')
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.dOff, atx.dOff + ATX_PAGE - 1);
       if (q) qd = qd.ilike('description', '%' + q + '%');
       if (m) qd = qd.gte('date', m).lt('date', addMonths(m, 1));
       if (type === 'Daily' && what) qd = qd.eq('category', what);
+      if (openOnly && reconOK) qd = qd.is('reconciled_at', null);
     }
     if (src.includes('t') && !atx.tDone) {
       qt = sb.from('travel_expenses')
-        .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, travel_expense_splits(profile_id, amount)')
+        .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rc() + ', travel_expense_splits(profile_id, amount)')
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.tOff, atx.tOff + ATX_PAGE - 1);
       if (q) qt = qt.ilike('description', '%' + q + '%');
       if (m) qt = qt.gte('date', m).lt('date', addMonths(m, 1));
       if (type === 'Trips' && what) qt = qt.eq('trip_id', what);
+      if (openOnly && reconOK) qt = qt.is('reconciled_at', null);
     }
     if (src.includes('f') && !atx.fDone) {
       qf = sb.from('fund_transactions')
-        .select('id, date, type, amount, remarks, origin, income_source, fund_id, funds(name, currency)')
+        .select('id, date, type, amount, remarks, origin, income_source, fund_id' + rc(true) + ', funds(name, currency)')
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.fOff, atx.fOff + ATX_PAGE - 1);
       if (q) qf = qf.ilike('remarks', '%' + q + '%');
       if (m) qf = qf.gte('date', m).lt('date', addMonths(m, 1));
       if (type === 'Funds' && what) qf = qf.eq('fund_id', what);
       if (type === 'Income') qf = qf.not('income_source', 'is', null);   // real income events only
+      if (openOnly && reconOK) qf = qf.is('reconciled_at', null);
     }
     const [dr, tr, fr] = await Promise.all([qd || Promise.resolve(null), qt || Promise.resolve(null), qf || Promise.resolve(null)]);
     if (mySeq !== atxSeq) return;
@@ -2470,6 +2521,7 @@ function renderAllTx(type){
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'fundrow';
     if (row.sched) b.style.opacity = '.6';
+    if (r && r.reconciled_at && ['d', 't', 'f', 'x'].includes(kind)) b.classList.add('recd');
     if (kind === 'pg') {
       const tot = {};
       row.rows.forEach(t => { const c = t.funds ? t.funds.currency : 'AUD'; tot[c] = (tot[c] || 0) + Number(t.amount); });
@@ -2506,6 +2558,7 @@ function renderAllTx(type){
         + '<div class="amt num" style="color:var(--ink-soft)">'
         + (oc === ic ? fmtMoney(r.amount, oc) : fmtMoney(r.amount, oc) + ' → ' + fmtMoney(inn.amount, ic)) + '</div>';
       b.onclick = () => openEditFund(r);
+      const lk = lockEl('f', r); if (lk) b.appendChild(lk);
       box.appendChild(b);
       return;
     }
@@ -2529,6 +2582,7 @@ function renderAllTx(type){
         + '<div class="amt num" style="color:' + (isXfer ? 'var(--ink-soft)' : inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(r.amount, r.funds ? r.funds.currency : 'AUD') + '</div>';
       b.onclick = () => openEditFund(r);
     }
+    const lk = lockEl(kind, r); if (lk) b.appendChild(lk);
     box.appendChild(b);
   });
   $('atxMore').style.display = src.every(isDone) ? 'none' : 'inline';
@@ -2812,18 +2866,50 @@ async function renderSetFunds(box){
 }
 
 async function renderSetCards(box){
-  const r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order').order('sort_order');
+  let r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order, kind, closing_day, currency').order('sort_order');
+  if (r.error && /kind|closing_day/.test(r.error.message || ''))   // reconciliation migration not landed yet
+    r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const cards = r.data || [];
+  const KINDS = [['credit_card', 'credit card'], ['debit_card', 'debit card'], ['bank', 'bank account'], ['prepaid', 'prepaid / wallet'], ['cash', 'cash']];
+  const hasKind = cards.some(c => c.kind !== undefined);
   box.innerHTML = '';
+  if (hasKind) box.appendChild(capEl('type · statement closing day (credit cards) · currency — statements and reconciliation use these'));
   cards.forEach(c => {
     const owner = c.profile_id ? ((CTX.profiles.find(p => p.id === c.profile_id) || {}).display_name || '?') : (jointLabel() || 'Joint');
     const d = document.createElement('div'); d.className = 'srow';
+    d.style.flexWrap = 'wrap';
     if (c.is_archived) d.style.opacity = '.45';
-    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">💳</div>'
+    const kindLabel = (KINDS.find(k => k[0] === c.kind) || [])[1] || '';
+    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + (c.kind === 'cash' ? '💵' : c.kind === 'bank' ? '🏦' : '💳') + '</div>'
       + '<div style="flex:1;min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div>'
-      + '<div class="cap">' + esc(owner) + (c.travel_only ? ' · travel only' : '') + '</div></div>'
+      + '<div class="cap">' + esc(owner) + (c.travel_only ? ' · travel only' : '')
+      + (hasKind ? ' · ' + esc(kindLabel || 'type?') + (c.kind === 'credit_card' ? ' · closes ' + (c.closing_day ? 'day ' + c.closing_day : '—') : '') + (c.currency ? ' · ' + esc(curLabel(c.currency)) : '') : '')
+      + '</div></div>'
       + (c.is_archived ? '<span class="tag">archived</span>' : '');
+    if (hasKind && !c.is_archived) {
+      // inline settings row: type · closing day · currency
+      const cfg = document.createElement('div');
+      cfg.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:center;padding:4px 0 2px 42px;flex-wrap:wrap';
+      const kindSel = document.createElement('select'); kindSel.className = 'descinput'; kindSel.style.cssText = 'flex:1;min-width:110px;padding:6px 8px;font-size:12px';
+      kindSel.innerHTML = KINDS.map(k => '<option value="' + k[0] + '"' + (k[0] === c.kind ? ' selected' : '') + '>' + k[1] + '</option>').join('');
+      const dayIn = document.createElement('input'); dayIn.className = 'descinput'; dayIn.type = 'number'; dayIn.min = 1; dayIn.max = 31; dayIn.inputMode = 'numeric';
+      dayIn.placeholder = 'closing day'; dayIn.style.cssText = 'width:96px;padding:6px 8px;font-size:12px'; dayIn.value = c.closing_day || '';
+      dayIn.style.display = c.kind === 'credit_card' ? '' : 'none';
+      const curSel = document.createElement('select'); curSel.className = 'descinput'; curSel.style.cssText = 'width:84px;padding:6px 8px;font-size:12px';
+      const curs = [...new Set(homeCurrencies().concat(c.currency || []))];
+      curSel.innerHTML = '<option value="">multi</option>' + curs.map(x => '<option value="' + x + '"' + (x === c.currency ? ' selected' : '') + '>' + esc(curLabel(x)) + '</option>').join('');
+      const save = async patch => {
+        const u = await sb.from('payment_methods').update(patch).eq('id', c.id);
+        if (u.error) { toast('couldn’t update: ' + u.error.message); return false; }
+        Object.assign(c, patch); await loadContext(); return true;
+      };
+      kindSel.onchange = async () => { if (await save({ kind: kindSel.value, closing_day: kindSel.value === 'credit_card' ? (parseInt(dayIn.value) || null) : null })) { dayIn.style.display = kindSel.value === 'credit_card' ? '' : 'none'; toast(c.name + ' · ' + (KINDS.find(k => k[0] === kindSel.value) || [])[1] + ' 🐻'); } };
+      dayIn.onchange = async () => { const v = parseInt(dayIn.value); if (dayIn.value && !(v >= 1 && v <= 31)) { toast('closing day is 1–31'); return; } if (await save({ closing_day: dayIn.value ? v : null })) toast(c.name + (dayIn.value ? ' closes on day ' + v : ' · closing day cleared') + ' 🐻'); };
+      curSel.onchange = async () => { if (await save({ currency: curSel.value || null })) toast(c.name + ' · ' + (curSel.value ? curLabel(curSel.value) : 'multi-currency') + ' 🐻'); };
+      cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel);
+      d._cfg = cfg;
+    }
     const ebtn = document.createElement('button');
     ebtn.className = 'edit'; ebtn.textContent = '✎'; ebtn.setAttribute('aria-label', 'Rename');
     ebtn.onclick = () => editInline(d, c.name, async v => {
@@ -2842,6 +2928,7 @@ async function renderSetCards(box){
       toast(c.name + (c.is_archived ? ' restored' : ' archived') + ' 🐻');
     };
     d.appendChild(arch);
+    if (d._cfg) d.appendChild(d._cfg);
     box.appendChild(d);
   });
   const af = document.createElement('div'); af.style.cssText = 'margin-top:12px';
@@ -3463,6 +3550,10 @@ async function loadContext(){
     CTX.firstMonth = (!firstD.error && firstD.data && firstD.data[0])
       ? firstD.data[0].date.slice(0, 7) + '-01' : curMonthIso();
     BUD_MIN = CTX.firstMonth;
+    // has the reconciliation migration landed? (lock icons + filter switch on when it has)
+    const probe = await sb.from('daily_expenses').select('reconciled_at').limit(1);
+    reconOK = !probe.error;
+    const chip = $('atxOpenOnly'); if (chip) chip.style.display = reconOK ? '' : 'none';
   }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
 }
@@ -3947,7 +4038,7 @@ function refreshTripCurrencies(){
 
 function openForm(m){
   mode = m; amt = ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; armSaveKey();
-  editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none';
+  editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none'; $('lockNote').style.display = 'none';
   $('descInput').value = ''; $('commentsInput').value = '';
   $('dateInput').value = isoDate(new Date()); updateDateVal();
   $('rowDetails').style.display = 'none';
@@ -4184,12 +4275,18 @@ async function saveEntry(){
         }
       }
       const note = desc ? ' · ' + desc : '';
-      const { error } = await sb.from('fund_transactions').insert([
+      const gid = (crypto.randomUUID ? crypto.randomUUID() : null);   // the two halves lock and unlock together
+      let rows = [
         { household_id: CTX.hh.id, fund_id: from.id, type: 'expense', date,
-          amount: cost, remarks: 'Transfer → ' + to.name + note, origin: 'manual' },
+          amount: cost, remarks: 'Transfer → ' + to.name + note, origin: 'manual', transfer_group_id: gid },
         { household_id: CTX.hh.id, fund_id: to.id, type: 'income', date,
-          amount: received, remarks: 'Transfer ← ' + from.name + note, origin: 'manual' },
-      ]);
+          amount: received, remarks: 'Transfer ← ' + from.name + note, origin: 'manual', transfer_group_id: gid },
+      ];
+      let { error } = await sb.from('fund_transactions').insert(rows);
+      if (error && /transfer_group_id/.test(error.message || '')) {   // migration not landed yet
+        rows.forEach(r => delete r.transfer_group_id);
+        ({ error } = await sb.from('fund_transactions').insert(rows));
+      }
       if (error) throw error;
       done(true, fmtMoney(cost, from.currency) + ' moved: ' + from.name + ' → ' + to.name);
       if (fundsInit) loadFunds();
@@ -4220,6 +4317,12 @@ async function saveEntry(){
     const cat = gridSel();
     if (!cat) { done(false, 'pick a category'); return; }
     const pid = (CTX.profiles.find(x => x.display_name === payer) || {}).id || null;
+    // a row with no card can never sit on a statement — every new expense names one (cash counts)
+    if ((mode === 'daily' || mode === 'trip') && !$('cardSel').value && cat !== 'Payment') {
+      if ($('rowDetails')) $('rowDetails').style.display = 'block';
+      if ($('cardWrap')) $('cardWrap').style.display = 'block';
+      done(false, 'pick the card you paid with (or Cash)'); return;
+    }
     if (mode === 'edit') {
       // one server-side transaction: row + splits can never diverge (QA-5)
       const { error } = await sb.rpc('save_expense', {
@@ -4321,6 +4424,7 @@ function openEditExpense(exp){
   $('cardSel').value = exp.paid_with || '';
   renderCardRow();
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
+  applyLockState(editingExp);
   armSaveKey();
   dockShow('pad');
   $('sheet').classList.add('full');
@@ -4373,6 +4477,7 @@ function openEditDaily(exp){
   $('cardSel').value = exp.paid_with || '';
   renderCardRow();
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
+  applyLockState(editingExp);
   armSaveKey();
   dockShow('pad');
   $('sheet').classList.add('full');
@@ -4417,6 +4522,7 @@ function openEditFund(tx){
   if (!$('fundCurLabel').textContent && tx.funds) $('fundCurLabel').textContent = curLabel(tx.funds.currency);
   buildSeg('segType', ['Into the fund', 'Out of the fund'], tx.type === 'income' ? 0 : 1);
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
+  applyLockState(editingExp);
   armSaveKey();
   dockShow('pad');
   $('sheet').classList.add('full');
@@ -4428,6 +4534,12 @@ function openEditFund(tx){
   else if (/^Transfer [→←]/.test(tx.remarks || '')) toast('this is half of a transfer — its pair won’t change');
 }
 
+// a reconciled row: notice on top, no Delete (the database refuses anyway — this just says so first)
+function applyLockState(exp){
+  const locked = !!(exp && exp.reconciled_at);
+  $('lockNote').style.display = locked ? 'block' : 'none';
+  if (locked) $('deleteBtn').style.display = 'none';
+}
 let delArm = false;
 async function deleteExpense(){
   if (!editingExp) return;
