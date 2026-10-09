@@ -2242,7 +2242,8 @@ async function savePlan(){
 const ATX_PAGE = 60;
 const RECON_COLS = 'reconciled_at, reconciled_by, reconciled_statement_id';
 let reconOK = true;   // false until the reconciliation migration has landed (probed in loadContext)
-const rc = fund => reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '';
+let swapOK = true;    // false until the pot-swap migration has landed
+const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '');
 let atx = null, atxSeq = 0;
 // 🔒 reconciled (locked) · 🔓 un-reconciled just now (tap to lock again) · nothing = never reconciled.
 // Internal fund rows (plan writes, transfers) are reconciled automatically and stay that way.
@@ -2570,7 +2571,7 @@ function renderAllTx(type){
         ? esc(((trip && trip.countries) || []).map(flagOf).join('') || '✈️') + ' ' + esc(trip ? trip.name : 'trip') + ' · ' : '';
       b.innerHTML = '<div class="rowicon">' + (CAT_ICON[r.category] || (kind === 't' ? '✈️' : '🛍️')) + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.description) + '</div>'
-        + '<div class="cap">' + tripTag + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + '</div></div>'
+        + '<div class="cap">' + tripTag + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + (r.pot_swap_id ? ' · <span title="paid with Singapore money — pot swap recorded on the Desk">⇄ swapped</span>' : '') + '</div></div>'
         + '<div class="amt num" style="color:' + (r.category === 'Payment' ? 'var(--ink-soft)' : 'var(--bad)') + '">−' + fmtMoney(r.amount, r.currency) + '</div>';
       b.onclick = () => kind === 't' ? openEditExpense(r) : openEditDaily(r);
     } else {
@@ -3553,6 +3554,8 @@ async function loadContext(){
     // has the reconciliation migration landed? (lock icons + filter switch on when it has)
     const probe = await sb.from('daily_expenses').select('reconciled_at').limit(1);
     reconOK = !probe.error;
+    const probe2 = await sb.from('daily_expenses').select('pot_swap_id').limit(1);
+    swapOK = !probe2.error;
     const chip = $('atxOpenOnly'); if (chip) chip.style.display = reconOK ? '' : 'none';
   }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
