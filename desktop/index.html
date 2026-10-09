@@ -136,6 +136,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         <select class="descinput" id="stPeriod" style="min-width:230px"></select>
         <button class="chip" id="stMargin" title="banks post a few days late — show rows up to 5 days either side of the period">± 5 days</button>
         <button class="chip" id="stCarry" title="older rows on this card that were never ticked">include earlier unreconciled</button>
+        <button class="chip" id="stImport" onclick="openImport()" title="drop in the bank's CSV or paste the statement text — matching rows get ticked for you">⬇ import statement</button>
         <span class="cap" id="stMeta"></span>
       </div>
 
@@ -152,12 +153,20 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         </div>
       </div>
 
+      <div class="card" id="impResult" style="margin-top:14px;display:none">
+        <div class="row" style="justify-content:space-between">
+          <p class="h2" id="impTitle">Statement lines</p>
+          <button class="btn-tert" onclick="clearImport()">✕ clear</button>
+        </div>
+        <p class="cap" id="impSummary" style="margin-top:4px"></p>
+        <div id="impMissing" style="margin-top:10px"></div>
+      </div>
       <div class="card" style="margin-top:14px;padding:0">
         <div class="tablewrap">
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="stAll" title="select every unreconciled row shown"></th>
-              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:80px">Who</th><th style="width:70px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:50px"></th>
+              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:80px">Who</th><th style="width:96px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:50px"></th>
             </tr></thead>
             <tbody id="stRows"><tr><td colspan="8" class="empty">pick a card</td></tr></tbody>
           </table>
@@ -288,6 +297,24 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <div class="row" style="justify-content:flex-end;margin-top:14px">
       <button class="btn btn-soft" onclick="closeBulk()">Cancel</button>
       <button class="btn btn-primary" id="bkApply" onclick="applyBulk()">Apply to selected</button>
+    </div>
+  </div>
+</div>
+<div id="imp" class="overlay" onclick="if(event.target===this)closeImport()">
+  <div class="card bulkcard" style="max-width:720px">
+    <div class="row" style="justify-content:space-between">
+      <div><p class="cap">Import statement</p><h2 class="h2" id="impFor">—</h2></div>
+      <button class="btn-tert" onclick="closeImport()">✕ close</button>
+    </div>
+    <p class="cap" style="margin-top:4px">A CSV from the bank, or the statement text pasted from the PDF (select all → copy). Each line needs a date and an amount; the app matches on amount and a date within 3 days, then ticks the matches for you to review.</p>
+    <div class="row" style="margin-top:12px;gap:10px">
+      <input type="file" id="impFile" accept=".csv,.txt,text/csv,text/plain" class="descinput" style="padding:6px 10px">
+      <span class="cap">or paste below</span>
+    </div>
+    <textarea id="impText" class="descinput" rows="9" placeholder="01/09/2026  WOOLWORTHS 1234 RICHMOND   87.29&#10;02/09/2026  ORIGIN ENERGY             125.80 …" style="width:100%;margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:18px;resize:vertical"></textarea>
+    <div class="row" style="justify-content:space-between;margin-top:12px">
+      <label class="cap" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="impSelectOnly" checked> only tick — don't reconcile until I press Reconcile selected</label>
+      <button class="btn btn-primary" id="impGo" onclick="runImport()">Match lines</button>
     </div>
   </div>
 </div>
@@ -439,15 +466,33 @@ async function loadStatement(){
     let qq = sb.from(t).select(sel + (extra || '')).eq('payment_method_id', c.id).order('date', {ascending:false}).limit(1000);
     return st.carry ? qq.or('and(date.gte.' + from + ',date.lte.' + to + '),and(date.lt.' + from + ',reconciled_at.is.null)') : qq.gte('date', from).lte('date', to);
   };
-  const [d, t, s] = await Promise.all([
-    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name)'),
+  // bank accounts also carry fund rows (salary in, premiums out…): rows already tied to this
+  // account, plus untied manual rows in its currency that aren't internal (plan writes, transfers)
+  const isBank = c.kind === 'bank';
+  const qf = () => {
+    let qq = sb.from('fund_transactions').select('id, date, remarks, type, amount, income_source, origin, fund_id, account_payment_method_id, transfer_group_id, reconciled_at, reconciled_by, reconciled_statement_id, funds!inner(name, currency)')
+      .eq('funds.currency', c.currency || 'AUD').neq('origin', 'planned').not('remarks', 'ilike', 'Transfer %')
+      .order('date', {ascending:false}).limit(1000);
+    const acct = 'or(account_payment_method_id.eq.' + c.id + ',account_payment_method_id.is.null)';
+    return st.carry ? qq.or('and(' + acct + ',or(and(date.gte.' + from + ',date.lte.' + to + '),and(date.lt.' + from + ',reconciled_at.is.null)))')
+                    : qq.or(acct).gte('date', from).lte('date', to);
+  };
+  const [d, t, f, s] = await Promise.all([
+    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name)'), isBank ? qf() : { data: [] },
     sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle(),
   ]);
-  if (d.error || t.error) { toast('couldn’t load: ' + (d.error || t.error).message); return; }
+  if (d.error || t.error || f.error) { toast('couldn’t load: ' + (d.error || t.error || f.error).message); return; }
   st.statement = s.data || null;
   st.rows = (d.data || []).map(r => Object.assign({ kind: 'daily', key: 'd:' + r.id }, r))
     .concat((t.data || []).map(r => Object.assign({ kind: 'travel', key: 't:' + r.id }, r)))
+    .concat((f.data || []).filter(r => r.reconciled_by !== 'auto' || r.account_payment_method_id === c.id).map(r => Object.assign({ kind: 'fund', key: 'f:' + r.id }, r, {
+      description: r.remarks || r.income_source || (r.type === 'income' ? 'money in' : 'money out'),
+      category: r.funds ? r.funds.name : 'fund', currency: r.funds ? r.funds.currency : c.currency, payer_profile_id: null,
+      credit: r.type === 'income' })))
     .sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
+  // a card payment or refund is a credit on a card statement
+  st.rows.forEach(r => { if (r.kind !== 'fund') r.credit = r.category === 'Payment'; });
+  st.imp = null; $('impResult').style.display = 'none';
   // rows ticked against THIS statement vs. others
   st.rows.forEach(r => { r.inPeriod = r.date >= p.start && r.date <= p.end; r.carry = r.date < from; });
   $('stTotal').value = st.statement && st.statement.statement_total != null ? Number(st.statement.statement_total).toFixed(2) : '';
@@ -470,8 +515,8 @@ function renderStatement(){
       + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
       + '<td class="ell">' + esc(r.category) + '</td>'
       + '<td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
-      + '<td><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
-      + '<td class="amt">−' + fmtMoney(r.amount, r.currency) + curTag + '</td>'
+      + '<td style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
+      + '<td class="amt"' + (r.credit ? ' style="color:var(--good)"' : '') + '>' + (r.credit ? '+' : '−') + fmtMoney(r.amount, r.currency) + curTag + '</td>'
       + '<td>' + (locked ? '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>' : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
       + '</tr>';
   }).join('');
@@ -492,13 +537,16 @@ function renderStatement(){
 }
 function updateStatementKpis(){
   const c = st.card, p = st.period, cur = c ? (c.currency || (st.rows[0] || {}).currency || 'AUD') : 'AUD';
+  const signed = r => Number(r.amount) * (r.credit ? -1 : 1);   // spend positive, money in negative
   const inP = st.rows.filter(r => r.inPeriod && r.currency === cur);
-  const appTotal = inP.reduce((s, r) => s + Number(r.amount), 0);
+  const appTotal = inP.reduce((s, r) => s + signed(r), 0);
   const ticked = st.rows.filter(r => r.reconciled_at && (!st.statement || !r.reconciled_statement_id || r.reconciled_statement_id === st.statement.id) && r.currency === cur);
-  const tickedTotal = ticked.reduce((s, r) => s + Number(r.amount), 0);
+  const tickedTotal = ticked.reduce((s, r) => s + signed(r), 0);
   const otherCur = st.rows.filter(r => r.inPeriod && r.currency !== cur).length;
   $('kApp').textContent = c ? fmtMoney(appTotal, cur) : '—';
-  $('kAppSub').textContent = c ? inP.length + ' rows' + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
+  const credits = inP.filter(r => r.credit).length;
+  const outT = inP.filter(r => !r.credit).reduce((s, r) => s + Number(r.amount), 0), inT = inP.filter(r => r.credit).reduce((s, r) => s + Number(r.amount), 0);
+  $('kAppSub').textContent = c ? inP.length + ' rows' + (credits ? ' · out ' + fmtMoney(outT, cur) + ' · in ' + fmtMoney(inT, cur) + ' (net shown)' : '') + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
   $('kTicked').textContent = c ? fmtMoney(tickedTotal, cur) : '—';
   $('kTickedSub').textContent = c ? ticked.length + ' of ' + st.rows.length + ' rows shown' : '';
   const stTotal = parseFloat($('stTotal').value);
@@ -509,7 +557,7 @@ function updateStatementKpis(){
       : '<span class="tag ' + (diff > 0 ? 'warn' : 'bad') + '">' + (diff > 0 ? 'statement is ' + fmtMoney(diff, cur) + ' MORE than ticked — something is missing in the app' : 'ticked is ' + fmtMoney(-diff, cur) + ' more than the statement — something is ticked that isn’t on it') + '</span>';
   } else $('kDiff').textContent = c ? 'type the closing balance / total new spend from the statement' : '';
   const n = st.sel.size, selRows = st.rows.filter(r => st.sel.has(r.key));
-  const selTotal = selRows.reduce((s, r) => s + Number(r.amount), 0);
+  const selTotal = selRows.reduce((s, r) => s + signed(r), 0);
   $('stSelInfo').textContent = n ? n + ' selected · ' + fmtMoney(selTotal, cur) : 'nothing selected';
   $('stReconcile').disabled = !n;
   $('stEdit').disabled = !n;
@@ -537,9 +585,13 @@ async function reconcileSelected(){
   $('stReconcile').disabled = true;
   try {
     const s = await ensureStatement();
-    for (const kind of ['daily', 'travel']) {
+    for (const kind of ['daily', 'travel', 'fund']) {
       const ids = rows.filter(r => r.kind === kind).map(r => r.id);
       if (!ids.length) continue;
+      if (kind === 'fund') {  // remember which account these rows live in
+        const untied = rows.filter(r => r.kind === 'fund' && r.account_payment_method_id !== st.card.id).map(r => r.id);
+        if (untied.length) { const { error } = await sb.from('fund_transactions').update({ account_payment_method_id: st.card.id }).in('id', untied); if (error) throw error; rows.forEach(r => { if (untied.includes(r.id)) r.account_payment_method_id = st.card.id; }); }
+      }
       const { error } = await sb.rpc('reconcile_rows', { p_kind: kind, p_ids: ids, p_statement: s.id });
       if (error) throw error;
     }
@@ -555,7 +607,7 @@ async function unreconcileSelected(){
   if (!rows.length) { toast('nothing manual to un-reconcile here'); return; }
   if (!confirm('Un-reconcile ' + rows.length + ' rows on this statement? They become editable again.')) return;
   try {
-    for (const kind of ['daily', 'travel']) {
+    for (const kind of ['daily', 'travel', 'fund']) {
       const ids = rows.filter(r => r.kind === kind).map(r => r.id);
       if (!ids.length) continue;
       const { error } = await sb.rpc('unreconcile_rows', { p_kind: kind, p_ids: ids });
@@ -564,6 +616,109 @@ async function unreconcileSelected(){
     rows.forEach(r => { r.reconciled_at = null; r.reconciled_by = null; r.reconciled_statement_id = null; r._wasLocked = true; });
     toast(rows.length + ' un-reconciled 🔓'); renderStatement();
   } catch (err) { toast('couldn’t un-reconcile: ' + (err.message || err)); }
+}
+// ── statement import: CSV or pasted text → lines → match → tick ─────────
+function openImport(){ if (!st.card || !st.period) { toast('pick a card and period first'); return; } $('impFor').textContent = st.card.name + ' · ' + fmtDs(st.period.start) + ' – ' + fmtD(st.period.end); $('imp').classList.add('show'); }
+function closeImport(){ $('imp').classList.remove('show'); }
+function clearImport(){ st.imp = null; st.rows.forEach(r => r._matched = false); $('impResult').style.display = 'none'; renderStatement(); }
+const MONTHS = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, sept:9, oct:10, nov:11, dec:12 };
+// returns ISO or null — dd/mm/yyyy, dd-mm-yy, yyyy-mm-dd, 3 Sep 2026, 03 SEP 26, Sep 3 2026
+function parseDateToken(tok, hintYear){
+  if (!tok) return null; tok = String(tok).trim();
+  let m;
+  if ((m = tok.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return iso(+m[1], +m[2], +m[3]);
+  if ((m = tok.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/))) { let y = +m[3]; if (y < 100) y += 2000; return iso(y, +m[2], +m[1]); }
+  if ((m = tok.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\.?\s*(\d{2,4})?$/)) && MONTHS[m[2].slice(0, 4).toLowerCase()] !== undefined) { let y = m[3] ? +m[3] : hintYear; if (y < 100) y += 2000; return iso(y, MONTHS[m[2].slice(0, 4).toLowerCase()] || MONTHS[m[2].slice(0, 3).toLowerCase()], +m[1]); }
+  if ((m = tok.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s*(\d{2,4})?$/)) && MONTHS[m[1].slice(0, 3).toLowerCase()]) { let y = m[3] ? +m[3] : hintYear; if (y < 100) y += 2000; return iso(y, MONTHS[m[1].slice(0, 3).toLowerCase()], +m[2]); }
+  return null;
+  function iso(y, mo, d){ if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) return null; return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
+}
+const parseAmt = t => { if (t == null) return NaN; let s = String(t).trim(); if (!s) return NaN; const cr = /\bCR\b/i.test(s); const neg = /^\(.*\)$/.test(s) || /^-|−/.test(s) || /-$/.test(s); s = s.replace(/[^\d.,]/g, ''); if (!s) return NaN; if (/,\d{2}$/.test(s) && !/\.\d{2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); else s = s.replace(/,/g, ''); const v = parseFloat(s); if (isNaN(v)) return NaN; return (neg ? -1 : 1) * v * (cr ? -1 : 1); };
+function parseStatementText(text, hintYear){
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  // CSV? — a consistent delimiter on most lines
+  const delim = ['\t', ';', ','].find(d => lines.filter(l => l.includes(d)).length >= Math.max(2, lines.length * 0.6));
+  if (delim) {
+    const rows = lines.map(l => splitCsv(l, delim));
+    const width = Math.max(...rows.map(r => r.length));
+    const body = rows.filter(r => r.length >= Math.max(2, width - 2));
+    // find the date column and the amount column(s) by sampling
+    const score = (fn) => Array.from({ length: width }, (_, i) => body.filter(r => fn(r[i])).length);
+    const dScore = score(v => !!parseDateToken(v, hintYear)); const dCol = dScore.indexOf(Math.max(...dScore));
+    const aScore = score(v => { const n = parseAmt(v); return !isNaN(n) && n !== 0 && !parseDateToken(v, hintYear) && !/^\d{4,}$/.test(String(v).trim()); });
+    const hdr = rows[0].map(h => String(h || '').toLowerCase());
+    let aCols = [];
+    const named = n => hdr.findIndex(h => h.includes(n));
+    if (named('debit') >= 0 || named('credit') >= 0 || named('withdraw') >= 0 || named('deposit') >= 0) aCols = [named('debit') >= 0 ? named('debit') : named('withdraw'), named('credit') >= 0 ? named('credit') : named('deposit')].filter(i => i >= 0);
+    else if (named('amount') >= 0) aCols = [named('amount')];
+    else { const sorted = aScore.map((v, i) => [v, i]).filter(([v, i]) => i !== dCol && v > 0).sort((a, b) => b[0] - a[0]); aCols = sorted.length ? [sorted[0][1]] : []; }
+    if (dCol < 0 || !aCols.length) return [];
+    const descCols = Array.from({ length: width }, (_, i) => i).filter(i => i !== dCol && !aCols.includes(i));
+    const parsed = body.map((r, idx) => {
+      const date = parseDateToken(r[dCol], hintYear); if (!date) return null;
+      let amt = NaN;
+      if (aCols.length === 2) { const dv = parseAmt(r[aCols[0]]), cv = parseAmt(r[aCols[1]]); amt = !isNaN(dv) && dv !== 0 ? Math.abs(dv) : (!isNaN(cv) && cv !== 0 ? -Math.abs(cv) : NaN); }
+      else amt = parseAmt(r[aCols[0]]);
+      if (isNaN(amt) || amt === 0) return null;
+      const desc = descCols.map(i => r[i]).filter(v => v && /[A-Za-z]{2}/.test(v) && !parseDateToken(v, hintYear)).join(' ').replace(/\s+/g, ' ').trim();
+      return { n: idx, date, amount: amt, desc };
+    }).filter(Boolean);
+    // one signed column: banks write spending as negative, card statements as positive — spending dominates
+    if (aCols.length === 1 && parsed.filter(x => x.amount < 0).length > parsed.filter(x => x.amount > 0).length) parsed.forEach(x => x.amount = -x.amount);
+    return parsed;
+  }
+  // free text (pasted PDF): a date somewhere near the start, an amount at the end
+  const out = [];
+  lines.forEach((l, idx) => {
+    const dm = l.match(/^(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\.?(?:\s+(?:\d{4}|\d{2}(?![\s\d]*[A-Za-z])))?|[A-Za-z]{3,9}\.?\s+\d{1,2},?(?:\s+\d{4})?)\b/);
+    if (!dm) return;
+    const date = parseDateToken(dm[1], hintYear); if (!date) return;
+    const rest = l.slice(dm[0].length).trim();
+    const am = rest.match(/(-?\(?(?:\b(?:S\$|A\$|US\$|SGD|AUD|USD)\s?|[$€£])?-?\d{1,3}(?:[,\d]{0,3})*(?:\.\d{2})\)?\s*(?:CR|DR)?)\s*$/i);
+    if (!am) return;
+    const amt = parseAmt(am[1]); if (isNaN(amt) || amt === 0) return;
+    // a second date (posting date) right after the first is common on card statements
+    const desc = rest.slice(0, rest.length - am[0].length).replace(/^(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\.?)\s+/, '').replace(/\s+/g, ' ').trim();
+    out.push({ n: idx, date, amount: amt, desc });
+  });
+  return out;
+  function splitCsv(line, d){ const out = []; let cur = '', q = false; for (let i = 0; i < line.length; i++) { const ch = line[i]; if (ch === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q; } else if (ch === d && !q) { out.push(cur.trim()); cur = ''; } else cur += ch; } out.push(cur.trim()); return out; }
+}
+async function runImport(){
+  let text = $('impText').value;
+  const f = $('impFile').files && $('impFile').files[0];
+  if (f) text = await f.text();
+  if (!text.trim()) { toast('paste the statement or choose a CSV'); return; }
+  const hintYear = +st.period.end.slice(0, 4);
+  const lines = parseStatementText(text, hintYear);
+  if (!lines.length) { toast('couldn’t find lines with a date and an amount — check the paste, or send the file to Claude to convert'); return; }
+  // match: same |amount| (credits to credits), date within 3 days, nearest date wins, one-to-one
+  const cands = st.rows.filter(r => !r.reconciled_at && r.currency === (st.card.currency || r.currency));
+  const used = new Set(); st.rows.forEach(r => r._matched = false);
+  const dayDiff = (a, b) => Math.abs((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 864e5);
+  lines.forEach(L => {
+    const want = Math.abs(L.amount), credit = L.amount < 0;
+    const hits = cands.filter(r => !used.has(r.key) && Math.abs(Number(r.amount) - want) < 0.005 && !!r.credit === credit && dayDiff(r.date, L.date) <= 3).sort((a, b) => dayDiff(a.date, L.date) - dayDiff(b.date, L.date));
+    if (hits.length) { used.add(hits[0].key); hits[0]._matched = true; L.match = hits[0]; }
+  });
+  st.imp = { lines, total: lines.length, matched: lines.filter(L => L.match).length };
+  st.sel.clear(); lines.forEach(L => { if (L.match) st.sel.add(L.match.key); });
+  closeImport(); renderImportResult(); renderStatement();
+  const spend = lines.filter(L => L.amount > 0).reduce((a, L) => a + L.amount, 0) - lines.filter(L => L.amount < 0).reduce((a, L) => a - L.amount, 0);
+  if (!$('stTotal').value) { $('stTotal').value = spend.toFixed(2); updateStatementKpis(); }
+  if (!$('impSelectOnly').checked && st.sel.size) reconcileSelected();
+  toast(st.imp.matched + ' of ' + st.imp.total + ' statement lines matched' + (st.imp.matched ? ' — ticked for review' : ''));
+}
+function renderImportResult(){
+  const I = st.imp; if (!I) { $('impResult').style.display = 'none'; return; }
+  $('impResult').style.display = '';
+  const missing = I.lines.filter(L => !L.match);
+  const unmatchedApp = st.rows.filter(r => r.inPeriod && !r.reconciled_at && !r._matched);
+  $('impTitle').textContent = I.total + ' statement lines · ' + I.matched + ' matched';
+  $('impSummary').innerHTML = (missing.length ? '<b>' + missing.length + ' on the statement but not in the app</b> — add them in the app (or they may be fees/interest). ' : 'every statement line found a row ✓ ') + (unmatchedApp.length ? '<b>' + unmatchedApp.length + ' app rows in this period had no statement line</b> (marked ?) — wrong card, wrong date, or still to post.' : '');
+  $('impMissing').innerHTML = missing.length ? '<table><thead><tr><th style="width:110px">Date</th><th>Statement line</th><th class="amt" style="width:120px">Amount</th></tr></thead><tbody>'
+    + missing.map(L => '<tr><td class="num">' + fmtD(L.date) + '</td><td class="ell">' + esc(L.desc || '(no description)') + '</td><td class="amt"' + (L.amount < 0 ? ' style="color:var(--good)"' : '') + '>' + (L.amount < 0 ? '+' : '−') + fmtMoney(Math.abs(L.amount), st.card.currency || 'AUD') + '</td></tr>').join('') + '</tbody></table>' : '';
 }
 async function saveStatementTotal(){
   if (!st.card || !st.period) return;
@@ -656,8 +811,8 @@ function updateNcBar(){
 const bk = { src: null, rows: [] };
 const NOCHG = '__keep__';
 function openBulk(src){
-  const rows = src === 'st' ? st.rows.filter(r => st.sel.has(r.key)) : nc.rows.filter(r => nc.sel.has(r.key));
-  if (!rows.length) return;
+  const rows = (src === 'st' ? st.rows.filter(r => st.sel.has(r.key)) : nc.rows.filter(r => nc.sel.has(r.key))).filter(r => r.kind !== 'fund');
+  if (!rows.length) { toast('fund rows are edited in the app — pick daily or trip rows'); return; }
   bk.src = src; bk.rows = rows;
   const same = f => { const v = rows.map(r => r[f] ?? ''); return v.every(x => x === v[0]) ? v[0] : undefined; };
   const n = rows.length, locked = rows.filter(r => r.reconciled_at).length;
