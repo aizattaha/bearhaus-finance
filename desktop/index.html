@@ -43,13 +43,13 @@ select.descinput{appearance:none;-webkit-appearance:none;padding-right:28px;back
 #login{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px}
 .login-card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px}
 .field{width:100%;font-size:15px;background:var(--field);border:2px solid transparent;border-radius:14px;padding:12px 14px;outline:none}
-#app{display:none;grid-template-columns:232px 1fr;min-height:100vh}
+#app{display:none;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
 nav{background:var(--canvas);border-right:1px solid var(--muted);padding:22px 16px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
 nav .brand{font-weight:600;color:var(--primary);padding:6px 10px 18px;display:flex;align-items:center;gap:8px}
 nav button.nv{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;background:none;padding:10px 12px;border-radius:12px;font-size:14px;font-weight:500;color:var(--ink-soft);cursor:pointer}
 nav button.nv.active{background:var(--accent-soft);color:var(--primary)}
 nav .foot{margin-top:auto;display:flex;flex-direction:column;gap:6px}
-main{padding:28px 32px 60px;max-width:1280px;width:100%}
+main{padding:28px 32px 60px;max-width:1280px;width:100%;min-width:0}
 .screen{display:none}.screen.active{display:block}
 .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
@@ -59,7 +59,8 @@ main{padding:28px 32px 60px;max-width:1280px;width:100%}
 .kpi.dark{background:var(--primary);color:#fff}.kpi.dark .cap{color:var(--accent)}
 
 /* table */
-table{width:100%;border-collapse:collapse}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+.ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:8px 10px;border-bottom:1px solid var(--muted);font-weight:500;position:sticky;top:0;background:var(--canvas);z-index:1}
 td{padding:9px 10px;border-bottom:1px solid #EEF1F5;vertical-align:middle}
 tr.recd td{color:var(--ink-soft)}
@@ -67,7 +68,8 @@ tr.recd td .dsc{opacity:.6}
 tr.sel td{background:#F3F7FF}
 tr:hover td{background:#F7F9FC}
 td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-td .dsc{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px}
+td.num{white-space:nowrap}
+td .dsc{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:pointer}
 .lock{display:inline-flex;width:26px;height:26px;border-radius:999px;align-items:center;justify-content:center;background:var(--field);cursor:pointer;font-size:13px;border:none}
 .lock.open{background:var(--accent-soft)}.lock.muted{cursor:default;opacity:.6}
@@ -76,6 +78,16 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
 .toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,16px);background:var(--ink);color:#fff;font-size:13px;font-weight:500;padding:10px 18px;border-radius:999px;opacity:0;pointer-events:none;transition:all .2s;z-index:50;max-width:90vw}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .empty{padding:28px;text-align:center;color:var(--ink-soft)}
+.overlay{display:none;position:fixed;inset:0;background:rgba(26,43,68,.35);z-index:40;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+.bulkcard{width:100%;max-width:640px;box-shadow:var(--shadow-lift)}
+.bkgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.bkf{display:flex;flex-direction:column;gap:4px}
+.bkf .descinput{width:100%}
+.bkf.ro .descinput{background:#EEF1F5;color:var(--ink-soft);cursor:not-allowed}
+.bkf select.descinput.changed{border-color:var(--primary);background:var(--accent-soft)}
+.bkf input.descinput.changed{border-color:var(--primary);background:var(--accent-soft)}
+.cap b{color:var(--ink)}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--accent);border-top-color:var(--primary);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(max-width:860px){#app{grid-template-columns:1fr}nav{position:static;height:auto;flex-direction:row;flex-wrap:wrap}nav .foot{margin-top:0}main{padding:18px 16px 60px}.grid3{grid-template-columns:1fr}}
@@ -98,7 +110,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
   <nav>
     <div class="brand">🐻 BearHaus <span class="tag blue">Desk</span></div>
     <button class="nv active" data-scr="statements" onclick="go('statements')">📄 Statements</button>
-    <button class="nv" data-scr="nocard" onclick="go('nocard')">🗂️ No card</button>
+    <button class="nv" data-scr="nocard" onclick="go('nocard')">🗂️ Transactions</button>
     <button class="nv" data-scr="pots" onclick="go('pots')">🌊 Pots</button>
     <div class="foot">
       <a class="btn-tert" href="../app/" style="text-decoration:none">← mobile app</a>
@@ -140,7 +152,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="stAll" title="select every unreconciled row shown"></th>
-              <th style="width:110px">Date</th><th>Description</th><th style="width:150px">Category</th><th style="width:90px">Who</th><th style="width:80px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:60px"></th>
+              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:80px">Who</th><th style="width:70px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:50px"></th>
             </tr></thead>
             <tbody id="stRows"><tr><td colspan="8" class="empty">pick a card</td></tr></tbody>
           </table>
@@ -149,6 +161,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
           <span class="lbl" id="stSelInfo">nothing selected</span>
           <button class="btn btn-primary" id="stReconcile" onclick="reconcileSelected()" disabled>Reconcile selected</button>
           <button class="btn btn-soft" id="stUnrec" onclick="unreconcileSelected()" disabled>Un-reconcile selected</button>
+          <button class="btn btn-soft" id="stEdit" onclick="openBulk('st')" disabled>Edit selected</button>
           <span style="flex:1"></span>
           <button class="btn btn-soft" id="stClose" onclick="toggleCloseStatement()" disabled>Close statement</button>
         </div>
@@ -158,11 +171,12 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
     <!-- NO CARD -->
     <section class="screen" id="scr-nocard">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
-        <div><p class="cap">Tidy up</p><h1 class="h1">Rows with no card</h1></div>
-        <p class="cap">a row with no card can never sit on a statement — give these a card and they join the right period</p>
+        <div><p class="cap">Browse &amp; bulk edit</p><h1 class="h1">Transactions</h1></div>
+        <p class="cap">tick several rows → <b>Edit selected</b> changes the card, category, who paid or comments on all of them at once · a row with no card can never sit on a statement</p>
       </div>
       <div class="toolbar">
         <select class="descinput" id="ncMonth" style="min-width:180px"></select>
+        <select class="descinput" id="ncCardF" style="min-width:220px"></select>
         <input class="descinput" id="ncSearch" placeholder="search descriptions" style="min-width:240px">
         <span class="cap" id="ncMeta"></span>
       </div>
@@ -171,15 +185,14 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="ncAll"></th>
-              <th style="width:110px">Date</th><th>Description</th><th style="width:150px">Category</th><th style="width:90px">Who</th><th style="width:80px">Source</th><th class="amt" style="width:120px">Amount</th>
+              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:80px">Who</th><th style="width:160px">Card</th><th style="width:70px">Source</th><th class="amt" style="width:110px">Amount</th>
             </tr></thead>
             <tbody id="ncRows"><tr><td colspan="7" class="empty">loading…</td></tr></tbody>
           </table>
         </div>
         <div class="sticky-bar">
           <span class="lbl" id="ncSelInfo">nothing selected</span>
-          <select class="descinput" id="ncCard" style="min-width:240px"></select>
-          <button class="btn btn-primary" id="ncApply" onclick="applyCardToSelected()" disabled>Set card on selected</button>
+          <button class="btn btn-primary" id="ncEdit" onclick="openBulk('nc')" disabled>Edit selected</button>
           <span style="flex:1"></span>
           <button class="btn-tert" id="ncMore" onclick="loadNoCard(false)" style="display:none">Load more</button>
         </div>
@@ -197,6 +210,29 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
   </main>
 </div>
 
+<div id="bulk" class="overlay" onclick="if(event.target===this)closeBulk()">
+  <div class="card bulkcard">
+    <div class="row" style="justify-content:space-between">
+      <div><p class="cap">Bulk edit</p><h2 class="h2" id="bkTitle">3 rows</h2></div>
+      <button class="btn-tert" onclick="closeBulk()">✕ close</button>
+    </div>
+    <p class="cap" style="margin-top:4px">Greyed fields differ per row and can't be changed together — open a row in the app for those. Only the fields you change are written.</p>
+    <div class="bkgrid">
+      <label class="bkf ro"><span class="cap">Date</span><input class="descinput" id="bkDate" disabled></label>
+      <label class="bkf ro"><span class="cap">Amount</span><input class="descinput" id="bkAmount" disabled></label>
+      <label class="bkf ro" style="grid-column:1 / -1"><span class="cap">Description</span><input class="descinput" id="bkDesc" disabled></label>
+      <label class="bkf"><span class="cap">Card</span><select class="descinput" id="bkCard"></select></label>
+      <label class="bkf"><span class="cap">Category</span><select class="descinput" id="bkCat"></select></label>
+      <label class="bkf"><span class="cap">Who paid</span><select class="descinput" id="bkWho"></select></label>
+      <label class="bkf"><span class="cap">Comments</span><input class="descinput" id="bkComments" placeholder="— no change —"></label>
+    </div>
+    <p class="cap" id="bkNote" style="margin-top:10px"></p>
+    <div class="row" style="justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-soft" onclick="closeBulk()">Cancel</button>
+      <button class="btn btn-primary" id="bkApply" onclick="applyBulk()">Apply to selected</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -254,16 +290,17 @@ if (sb) {
 } else { document.body.innerHTML = '<p class="empty">couldn’t load — check your connection, then reload</p>'; }
 
 // ── context ─────────────────────────────────────────────────
-let CTX = { hh: null, profiles: [], cards: [], funds: [] };
+let CTX = { hh: null, profiles: [], cards: [], funds: [], cats: [] };
 async function loadContext(){
-  const [hh, profiles, cards, funds] = await Promise.all([
+  const [hh, profiles, cards, funds, cats] = await Promise.all([
     sb.from('households').select('id, name, joint_label, pot_start').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('payment_methods').select('id, name, profile_id, kind, closing_day, currency, travel_only, is_archived, sort_order').order('sort_order'),
     sb.from('funds').select('id, name, country, currency, is_spend_pot, sort_order').eq('is_active', true).order('sort_order'),
+    sb.from('categories').select('id, kind, name, group_name, icon, sort_order').eq('is_active', true).order('sort_order'),
   ]);
   if (hh.error) { toast('couldn’t load household: ' + hh.error.message); return; }
-  CTX = { hh: hh.data, profiles: profiles.data || [], cards: cards.data || [], funds: funds.data || [] };
+  CTX = { hh: hh.data, profiles: profiles.data || [], cards: cards.data || [], funds: funds.data || [], cats: cats.data || [] };
   $('hhLabel').textContent = CTX.hh.name + ' household';
 }
 const who = pid => pid ? ((CTX.profiles.find(p => p.id === pid) || {}).display_name || '?') : (CTX.hh && CTX.hh.joint_label || 'Joint');
@@ -372,8 +409,8 @@ function renderStatement(){
       + '<td>' + (locked ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + '>') + '</td>'
       + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
       + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
-      + '<td>' + esc(r.category) + '</td>'
-      + '<td>' + esc(who(r.payer_profile_id)) + '</td>'
+      + '<td class="ell">' + esc(r.category) + '</td>'
+      + '<td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
       + '<td><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
       + '<td class="amt">−' + fmtMoney(r.amount, r.currency) + curTag + '</td>'
       + '<td>' + (locked ? '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>' : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
@@ -416,6 +453,7 @@ function updateStatementKpis(){
   const selTotal = selRows.reduce((s, r) => s + Number(r.amount), 0);
   $('stSelInfo').textContent = n ? n + ' selected · ' + fmtMoney(selTotal, cur) : 'nothing selected';
   $('stReconcile').disabled = !n;
+  $('stEdit').disabled = !n;
   $('stUnrec').disabled = !c || !st.rows.some(r => r.reconciled_at && r.reconciled_by !== 'auto');
   $('stClose').disabled = !c;
   const closed = st.statement && st.statement.closed_at;
@@ -506,15 +544,20 @@ async function loadNoCard(reset){
     $('ncMonth').innerHTML = opts;
     $('ncMonth').onchange = () => loadNoCard(true);
     let deb = null; $('ncSearch').oninput = () => { clearTimeout(deb); deb = setTimeout(() => loadNoCard(true), 350); };
-    $('ncCard').innerHTML = cardOptions(null, true) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
-    $('ncCard').onchange = updateNcBar;
+    $('ncCardF').innerHTML = '<option value="">any card</option><option value="none">— no card —</option>' + cardOptions(null, false) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
+    const u = new URL(location.href); if (u.searchParams.get('rows') === 'nocard') $('ncCardF').value = 'none';
+    $('ncCardF').onchange = () => loadNoCard(true);
     $('ncAll').onchange = () => { nc.rows.forEach(r => { if ($('ncAll').checked) nc.sel.add(r.key); else nc.sel.delete(r.key); }); renderNoCard(); };
   }
-  const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch);
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, reconciled_at';
+  const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch), cf = $('ncCardF').value;
+  const cashCard = CTX.cards.find(c => c.kind === 'cash');
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by';
   const mk = (t, off, extra) => {
-    let qq = sb.from(t).select(sel + (extra || '')).is('payment_method_id', null).neq('category', 'Payment')
+    let qq = sb.from(t).select(sel + (extra || '')).neq('category', 'Payment')
       .order('date', {ascending:false}).range(off, off + NC_PAGE - 1);
+    if (cf === 'none') qq = qq.is('payment_method_id', null);
+    else if (cf === 'cash') qq = cashCard ? qq.eq('payment_method_id', cashCard.id) : qq.eq('payment_method_id', '00000000-0000-0000-0000-000000000000');
+    else if (cf) qq = qq.eq('payment_method_id', cf);
     if (m) qq = qq.gte('date', m).lt('date', addMonths(m, 1));
     if (q) qq = qq.ilike('description', '%' + q + '%');
     return qq;
@@ -527,14 +570,15 @@ async function loadNoCard(reset){
 }
 function renderNoCard(){
   const body = $('ncRows');
-  if (!nc.rows.length) { body.innerHTML = '<tr><td colspan="7" class="empty">every row here has a card 🐻</td></tr>'; }
-  else body.innerHTML = nc.rows.map(r => '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + '" data-key="' + r.key + '">'
+  if (!nc.rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">' + ($('ncCardF').value === 'none' ? 'every row here has a card 🐻' : 'nothing matches') + '</td></tr>'; }
+  else body.innerHTML = nc.rows.map(r => { const c = cardById(r.payment_method_id); return '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + (r.reconciled_at ? ' recd' : '') + '" data-key="' + r.key + '">'
     + '<td><input type="checkbox" class="rowck"' + (nc.sel.has(r.key) ? ' checked' : '') + '></td>'
     + '<td class="num">' + fmtD(r.date) + '</td>'
     + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
-    + '<td>' + esc(r.category) + '</td><td>' + esc(who(r.payer_profile_id)) + '</td>'
+    + '<td class="ell">' + esc(r.category) + '</td><td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
+    + '<td class="ell" title="' + esc(c ? c.name : '') + '">' + (c ? esc(c.name) : '<span class="tag warn">no card</span>') + (r.reconciled_at ? ' <span title="reconciled">🔒</span>' : '') + '</td>'
     + '<td><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
-    + '<td class="amt">−' + fmtMoney(r.amount, r.currency) + '</td></tr>').join('');
+    + '<td class="amt">−' + fmtMoney(r.amount, r.currency) + '</td></tr>'; }).join('');
   body.querySelectorAll('.rowck').forEach(ck => ck.onchange = ev => {
     const key = ev.target.closest('tr').dataset.key;
     if (ev.target.checked) nc.sel.add(key); else nc.sel.delete(key);
@@ -547,24 +591,76 @@ function renderNoCard(){
 function updateNcBar(){
   const n = nc.sel.size;
   $('ncSelInfo').textContent = n ? n + ' selected' : 'nothing selected';
-  $('ncApply').disabled = !n || !$('ncCard').value;
+  $('ncEdit').disabled = !n;
 }
-async function applyCardToSelected(){
-  const v = $('ncCard').value; if (!v) return;
-  const card = v === 'cash' ? CTX.cards.find(c => c.kind === 'cash') : cardById(v);
-  if (!card) { toast('no Cash card in Settings yet'); return; }
-  const rows = nc.rows.filter(r => nc.sel.has(r.key));
-  $('ncApply').disabled = true;
+// ── bulk edit (shared by Statements and Transactions) ───────
+const bk = { src: null, rows: [] };
+const NOCHG = '__keep__';
+function openBulk(src){
+  const rows = src === 'st' ? st.rows.filter(r => st.sel.has(r.key)) : nc.rows.filter(r => nc.sel.has(r.key));
+  if (!rows.length) return;
+  bk.src = src; bk.rows = rows;
+  const same = f => { const v = rows.map(r => r[f] ?? ''); return v.every(x => x === v[0]) ? v[0] : undefined; };
+  const n = rows.length, locked = rows.filter(r => r.reconciled_at).length;
+  $('bkTitle').textContent = n + (n === 1 ? ' row' : ' rows') + (locked ? ' · ' + locked + ' reconciled 🔒' : '');
+  const d = same('date'); $('bkDate').value = d !== undefined ? fmtD(d) : 'mixed · ' + fmtDs(rows.reduce((a, r) => r.date < a ? r.date : a, rows[0].date)) + ' – ' + fmtDs(rows.reduce((a, r) => r.date > a ? r.date : a, rows[0].date));
+  const curs = [...new Set(rows.map(r => r.currency))];
+  $('bkAmount').value = curs.length === 1 ? fmtMoney(rows.reduce((a, r) => a + Number(r.amount), 0), curs[0]) + ' total' : 'mixed currencies';
+  const ds = same('description'); $('bkDesc').value = ds !== undefined ? ds : 'mixed';
+  const keep = '<option value="' + NOCHG + '">— no change —</option>';
+  $('bkCard').innerHTML = keep + cardOptions(null, false) + '<optgroup label="Other"><option value="cash">Cash</option><option value="none">(no card)</option></optgroup>';
+  const kinds = [...new Set(rows.map(r => r.kind))];
+  const cats = CTX.cats.filter(c => kinds.includes(c.kind));
+  const groups = [...new Set(cats.map(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other')))];
+  $('bkCat').innerHTML = keep + groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other') === g).map(c => '<option value="' + esc(c.name) + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
+  $('bkWho').innerHTML = keep + CTX.profiles.map(p => '<option value="' + p.id + '">' + esc(p.display_name) + '</option>').join('') + '<option value="joint">' + esc(CTX.hh.joint_label || 'Joint') + '</option>';
+  ['bkCard', 'bkCat', 'bkWho'].forEach(id => { $(id).value = NOCHG; $(id).classList.remove('changed'); $(id).onchange = () => $(id).classList.toggle('changed', $(id).value !== NOCHG); });
+  const cm = same('comments'); $('bkComments').value = ''; $('bkComments').placeholder = cm ? cm : (cm === undefined ? 'mixed — type to replace on all' : '— no change —'); $('bkComments').classList.remove('changed');
+  $('bkComments').oninput = () => $('bkComments').classList.toggle('changed', !!$('bkComments').value);
+  $('bkNote').innerHTML = locked ? '<span class="tag warn">' + locked + ' reconciled</span> card and who-paid stay as they are on reconciled rows (un-reconcile first); category and comments still change.' : '';
+  $('bkApply').disabled = false;
+  $('bulk').classList.add('show');
+}
+function closeBulk(){ $('bulk').classList.remove('show'); }
+async function applyBulk(){
+  const rows = bk.rows; if (!rows.length) return;
+  const full = {}, soft = {};
+  const cardV = $('bkCard').value, catV = $('bkCat').value, whoV = $('bkWho').value, cmV = $('bkComments').value;
+  let cardObj = null;
+  if (cardV !== NOCHG) {
+    if (cardV === 'none') { full.payment_method_id = null; full.paid_with = null; }
+    else { cardObj = cardV === 'cash' ? CTX.cards.find(c => c.kind === 'cash') : cardById(cardV); if (!cardObj) { toast('no Cash card in Settings yet'); return; } full.payment_method_id = cardObj.id; full.paid_with = cardObj.name; }
+  }
+  if (whoV !== NOCHG) full.payer_profile_id = whoV === 'joint' ? null : whoV;
+  if (catV !== NOCHG) soft.category = catV;
+  if (cmV) soft.comments = cmV;
+  if (!Object.keys(full).length && !Object.keys(soft).length) { toast('nothing changed'); return; }
+  $('bkApply').disabled = true;
+  let done = 0, skipped = 0;
   try {
     for (const kind of ['daily', 'travel']) {
-      const ids = rows.filter(r => r.kind === kind).map(r => r.id);
-      if (!ids.length) continue;
-      const { error } = await sb.from(kind === 'daily' ? 'daily_expenses' : 'travel_expenses').update({ payment_method_id: card.id, paid_with: card.name }).in('id', ids);
-      if (error) throw error;
+      const t = kind === 'daily' ? 'daily_expenses' : 'travel_expenses';
+      const open = rows.filter(r => r.kind === kind && !r.reconciled_at).map(r => r.id);
+      const lockedIds = rows.filter(r => r.kind === kind && r.reconciled_at).map(r => r.id);
+      const all = Object.assign({}, soft, full);
+      if (open.length) { const { error } = await sb.from(t).update(all).in('id', open); if (error) throw error; done += open.length; }
+      if (lockedIds.length) {
+        if (Object.keys(soft).length) { const { error } = await sb.from(t).update(soft).in('id', lockedIds); if (error) throw error; done += lockedIds.length; }
+        if (Object.keys(full).length) skipped += lockedIds.length;
+      }
     }
-    toast(rows.length + ' rows → ' + card.name + (card.kind === 'cash' ? ' (reconciled automatically)' : ''));
-    nc.rows = nc.rows.filter(r => !nc.sel.has(r.key)); nc.sel.clear(); renderNoCard();
-  } catch (err) { toast('couldn’t update: ' + (err.message || err)); updateNcBar(); }
+    rows.forEach(r => { Object.assign(r, soft); if (!r.reconciled_at) { Object.assign(r, full); if (cardObj && cardObj.kind === 'cash') { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'auto'; } } });
+    toast(done + ' updated' + (skipped ? ' · ' + skipped + ' reconciled rows kept their card/payer' : '') + (cardObj && cardObj.kind === 'cash' ? ' · cash rows reconcile automatically' : ''));
+    closeBulk();
+    if (bk.src === 'st') { st.sel.clear(); loadStatement(); }
+    else {
+      const cf = $('ncCardF').value;
+      // rows that no longer match the filter leave the list
+      if (cf === 'none' && cardV !== NOCHG && cardV !== 'none') nc.rows = nc.rows.filter(r => !nc.sel.has(r.key));
+      else if (cf && cf !== 'none' && cardV !== NOCHG && cardV !== cf && !(cf === 'cash' && cardV === 'cash')) nc.rows = nc.rows.filter(r => !nc.sel.has(r.key));
+      nc.sel.clear(); renderNoCard();
+    }
+  } catch (err) { toast('couldn’t update: ' + (err.message || err)); $('bkApply').disabled = false; }
 }
 
 // ── pots ────────────────────────────────────────────────────
