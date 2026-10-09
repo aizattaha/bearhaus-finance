@@ -2005,14 +2005,25 @@ function renderPlanSheet(){
       };
       box.appendChild(addB);
     } else {
-      const byPot = {};
+      // review: one card per pot the budget lands in; the section header carries the total
+      const byPot = {}, potOrder = [];
       let total = 0;
-      keysHere.forEach(k => { const v = d.cat[k] || 0; if (!(v > 0)) return; total += v; const pt = resolvePot(d, k); const pn = pt ? pt.name : '—'; byPot[pn] = (byPot[pn] || 0) + v; });
+      keysHere.forEach(k => {
+        const v = d.cat[k] || 0; if (!(v > 0)) return;
+        total += v;
+        const pt = resolvePot(d, k); const pn = pt ? pt.name : 'no pot';
+        if (!byPot[pn]) { byPot[pn] = 0; potOrder.push(pn); }
+        byPot[pn] += v;
+      });
       if (total > 0) {
-        const capTxt = Object.keys(byPot).length > 1
-          ? Object.entries(byPot).map(([n, v]) => fmtMoney(v, cur) + ' → ' + esc(n)).join(' · ')
-          : null;
-        box.appendChild(row('🎯', 'Spending budget', '<span class="amt" style="color:var(--ink)">−' + fmtMoney(total, cur) + '</span>', capTxt));
+        const hdr = box.lastElementChild;   // the "spending budget" section label just added
+        if (hdr && potOrder.length > 1) {
+          hdr.style.cssText += ';display:flex;justify-content:space-between;align-items:baseline';
+          hdr.innerHTML = '<span>spending budget</span><span class="lbl num" style="color:var(--ink-soft);text-transform:none;letter-spacing:0">−' + fmtMoney(total, cur) + '</span>';
+        }
+        potOrder.forEach(pn => box.appendChild(row('🎯', 'Spending budget',
+          '<span class="amt" style="color:var(--ink)">−' + fmtMoney(byPot[pn], cur) + '</span>',
+          'lands in ' + esc(pn))));
       } else box.appendChild(capEl('no spending budget set — tap Edit to add one'));
     }
 
