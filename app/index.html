@@ -440,6 +440,7 @@ input[type="date"].descinput{min-width:0}
         <button class="mr-side" id="mrNextLabel" style="text-align:right"></button>
         <button class="mr-arrow" id="mrNext" aria-label="Later month">›</button>
       </div>
+      <div class="seg" id="budCountry" style="display:none"></div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span class="h2">Last 6 months</span><span class="pill" id="budCurPill">A$</span>
@@ -457,14 +458,8 @@ input[type="date"].descinput{min-width:0}
         </div>
       </div>
       <div class="card" id="floatCard" style="display:none">
-        <div style="display:flex;gap:12px;align-items:center">
-          <div class="rowicon">🌊</div>
-          <div style="flex:1;min-width:0">
-            <div class="lbl">Float</div>
-            <div class="cap">the buffer that rides out an over-budget month</div>
-          </div>
-          <div class="lbl num" id="floatBal" style="font-size:16px;color:var(--primary)"></div>
-        </div>
+        <p class="cap" style="margin-bottom:6px">spending pots · the budget lands here and spending counts it down</p>
+        <div id="potRows"></div>
       </div>
       <div id="paceCards" style="display:flex;flex-direction:column;gap:16px"></div>
     </section>
@@ -1207,6 +1202,19 @@ let BUDGET_ROWS = [
 let CHART_GROUPS = ['Rent','Daily Expenses','Education','Transportation'];   // rest = Other; rebuilt from the household's groups
 const CHART_COLORS = ['#004A98','#5A8AC7','#B4CEFF','#E4EEFF','#E6E5E5'];
 let budgetMonth = null, budgetInit = false, budSeq = 0;
+let budgetCur = null;   // the Budget page's country lens (one currency at a time)
+function budgetLensCur(){ return budgetCur || primaryCur(); }
+function renderBudgetLens(){
+  const seg = $('budCountry'), curs = homeCurrencies();
+  if (curs.length < 2) { seg.style.display = 'none'; return; }
+  seg.style.display = '';
+  const labelOf = c => { const f = (CTX.funds || []).find(x => x.currency === c); return f ? countryTitle(f.country) : curLabel(c); };
+  const labels = curs.map(labelOf);
+  buildSeg('budCountry', labels, Math.max(curs.indexOf(budgetLensCur()), 0), () => {
+    budgetCur = curs[labels.indexOf(segSel('budCountry'))] || curs[0];
+    selectBudgetMonth(budgetMonth);
+  });
+}
 
 const curMonthIso = () => { const n = new Date(); return isoDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
 function addMonths(iso, n){
@@ -1235,6 +1243,7 @@ function initBudget(){
   };
   $('mrPrev').onclick = $('mrPrevLabel').onclick = step(-1);
   $('mrNext').onclick = $('mrNextLabel').onclick = step(1);
+  renderBudgetLens();
   const cached = localStorage.getItem('bh-budget');
   if (cached) { try { renderBudget(JSON.parse(cached)); } catch(e){} }
   selectBudgetMonth(budgetMonth);
@@ -1245,19 +1254,20 @@ async function selectBudgetMonth(m){
   updateRotor();
   const chartStart = addMonths(m, -5), next = addMonths(m, 1);
   try {
-    const [exp, bud, flt] = await Promise.all([
+    const LC = budgetLensCur();
+    renderBudgetLens();
+    const [exp, bud, pots] = await Promise.all([
       sb.from('daily_expenses').select('id, date, description, category, amount, currency')
         .gte('date', chartStart).lt('date', next).neq('category', 'Payment'),
       sb.from('category_budgets').select('month, category_group, amount')
-        .gte('month', chartStart).lte('month', m).eq('currency', primaryCur()),
-      sb.from('fund_balances').select('balance, currency').eq('name', 'Float').maybeSingle(),
+        .gte('month', chartStart).lte('month', m).eq('currency', LC),
+      sb.from('fund_balances').select('fund_id, name, balance, currency').eq('is_spend_pot', true).eq('is_active', true).eq('currency', LC).order('sort_order'),
     ]);
     if (exp.error) throw exp.error;
     if (bud.error) throw bud.error;
     if (mySeq !== budSeq) return;
-    const state = { month: m, chartStart, exp: exp.data, bud: bud.data, cur: primaryCur(),
-                    float: flt.data ? Number(flt.data.balance) : null,
-                    floatCur: flt.data ? flt.data.currency : null };
+    const state = { month: m, chartStart, exp: exp.data, bud: bud.data, cur: LC,
+                    pots: pots.error ? [] : pots.data || [] };
     localStorage.setItem('bh-budget', JSON.stringify(state));
     renderBudget(state);
   } catch (err) { toast('couldn’t load budget: ' + err.message); }
@@ -1337,12 +1347,14 @@ function renderBudget(st){
   $('budPlanBtn').style.display = st.month === curMonthIso() ? 'inline-block' : 'none';
   $('budTotalCard').dataset.month = st.month;
 
-  // float buffer card
-  if (st.float !== null && st.float !== undefined) {
-    $('floatCard').style.display = 'block';
-    $('floatBal').textContent = fmtMoney(st.float, st.floatCur || PC);
-    $('floatBal').style.color = st.float < 0 ? 'var(--bad)' : 'var(--primary)';
-  }
+  // spending pots of this lens (one per line; several per currency are allowed)
+  const pots = st.pots || [];
+  $('floatCard').style.display = pots.length ? 'block' : 'none';
+  $('potRows').innerHTML = pots.map(p =>
+    '<div style="display:flex;gap:12px;align-items:center;padding:6px 0">'
+    + '<div class="rowicon">' + fundIcon(p.name) + '</div>'
+    + '<div style="flex:1;min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.name) + '</div></div>'
+    + '<div class="lbl num" style="font-size:16px;color:' + (Number(p.balance) < 0 ? 'var(--bad)' : 'var(--primary)') + '">' + fmtMoney(p.balance, p.currency) + '</div></div>').join('');
 
   // pace cards with drill-down
   const box = $('paceCards'); box.innerHTML = '';
@@ -1516,8 +1528,10 @@ function renderFunds(st){
   const incBreak = (st.inc || []).map(r =>
     row('<span style="padding-left:12px">↳ ' + esc(r.source_name || 'Income') + '</span>',
         CURS.map(c => c === r.currency ? cell(Number(r.amount), c, 'var(--good)', 'var(--bad)') : blank))).join('');
+  const ccOfCur = c => { const b = st.bal.find(x => x.currency === c); return b ? countryTitle(b.country) : curLabel(c); };
   $('flowRows').innerHTML =
-    '<div id="incHead" style="cursor:pointer">'
+    row('', CURS.map(c => '<span class="num cap" style="font-weight:600;color:var(--primary)">' + esc(ccOfCur(c)) + '</span>'))
+    + '<div id="incHead" style="cursor:pointer">'
       + row('Income · ' + (st.inc || []).length + ((st.inc || []).length === 1 ? ' source ▾' : ' sources ▾'), cellsFor(c => sum.inc[c] || 0, 'var(--good)', 'var(--bad)'))
     + '</div><div id="incBreak" style="display:none">' + incBreak + '</div>'
     + row('Spending budget', cellsFor(c => -(sum.cat[c] || 0), 'var(--ink)', 'var(--ink)'))
@@ -1734,10 +1748,8 @@ async function toggleFundDrill(btn, fund){
       .eq('fund_id', fund.fund_id)
       .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(isPot ? 12 : 8),
     // a spending pot also shows ONE computed line per month: "October 2026 spending − A$x"
-    // (derived live from daily expenses, never written — the same maths as the balance view)
-    isPot ? sb.from('daily_expenses').select('date, amount').eq('currency', fund.currency).neq('category', 'Payment')
-              .gte('date', CTX.hh.pot_start).lte('date', todayIso()).order('date', {ascending:false}).limit(2000)
-          : Promise.resolve({ data: [] }),
+    // (pot_month_spend uses the same category→pot mapping as the balance view — never written)
+    isPot ? sb.rpc('pot_month_spend', { p_fund: fund.fund_id }) : Promise.resolve({ data: [] }),
   ]);
   if (error) { d.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
   d.innerHTML = '';
@@ -1748,13 +1760,9 @@ async function toggleFundDrill(btn, fund){
       + (isoDate(new Date()) < CTX.hh.pot_start ? ' (from ' + monthName(CTX.hh.pot_start, true) + ')' : '');
     d.appendChild(p);
   }
-  const spendRows = {};
-  ((sp && sp.data) || []).forEach(r => {
-    const M = r.date.slice(0, 7);
-    if (!spendRows[M]) spendRows[M] = { spend: true, month: M + '-01', date: r.date, amount: 0, n: 0 };
-    spendRows[M].amount += Number(r.amount); spendRows[M].n += 1;
-  });
-  const list = (data || []).concat(Object.values(spendRows).filter(x => x.amount > 0.005))
+  const spendRows = ((sp && !sp.error && sp.data) || []).map(r =>
+    ({ spend: true, month: r.month, date: r.last_date || r.month, amount: Number(r.amount), n: r.n }));
+  const list = (data || []).concat(spendRows.filter(x => x.amount > 0.005))
     .sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : (a.spend ? -1 : b.spend ? 1 : 0));
   list.forEach(t => {
     if (t.spend) {
@@ -1794,6 +1802,13 @@ async function toggleFundDrill(btn, fund){
 // pre-filled box in place. the equation footer stays live in both states.
 let planDraft = null, planEditMode = false, planSaving = false, applying = false;
 
+// budget lines for a month, with their pot when the database has that column yet
+// (the pots-by-category migration may deploy a few minutes after the app)
+async function catBudgets(month){
+  const r = await sb.from('category_budgets').select('id, category_group, currency, amount, pot_fund_id').eq('month', month);
+  if (r.error && /pot_fund_id/.test(r.error.message || '')) return sb.from('category_budgets').select('id, category_group, currency, amount').eq('month', month);
+  return r;
+}
 async function openPlanSheet(){
   if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
   $('sh-chooser').style.display = 'none'; $('sh-form').style.display = 'none';
@@ -1809,7 +1824,7 @@ async function openPlanSheet(){
     const [funds, inc, cat, fb, applied] = await Promise.all([
       sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_leftover_target, is_spend_pot').eq('is_active', true).order('sort_order'),
       sb.from('income_budgets').select('id, source_name, currency, amount').eq('month', m),
-      sb.from('category_budgets').select('id, category_group, currency, amount').eq('month', m),
+      catBudgets(m),
       sb.from('fund_budgets').select('id, fund_id, amount').eq('month', m),
       sb.from('fund_transactions').select('date').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
     ]);
@@ -1824,7 +1839,7 @@ async function openPlanSheet(){
       if (prevMonth) {
         const [i2, c2, f2] = await Promise.all([
           sb.from('income_budgets').select('source_name, currency, amount').eq('month', prevMonth),
-          sb.from('category_budgets').select('category_group, currency, amount').eq('month', prevMonth),
+          catBudgets(prevMonth),
           sb.from('fund_budgets').select('fund_id, amount').eq('month', prevMonth),
         ]);
         pInc = i2.data || []; pCat = c2.data || []; pFb = f2.data || [];
@@ -1836,10 +1851,14 @@ async function openPlanSheet(){
       funds: funds.data || [],
       inc: (inc.data.length ? inc.data : pInc).map(r => ({ source_name: r.source_name, currency: r.currency, amount: Number(r.amount) })),
       cat: {},   // 'group|currency' -> amount
+      catPot: {},// 'group|currency' -> pot fund id the line lands in (null = currency default)
       fb: {},    // fund_id -> amount
       on: {},    // fund_id -> false when skipped in review
     };
-    (cat.data.length ? cat.data : pCat).forEach(r => planDraft.cat[r.category_group + '|' + r.currency] = Number(r.amount));
+    (cat.data.length ? cat.data : pCat).forEach(r => {
+      planDraft.cat[r.category_group + '|' + r.currency] = Number(r.amount);
+      if (r.pot_fund_id) planDraft.catPot[r.category_group + '|' + r.currency] = r.pot_fund_id;
+    });
     (fb.data.length ? fb.data : pFb).forEach(r => planDraft.fb[r.fund_id] = Number(r.amount));
     // never open an empty "money in" — a waiting Salary row teaches where income goes
     if (!planDraft.inc.length) planDraft.inc.push({ source_name: 'Salary', currency: primaryCur(), amount: 0 });
@@ -1848,6 +1867,14 @@ async function openPlanSheet(){
   } catch (err) { $('planEdBody').innerHTML = '<p class="cap">couldn’t load: ' + esc(err.message || err) + '</p>'; }
 }
 
+// pots a budget line can land in, for one currency, in fund order
+function potsFor(funds, cur){ return (funds || []).filter(f => f.is_spend_pot && f.currency === cur); }
+// where a budget line lands: its own pot if still valid, else the currency's default pot
+function resolvePot(d, key){
+  const cur = key.slice(key.lastIndexOf('|') + 1);
+  const pots = potsFor(d.funds, cur);
+  return pots.find(f => f.id === d.catPot[key]) || pots[0] || null;
+}
 function renderPlanSheet(){
   const d = planDraft, box = $('planEdBody'), PC = primaryCur(), edit = planEditMode;
   box.innerHTML = '';
@@ -1869,6 +1896,22 @@ function renderPlanSheet(){
     else if (right) r.appendChild(right);
     return r;
   };
+  // the pot chip on a spending line: tap cycles through the currency's pots
+  const potChip = key => {
+    const cur = key.slice(key.lastIndexOf('|') + 1), pots = potsFor(d.funds, cur);
+    if (pots.length < 2) return '';
+    const cp = resolvePot(d, key);
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tag'; b.style.cssText = 'cursor:pointer;border:none;max-width:120px;overflow:hidden;text-overflow:ellipsis;background:var(--accent-soft);color:var(--primary)';
+    b.textContent = '→ ' + (cp ? cp.name : 'pot');
+    b.title = 'which pot this budget lands in';
+    b.onclick = () => {
+      const i = pots.findIndex(f => f.id === (cp ? cp.id : null));
+      d.catPot[key] = pots[(i + 1) % pots.length].id;
+      renderPlanSheet();
+    };
+    return b;
+  };
 
   // the one full-width mode button up top
   const top = document.createElement('button');
@@ -1880,112 +1923,160 @@ function renderPlanSheet(){
   if (!edit && d.saved && !d.appliedOn) box.appendChild(capEl('plan saved ✓ — nothing has moved yet. Apply below writes the fund contributions and moves the leftover when you’re ready.'));
   if (edit && d.appliedOn) box.appendChild(capEl('heads-up: this month’s contributions were already applied — edits change the plan, not money already moved'));
 
-  // money in
-  box.appendChild(sec('money in'));
-  d.inc.forEach(rr => {
-    box.appendChild(row('💵', esc(rr.source_name),
-      edit ? amtInput(rr.amount, v => rr.amount = v)
-           : '<span class="amt">+' + fmtMoney(rr.amount, rr.currency) + '</span>',
-      edit ? curLabel(rr.currency) : null));
-  });
-  if (edit) {
-    const add = document.createElement('button');
-    add.type = 'button'; add.className = 'applyrow';
-    add.style.cssText = 'background:none;border:1px dashed var(--accent);color:var(--primary);justify-content:center;font-weight:500';
-    add.textContent = '＋ add income source';
-    add.onclick = () => {
-      const f = document.createElement('div');
-      f.style.cssText = 'display:flex;gap:8px;margin-top:6px;align-items:center';
-      f.innerHTML = '<input class="descinput" placeholder="new source" style="flex:1;min-width:0"><div class="seg" id="planIncSeg"></div><button class="btn-mini" type="button">Add</button>';
-      add.replaceWith(f);
-      const incMap = {};
-      const labels = homeCurrencies().map(c => { let l = curLabel(c); if (incMap[l]) l = c; incMap[l] = c; return l; });
-      buildSeg('planIncSeg', labels, 0);
-      f.firstChild.focus();
-      f.lastChild.onclick = () => {
-        const name = f.firstChild.value.trim();
-        if (!name) { toast('name the source first'); return; }
-        d.inc.push({ source_name: name, currency: incMap[segSel('planIncSeg')] || PC, amount: 0 });
-        renderPlanSheet();
-      };
-    };
-    box.appendChild(add);
-  }
+  // one block per country: money in · spending budget · into funds · leftover, then the next country
+  const countries = [];
+  d.funds.forEach(f => { if (!countries.includes(f.country)) countries.push(f.country); });
+  const curOfCountry = {};
+  d.funds.forEach(f => { curOfCountry[f.country] = curOfCountry[f.country] || f.currency; });
+  // currencies with plan lines but no fund (shouldn't happen, but never hide money)
+  const seenCur = new Set(Object.values(curOfCountry));
+  d.inc.forEach(r => { if (!seenCur.has(r.currency)) { countries.push('cur:' + r.currency); curOfCountry['cur:' + r.currency] = r.currency; seenCur.add(r.currency); } });
+  Object.keys(d.cat).forEach(k => { const c = k.slice(k.lastIndexOf('|') + 1); if (!seenCur.has(c)) { countries.push('cur:' + c); curOfCountry['cur:' + c] = c; seenCur.add(c); } });
 
-  // spending budget — one line in review, its groups when editing
-  box.appendChild(sec(edit ? 'spending budget · ' + curLabel(PC) : 'spending budget'));
-  if (edit) {
-    const covered = new Set();
-    BUDGET_ROWS.forEach(b => {
-      const key = b.blabel + '|' + PC;
-      covered.add(key);
-      box.appendChild(row(b.icon, esc(b.group), amtInput(d.cat[key] || 0, v => d.cat[key] = v)));
-    });
-    Object.keys(d.cat).filter(k => !covered.has(k) && d.cat[k] > 0).forEach(k => {
-      const i = k.lastIndexOf('|');
-      box.appendChild(row('🎯', esc(k.slice(0, i)), amtInput(d.cat[k], v => d.cat[k] = v), curLabel(k.slice(i + 1))));
-    });
-  } else {
-    const sums = {};
-    Object.entries(d.cat).forEach(([k, v]) => { if (v > 0) { const c = k.slice(k.lastIndexOf('|') + 1); sums[c] = (sums[c] || 0) + v; } });
-    Object.keys(sums).forEach(c =>
-      box.appendChild(row('🎯', 'Spending budget', '<span class="amt" style="color:var(--ink)">−' + fmtMoney(sums[c], c) + '</span>')));
-    if (!Object.keys(sums).length) box.appendChild(capEl('no spending budget set — tap Edit to add one'));
-  }
+  countries.forEach((cc, ci) => {
+    const cur = curOfCountry[cc];
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:' + (ci ? '22px' : '14px') + ';padding-bottom:6px;border-bottom:2px solid var(--accent-soft)';
+    head.innerHTML = '<span class="h2">' + esc(cc.startsWith('cur:') ? curLabel(cur) : countryTitle(cc)) + '</span><span class="cap">' + esc(curLabel(cur)) + '</span>';
+    box.appendChild(head);
 
-  // into funds — grouped like the dashboard
-  box.appendChild(sec(edit ? 'into funds · every fund gets a box' : (d.appliedOn ? 'into funds · as applied' : 'into funds · tap a line to skip it this month')));
-  const groups = {};
-  d.funds.forEach(f => {
-    if (!edit && !(d.fb[f.id] > 0)) return;   // review shows only planned lines
-    const g = f.group_name || 'Other'; (groups[g] = groups[g] || []).push(f);
-  });
-  Object.keys(groups).sort((a, b) =>
-    Math.min(...groups[a].map(x => x.sort_order)) - Math.min(...groups[b].map(x => x.sort_order))
-  ).forEach(g => {
-    const list = groups[g];
-    const planned = list.reduce((s, f) => s + (d.fb[f.id] || 0), 0);
-    const h = document.createElement('div'); h.className = 'fgroup';
-    h.innerHTML = '<span class="cap" style="letter-spacing:.05em;text-transform:uppercase">' + esc(g) + '</span>'
-      + (planned > 0 ? '<span class="lbl num" style="color:var(--ink-soft)">' + fmtMoney(planned, list[0].currency) + '</span>' : '');
-    box.appendChild(h);
-    list.forEach(f => {
-      if (edit) {
-        if (f.is_leftover_target) {
-          // no box: this fund receives exactly the computed leftover (see the footer)
-          box.appendChild(row(fundIcon(f.name), esc(f.name), '<span class="cap">receives the leftover</span>', null));
-        } else {
-          const r = row(fundIcon(f.name), esc(f.name), amtInput(d.fb[f.id] || 0, v => d.fb[f.id] = v), null);
-          if (!(d.fb[f.id] > 0)) r.style.opacity = '.6';
-          box.appendChild(r);
-        }
-      } else {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'applyrow';
-        b.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(f.name) + '</div>'
-          + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>'
-          + '<span class="amt">+' + fmtMoney(d.fb[f.id], f.currency) + '</span>';
-        if (d.on[f.id] === false) b.classList.add('off');
-        if (d.appliedOn) b.style.cursor = 'default';   // applied: nothing left to skip (QA-7)
-        else b.onclick = () => {
-          d.on[f.id] = d.on[f.id] === false ? true : false;
-          b.classList.toggle('off', d.on[f.id] === false);
-          updatePlanEq();
+    // money in
+    box.appendChild(sec('money in'));
+    const incs = d.inc.filter(r => r.currency === cur);
+    incs.forEach(rr => {
+      box.appendChild(row('💵', esc(rr.source_name),
+        edit ? amtInput(rr.amount, v => rr.amount = v)
+             : '<span class="amt">+' + fmtMoney(rr.amount, rr.currency) + '</span>', null));
+    });
+    if (!incs.length && !edit) box.appendChild(capEl('no income planned'));
+    if (edit) {
+      const add = document.createElement('button');
+      add.type = 'button'; add.className = 'applyrow';
+      add.style.cssText = 'background:none;border:1px dashed var(--accent);color:var(--primary);justify-content:center;font-weight:500';
+      add.textContent = '＋ add income source';
+      add.onclick = () => {
+        const f = document.createElement('div');
+        f.style.cssText = 'display:flex;gap:8px;margin-top:6px;align-items:center';
+        f.innerHTML = '<input class="descinput" placeholder="new source" style="flex:1;min-width:0"><button class="btn-mini" type="button">Add</button>';
+        add.replaceWith(f);
+        f.firstChild.focus();
+        f.lastChild.onclick = () => {
+          const name = f.firstChild.value.trim();
+          if (!name) { toast('name the source first'); return; }
+          d.inc.push({ source_name: name, currency: cur, amount: 0 });
+          renderPlanSheet();
         };
-        box.appendChild(b);
-      }
+      };
+      box.appendChild(add);
+    }
+
+    // spending budget — lines for this currency; each line names the pot it lands in
+    const pots = potsFor(d.funds, cur);
+    box.appendChild(sec('spending budget' + (pots.length ? ' · lands in ' + (pots.length > 1 ? 'the pot on each line' : esc(pots[0].name)) : '')));
+    const keysHere = [];
+    if (cur === PC) BUDGET_ROWS.forEach(b => keysHere.push(b.blabel + '|' + PC));
+    Object.keys(d.cat).forEach(k => { if (k.endsWith('|' + cur) && !keysHere.includes(k) && (edit || d.cat[k] > 0)) keysHere.push(k); });
+    if (edit) {
+      keysHere.forEach(k => {
+        const g = k.slice(0, k.lastIndexOf('|'));
+        const br = BUDGET_ROWS.find(b => b.blabel === g);
+        const r = row(br ? br.icon : '🎯', esc(br ? br.group : g), amtInput(d.cat[k] || 0, v => d.cat[k] = v), null);
+        const chip = potChip(k);
+        if (chip) { chip.style.marginTop = '3px'; r.children[1].appendChild(chip); }   // under the name, never squeezing it
+        box.appendChild(r);
+      });
+      const addB = document.createElement('button');
+      addB.type = 'button'; addB.className = 'applyrow';
+      addB.style.cssText = 'background:none;border:1px dashed var(--accent);color:var(--primary);justify-content:center;font-weight:500';
+      addB.textContent = '＋ add budget line';
+      addB.onclick = () => {
+        const f = document.createElement('div');
+        f.style.cssText = 'display:flex;gap:8px;margin-top:6px;align-items:center';
+        f.innerHTML = '<input class="descinput" placeholder="e.g. Conservancy charges" style="flex:1;min-width:0"><button class="btn-mini" type="button">Add</button>';
+        addB.replaceWith(f);
+        f.firstChild.focus();
+        f.lastChild.onclick = () => {
+          const name = f.firstChild.value.trim();
+          if (!name) { toast('name the line first'); return; }
+          if (d.cat[name + '|' + cur] !== undefined) { toast('that line already exists'); return; }
+          d.cat[name + '|' + cur] = 0;
+          renderPlanSheet();
+        };
+      };
+      box.appendChild(addB);
+    } else {
+      const byPot = {};
+      let total = 0;
+      keysHere.forEach(k => { const v = d.cat[k] || 0; if (!(v > 0)) return; total += v; const pt = resolvePot(d, k); const pn = pt ? pt.name : '—'; byPot[pn] = (byPot[pn] || 0) + v; });
+      if (total > 0) {
+        const capTxt = Object.keys(byPot).length > 1
+          ? Object.entries(byPot).map(([n, v]) => fmtMoney(v, cur) + ' → ' + esc(n)).join(' · ')
+          : null;
+        box.appendChild(row('🎯', 'Spending budget', '<span class="amt" style="color:var(--ink)">−' + fmtMoney(total, cur) + '</span>', capTxt));
+      } else box.appendChild(capEl('no spending budget set — tap Edit to add one'));
+    }
+
+    // into funds — this country's funds, grouped like the Funds page
+    const fundsHere = d.funds.filter(f => f.country === cc);
+    box.appendChild(sec(edit ? 'into funds · every fund gets a box' : (d.appliedOn ? 'into funds · as applied' : 'into funds · tap a line to skip it this month')));
+    const groups = {};
+    fundsHere.forEach(f => {
+      if (!edit && !(d.fb[f.id] > 0)) return;   // review shows only planned lines
+      const g = f.group_name || 'Other'; (groups[g] = groups[g] || []).push(f);
     });
+    Object.keys(groups).sort((a, b) =>
+      Math.min(...groups[a].map(x => x.sort_order)) - Math.min(...groups[b].map(x => x.sort_order))
+    ).forEach(g => {
+      const list = groups[g];
+      const planned = list.reduce((s2, f) => s2 + (d.fb[f.id] || 0), 0);
+      const h = document.createElement('div'); h.className = 'fgroup';
+      h.innerHTML = '<span class="cap" style="letter-spacing:.05em;text-transform:uppercase">' + esc(g) + '</span>'
+        + (planned > 0 ? '<span class="lbl num" style="color:var(--ink-soft)">' + fmtMoney(planned, list[0].currency) + '</span>' : '');
+      box.appendChild(h);
+      list.forEach(f => {
+        if (edit) {
+          if (f.is_leftover_target) {
+            box.appendChild(row(fundIcon(f.name), esc(f.name), '<span class="cap">receives the leftover</span>', null));
+          } else {
+            const r = row(fundIcon(f.name), esc(f.name), amtInput(d.fb[f.id] || 0, v => d.fb[f.id] = v), null);
+            if (!(d.fb[f.id] > 0)) r.style.opacity = '.6';
+            box.appendChild(r);
+          }
+        } else {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'applyrow';
+          b.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(f.name) + '</div>'
+            + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>'
+            + '<span class="amt">+' + fmtMoney(d.fb[f.id], f.currency) + '</span>';
+          if (d.on[f.id] === false) b.classList.add('off');
+          if (d.appliedOn) b.style.cursor = 'default';   // applied: nothing left to skip (QA-7)
+          else b.onclick = () => {
+            d.on[f.id] = d.on[f.id] === false ? true : false;
+            b.classList.toggle('off', d.on[f.id] === false);
+            updatePlanEq();
+          };
+          box.appendChild(b);
+        }
+      });
+    });
+    if (!edit && !Object.keys(groups).length) box.appendChild(capEl('no contributions planned' + (fundsHere.length ? ' — tap Edit to add some' : '')));
+
+    // this country's leftover, live
+    const lf = document.createElement('div');
+    lf.className = 'applyrow'; lf.style.cssText = 'cursor:default;background:var(--accent-soft);margin-top:6px';
+    const target = fundsHere.find(f => f.is_leftover_target);
+    lf.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">🏁</div>'
+      + '<div style="min-width:0;flex:1"><div>Leftover</div><div class="cap">'
+      + (target ? (d.appliedOn ? 'moved to ' + esc(target.name) + ' ✓' : 'moves to ' + esc(target.name) + ' when you apply') : 'no leftover fund marked for ' + esc(curLabel(cur))) + '</div></div>'
+      + '<span class="amt num" id="planLeft_' + esc(cur) + '">…</span>';
+    box.appendChild(lf);
   });
-  if (!edit && !Object.keys(groups).length) box.appendChild(capEl('no contributions planned — tap Edit to add some'));
 
   // the equation, pinned and live in both states
   const foot = document.createElement('div');
   foot.className = 'plansticky';
-  const lfTargets = d.funds.filter(f => f.is_leftover_target).map(f => f.name + ' ' + flagOf(f.country)).join(' · ');
   foot.innerHTML = '<div class="planeq"><p class="cap" style="margin-bottom:2px">'
     + (edit ? 'income − spending − funds = leftover · recalculates as you type' : (d.appliedOn ? 'income − spending − funds = leftover · as applied' : 'income − spending − funds = leftover'))
-    + '</p><div id="planMath"></div>'
-    + (!edit && lfTargets ? '<p class="cap" style="margin-top:4px">' + (d.appliedOn ? 'leftover moved to ' + esc(lfTargets) + ' ✓' : 'leftover moves to ' + esc(lfTargets) + ' when you apply') + '</p>' : '')
-    + '</div>';
+    + '</p><div id="planMath"></div></div>';
   if (!edit) {
     const ap = document.createElement('button');
     ap.type = 'button'; ap.className = 'btn btn-primary'; ap.id = 'applyGo';
@@ -1993,7 +2084,7 @@ function renderPlanSheet(){
     if (d.appliedOn) {
       ap.disabled = true; ap.style.opacity = '.55';
       ap.textContent = 'Applied ' + new Date(d.appliedOn + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'}) + ' ✓';
-    } else if (!Object.values(d.fb).some(v => v > 0)) {
+    } else if (!Object.values(d.fb).some(v => v > 0) && !Object.values(d.cat).some(v => v > 0)) {
       ap.disabled = true; ap.style.opacity = '.55';
       ap.textContent = 'Nothing to apply yet';
     } else {
@@ -2022,9 +2113,12 @@ function updatePlanEq(){
   let curs = [...new Set([...Object.keys(inc), ...Object.keys(cat), ...Object.keys(fb)])];
   if (!curs.length) curs = [primaryCur()];
   const n = v => Number(v || 0).toLocaleString('en-AU', {maximumFractionDigits: 0});
+  const ccOf = c => { const f = d.funds.find(x => x.currency === c); return f ? countryTitle(f.country) : curLabel(c); };
   $('planMath').innerHTML = curs.map(c => {
     const left = (inc[c] || 0) - (cat[c] || 0) - (fb[c] || 0);
-    return '<div class="eqrow"><span class="cap num">' + curLabel(c) + ' · '
+    const el = document.getElementById('planLeft_' + c);
+    if (el) { el.textContent = (left < 0 ? '−' : '+') + fmtMoney(Math.abs(left), c); el.style.color = left < 0 ? 'var(--bad)' : 'var(--good)'; }
+    return '<div class="eqrow"><span class="cap num">' + esc(ccOf(c)) + ' · '
       + n(inc[c]) + ' − ' + n(cat[c]) + ' − ' + n(fb[c]) + '</span>'
       + '<span class="lbl num" style="font-size:16px' + (left < 0 ? ';color:#F0A8A8' : '') + '">= '
       + (left < 0 ? '−' : '+') + fmtMoney(Math.abs(left), c) + '</span></div>';
@@ -2058,10 +2152,13 @@ async function applyPlan(){
   // pot (Float) and daily spending counts it down live. From pot_start onward only.
   const potRows = [];
   if (CTX.hh.pot_start && d.month >= CTX.hh.pot_start) {
-    Object.entries(cat).forEach(([c, v]) => {
-      const pot = d.funds.find(f => f.is_spend_pot && f.currency === c);
-      if (pot && v > 0.005) potRows.push({ fund_id: pot.id, amount: Math.round(v * 100) / 100, pot: true });
+    const perPot = {};
+    Object.entries(d.cat).forEach(([k, v]) => {
+      if (!(v > 0)) return;
+      const pot = resolvePot(d, k);   // the line's own pot, else the currency's default
+      if (pot) perPot[pot.id] = (perPot[pot.id] || 0) + v;
     });
+    Object.entries(perPot).forEach(([id, v]) => { if (v > 0.005) potRows.push({ fund_id: id, amount: Math.round(v * 100) / 100, pot: true }); });
   }
   if (!rows.length && !leftoverRows.length && !potRows.length) { toast('everything is skipped — nothing to apply'); return; }
   applying = true;
@@ -2095,7 +2192,9 @@ async function savePlan(){
       p_inc: d.inc.filter(x => x.amount > 0).map(x => ({ source_name: x.source_name, currency: x.currency, amount: x.amount })),
       p_cat: Object.entries(d.cat).filter(([, v]) => v > 0).map(([k, v]) => {
         const i = k.lastIndexOf('|');
-        return { category_group: k.slice(0, i), currency: k.slice(i + 1), amount: v };
+        const pot = resolvePot(d, k);
+        return { category_group: k.slice(0, i), currency: k.slice(i + 1), amount: v,
+                 pot_fund_id: potsFor(d.funds, k.slice(i + 1)).length > 1 && pot ? pot.id : null };
       }),
       p_fb: Object.entries(d.fb)
         .filter(([id, v]) => v > 0 && !(d.funds.find(f => f.id === id) || {}).is_leftover_target)
@@ -2573,26 +2672,30 @@ async function renderSetFunds(box){
         toast(countryTitle(cc) + ' leftover fund updated 🐻');
       }, '— none —')));
   });
-  // spending pot per country: the month's budget lands here and spending counts it down (v3)
+  // spending pots: any number per country (v4). A budget line lands in the pot its
+  // chip names in the plan; the FIRST pot of a currency (fund order) is the default.
   countries.forEach(cc => {
-    const cur = (funds.find(f => f.country === cc && f.is_spend_pot) || {}).id || '';
-    box.appendChild(labeled(countryTitle(cc) + ' · spending budget sits in',
-      selectEl(active.filter(f => f.country === cc).map(f => [f.id, f.name]), cur, async v => {
-        if (v) {
-          const chosen = funds.find(f => f.id === v);
-          const c1 = await sb.from('funds').update({ is_spend_pot: false })
-            .eq('currency', chosen.currency).neq('id', v);
-          if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
-          const c2 = await sb.from('funds').update({ is_spend_pot: true }).eq('id', v);
-          if (c2.error) { toast('couldn’t update: ' + c2.error.message); return; }
-        } else {
-          const c1 = await sb.from('funds').update({ is_spend_pot: false }).eq('country', cc);
-          if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
-        }
+    const wrap = document.createElement('div');
+    const potsHere = active.filter(f => f.country === cc);
+    wrap.innerHTML = '';
+    potsHere.forEach(f => {
+      const r = document.createElement('label');
+      r.className = 'srow'; r.style.cssText = 'cursor:pointer;gap:10px';
+      r.innerHTML = '<input type="checkbox"' + (f.is_spend_pot ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--primary)">'
+        + '<span class="rowicon" style="width:28px;height:28px;font-size:13px">' + fundIcon(f.name) + '</span>'
+        + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>'
+        + (f.is_spend_pot && potsHere.filter(x => x.is_spend_pot)[0] === f ? '<span class="tag">default</span>' : '');
+      r.querySelector('input').onchange = async ev => {
+        const u = await sb.from('funds').update({ is_spend_pot: ev.target.checked }).eq('id', f.id);
+        if (u.error) { toast('couldn’t update: ' + u.error.message); ev.target.checked = !ev.target.checked; return; }
         await loadContext();
         if (fundsInit) loadFunds();
-        toast(cc + ' spending pot updated 🐻');
-      }, '— none — (budget stays untracked)')));
+        renderSetFunds(box);
+        toast(f.name + (ev.target.checked ? ' is now a spending pot' : ' is no longer a spending pot') + ' 🐻');
+      };
+      wrap.appendChild(r);
+    });
+    box.appendChild(labeled(countryTitle(cc) + ' · spending pots (budget lands here, spending counts it down)', wrap));
   });
   const list = document.createElement('div'); list.style.marginTop = '12px';
   const addFundRow = (f, into) => {
