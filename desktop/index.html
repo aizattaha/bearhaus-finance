@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BearHaus · Desk</title>
+<meta name="theme-color" content="#004A98">
+<link rel="icon" type="image/png" sizes="192x192" href="../app/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
+  --canvas:#FFFFFF; --muted:#E6E5E5; --ink:#1A2B44; --ink-soft:#55657D; --field:#F7F9FC;
+  --good:#2E7D57; --good-soft:#E3F4EA; --bad:#D25353; --bad-bar:#F0A8A8; --warn:#B7791F; --warn-soft:#FFF3D6;
+  --shadow-soft:0 2px 12px rgba(0,74,152,.06); --shadow-lift:0 8px 28px rgba(0,74,152,.12);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;background:#F7F9FC;color:var(--ink);font-size:14px;line-height:22px;min-height:100vh}
+button,input,select{font-family:inherit}
+.h1{font-size:24px;line-height:32px;font-weight:600}
+.h2{font-size:17px;line-height:24px;font-weight:600}
+.cap{font-size:12px;line-height:16px;color:var(--ink-soft)}
+.lbl{font-size:13px;line-height:18px;font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+.card{background:var(--canvas);border-radius:20px;box-shadow:var(--shadow-soft);padding:20px}
+.btn{font-size:14px;font-weight:500;border:none;border-radius:999px;height:40px;padding:0 20px;cursor:pointer;transition:all .15s}
+.btn:disabled{opacity:.5;cursor:default}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover:not(:disabled){background:var(--primary-hover)}
+.btn-soft{background:var(--accent-soft);color:var(--primary)}.btn-soft:hover:not(:disabled){background:var(--accent)}
+.btn-tert{background:none;border:none;color:var(--primary);font-size:13px;font-weight:500;cursor:pointer;padding:4px 8px;border-radius:999px}
+.btn-danger{background:#FDECEC;color:var(--bad)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;border-radius:999px;padding:6px 14px;background:var(--field);color:var(--ink-soft);border:none;cursor:pointer;transition:all .15s}
+.chip.sel{background:var(--accent-soft);color:var(--primary)}
+.descinput{font-size:14px;background:var(--field);border:2px solid transparent;border-radius:12px;padding:8px 12px;outline:none;color:var(--ink);transition:border .15s}
+.descinput:focus{border-color:var(--accent)}
+select.descinput{appearance:none;-webkit-appearance:none;padding-right:28px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2355657D'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.tag{font-size:11px;font-weight:500;border-radius:999px;padding:2px 8px;background:var(--muted);color:var(--ink-soft);white-space:nowrap}
+.tag.good{background:var(--good-soft);color:var(--good)}.tag.bad{background:#FDECEC;color:var(--bad)}.tag.warn{background:var(--warn-soft);color:var(--warn)}.tag.blue{background:var(--accent-soft);color:var(--primary)}
+
+/* shell */
+#login{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+.login-card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px}
+.field{width:100%;font-size:15px;background:var(--field);border:2px solid transparent;border-radius:14px;padding:12px 14px;outline:none}
+#app{display:none;grid-template-columns:232px 1fr;min-height:100vh}
+nav{background:var(--canvas);border-right:1px solid var(--muted);padding:22px 16px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+nav .brand{font-weight:600;color:var(--primary);padding:6px 10px 18px;display:flex;align-items:center;gap:8px}
+nav button.nv{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;background:none;padding:10px 12px;border-radius:12px;font-size:14px;font-weight:500;color:var(--ink-soft);cursor:pointer}
+nav button.nv.active{background:var(--accent-soft);color:var(--primary)}
+nav .foot{margin-top:auto;display:flex;flex-direction:column;gap:6px}
+main{padding:28px 32px 60px;max-width:1280px;width:100%}
+.screen{display:none}.screen.active{display:block}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.kpi{background:var(--canvas);border-radius:16px;box-shadow:var(--shadow-soft);padding:14px 18px}
+.kpi .v{font-size:22px;line-height:30px;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi.dark{background:var(--primary);color:#fff}.kpi.dark .cap{color:var(--accent)}
+
+/* table */
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:8px 10px;border-bottom:1px solid var(--muted);font-weight:500;position:sticky;top:0;background:var(--canvas);z-index:1}
+td{padding:9px 10px;border-bottom:1px solid #EEF1F5;vertical-align:middle}
+tr.recd td{color:var(--ink-soft)}
+tr.recd td .dsc{opacity:.6}
+tr.sel td{background:#F3F7FF}
+tr:hover td{background:#F7F9FC}
+td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td .dsc{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:pointer}
+.lock{display:inline-flex;width:26px;height:26px;border-radius:999px;align-items:center;justify-content:center;background:var(--field);cursor:pointer;font-size:13px;border:none}
+.lock.open{background:var(--accent-soft)}.lock.muted{cursor:default;opacity:.6}
+.tablewrap{max-height:62vh;overflow:auto;border-radius:12px;border:1px solid var(--muted)}
+.sticky-bar{position:sticky;bottom:0;z-index:2;background:var(--canvas);border-top:1px solid var(--muted);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-radius:0 0 12px 12px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,16px);background:var(--ink);color:#fff;font-size:13px;font-weight:500;padding:10px 18px;border-radius:999px;opacity:0;pointer-events:none;transition:all .2s;z-index:50;max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.empty{padding:28px;text-align:center;color:var(--ink-soft)}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--accent);border-top-color:var(--primary);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(max-width:860px){#app{grid-template-columns:1fr}nav{position:static;height:auto;flex-direction:row;flex-wrap:wrap}nav .foot{margin-top:0}main{padding:18px 16px 60px}.grid3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="card login-card">
+    <div class="h1">🐻 BearHaus Desk</div>
+    <p class="cap">statements · reconciliation · pots. Same login as the app.</p>
+    <input class="field" id="email" type="email" placeholder="email" autocomplete="username">
+    <input class="field" id="password" type="password" placeholder="password" autocomplete="current-password">
+    <button class="btn btn-primary" id="signinBtn" onclick="signIn()">Sign in</button>
+    <p class="cap" id="loginError" style="color:var(--bad)"></p>
+  </div>
+</div>
+
+<div id="app">
+  <nav>
+    <div class="brand">🐻 BearHaus <span class="tag blue">Desk</span></div>
+    <button class="nv active" data-scr="statements" onclick="go('statements')">📄 Statements</button>
+    <button class="nv" data-scr="nocard" onclick="go('nocard')">🗂️ No card</button>
+    <button class="nv" data-scr="pots" onclick="go('pots')">🌊 Pots</button>
+    <div class="foot">
+      <a class="btn-tert" href="../app/" style="text-decoration:none">← mobile app</a>
+      <button class="btn-tert" onclick="signOut()">sign out</button>
+      <p class="cap" id="hhLabel" style="padding:0 10px"></p>
+    </div>
+  </nav>
+
+  <main>
+    <!-- STATEMENTS -->
+    <section class="screen active" id="scr-statements">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><p class="cap">Reconcile</p><h1 class="h1">Statements</h1></div>
+        <p class="cap" id="stHint">pick a card, then the statement period · tick what's on the statement · close it</p>
+      </div>
+      <div class="toolbar">
+        <select class="descinput" id="stCard" style="min-width:260px"></select>
+        <select class="descinput" id="stPeriod" style="min-width:230px"></select>
+        <button class="chip" id="stMargin" title="banks post a few days late — show rows up to 5 days either side of the period">± 5 days</button>
+        <button class="chip" id="stCarry" title="older rows on this card that were never ticked">include earlier unreconciled</button>
+        <span class="cap" id="stMeta"></span>
+      </div>
+
+      <div class="grid3" style="margin-top:14px">
+        <div class="kpi"><p class="cap">In the app · this period</p><p class="v num" id="kApp">—</p><p class="cap" id="kAppSub"></p></div>
+        <div class="kpi"><p class="cap">Ticked · reconciled</p><p class="v num" id="kTicked">—</p><p class="cap" id="kTickedSub"></p></div>
+        <div class="kpi dark">
+          <p class="cap">Statement total (from the bank)</p>
+          <div class="row" style="gap:8px;margin-top:4px">
+            <input class="descinput num" id="stTotal" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="width:150px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
+            <button class="btn btn-soft" style="height:36px;padding:0 14px" onclick="saveStatementTotal()">Save</button>
+          </div>
+          <p class="cap" id="kDiff" style="margin-top:6px"></p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px;padding:0">
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th style="width:34px"><input type="checkbox" id="stAll" title="select every unreconciled row shown"></th>
+              <th style="width:110px">Date</th><th>Description</th><th style="width:150px">Category</th><th style="width:90px">Who</th><th style="width:80px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:60px"></th>
+            </tr></thead>
+            <tbody id="stRows"><tr><td colspan="8" class="empty">pick a card</td></tr></tbody>
+          </table>
+        </div>
+        <div class="sticky-bar">
+          <span class="lbl" id="stSelInfo">nothing selected</span>
+          <button class="btn btn-primary" id="stReconcile" onclick="reconcileSelected()" disabled>Reconcile selected</button>
+          <button class="btn btn-soft" id="stUnrec" onclick="unreconcileSelected()" disabled>Un-reconcile selected</button>
+          <span style="flex:1"></span>
+          <button class="btn btn-soft" id="stClose" onclick="toggleCloseStatement()" disabled>Close statement</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- NO CARD -->
+    <section class="screen" id="scr-nocard">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><p class="cap">Tidy up</p><h1 class="h1">Rows with no card</h1></div>
+        <p class="cap">a row with no card can never sit on a statement — give these a card and they join the right period</p>
+      </div>
+      <div class="toolbar">
+        <select class="descinput" id="ncMonth" style="min-width:180px"></select>
+        <input class="descinput" id="ncSearch" placeholder="search descriptions" style="min-width:240px">
+        <span class="cap" id="ncMeta"></span>
+      </div>
+      <div class="card" style="margin-top:14px;padding:0">
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th style="width:34px"><input type="checkbox" id="ncAll"></th>
+              <th style="width:110px">Date</th><th>Description</th><th style="width:150px">Category</th><th style="width:90px">Who</th><th style="width:80px">Source</th><th class="amt" style="width:120px">Amount</th>
+            </tr></thead>
+            <tbody id="ncRows"><tr><td colspan="7" class="empty">loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="sticky-bar">
+          <span class="lbl" id="ncSelInfo">nothing selected</span>
+          <select class="descinput" id="ncCard" style="min-width:240px"></select>
+          <button class="btn btn-primary" id="ncApply" onclick="applyCardToSelected()" disabled>Set card on selected</button>
+          <span style="flex:1"></span>
+          <button class="btn-tert" id="ncMore" onclick="loadNoCard(false)" style="display:none">Load more</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- POTS -->
+    <section class="screen" id="scr-pots">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><p class="cap">Spending pots</p><h1 class="h1">Spent vs Cleared</h1></div>
+        <p class="cap">Spent = every row entered · Cleared = only reconciled rows · Pending = spending no statement has confirmed yet</p>
+      </div>
+      <div id="potCards" style="display:flex;flex-direction:column;gap:14px;margin-top:14px"><p class="cap">loading…</p></div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── config (identical to the app) ───────────────────────────
+const SUPABASE_URL = 'https://diqaezhdxloqhglndqrq.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_K-fUtwnuZAJLTNquqDN87Q_yBkEEGhZ';
+const sb = typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CURSYM = { AUD:'A$', SGD:'S$', USD:'US$', GBP:'£', EUR:'€', JPY:'¥', CNY:'CN¥', MYR:'RM', THB:'฿', NZD:'NZ$', HKD:'HK$', TWD:'NT$', KRW:'₩', IDR:'Rp', VND:'₫', PHP:'₱', INR:'₹' };
+const fmtMoney = (v, cur) => (CURSYM[cur] || (cur ? cur + ' ' : 'A$')) + Number(v || 0).toLocaleString('en-AU', {minimumFractionDigits:2, maximumFractionDigits:2});
+const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const todayIso = () => isoDate(new Date());
+const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
+const fmtD = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'});
+const fmtDs = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
+const monthName = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', {month:'long', year:'numeric'});
+const curMonthIso = () => { const n = new Date(); return isoDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
+const addMonths = (iso, n) => { const d = new Date(iso + 'T00:00:00'); return isoDate(new Date(d.getFullYear(), d.getMonth() + n, 1)); };
+const flagOf = cc => /^[A-Z]{2}$/.test(cc || '') ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
+const COUNTRY_NAME = { AU:'Australia', SG:'Singapore', MY:'Malaysia', TH:'Thailand', JP:'Japan', US:'United States', GB:'United Kingdom', NZ:'New Zealand', ID:'Indonesia', VN:'Vietnam', PH:'Philippines', KR:'South Korea', CN:'China', HK:'Hong Kong', TW:'Taiwan', IN:'India' };
+const countryTitle = cc => (flagOf(cc) ? flagOf(cc) + ' ' : '') + (COUNTRY_NAME[cc] || cc || 'Other');
+let toastT = null;
+function toast(m){ const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), /couldn|failed|refus|locked/i.test(m) ? 7000 : 3000); }
+function go(scr){
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 'scr-' + scr));
+  document.querySelectorAll('nav .nv').forEach(b => b.classList.toggle('active', b.dataset.scr === scr));
+  if (scr === 'nocard' && !nc.init) { nc.init = true; loadNoCard(true); }
+  if (scr === 'pots') loadPots();
+}
+
+// ── auth ────────────────────────────────────────────────────
+async function signIn(){
+  const email = $('email').value.trim(), password = $('password').value;
+  if (!email || !password) { $('loginError').textContent = 'email and password, please'; return; }
+  $('signinBtn').disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  $('signinBtn').disabled = false;
+  if (error) { $('loginError').textContent = error.message; return; }
+}
+async function signOut(){ await sb.auth.signOut(); location.reload(); }
+let booted = false;
+async function boot(){
+  if (booted) return; booted = true;
+  $('login').style.display = 'none'; $('app').style.display = 'grid';
+  await loadContext();
+  initStatements();
+}
+if (sb) {
+  sb.auth.onAuthStateChange((evt, session) => { if (session && evt !== 'SIGNED_OUT') boot(); });
+  (async () => {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session) boot(); else $('login').style.display = 'flex';
+  })();
+} else { document.body.innerHTML = '<p class="empty">couldn’t load — check your connection, then reload</p>'; }
+
+// ── context ─────────────────────────────────────────────────
+let CTX = { hh: null, profiles: [], cards: [], funds: [] };
+async function loadContext(){
+  const [hh, profiles, cards, funds] = await Promise.all([
+    sb.from('households').select('id, name, joint_label, pot_start').single(),
+    sb.from('profiles').select('id, display_name').order('sort_order'),
+    sb.from('payment_methods').select('id, name, profile_id, kind, closing_day, currency, travel_only, is_archived, sort_order').order('sort_order'),
+    sb.from('funds').select('id, name, country, currency, is_spend_pot, sort_order').eq('is_active', true).order('sort_order'),
+  ]);
+  if (hh.error) { toast('couldn’t load household: ' + hh.error.message); return; }
+  CTX = { hh: hh.data, profiles: profiles.data || [], cards: cards.data || [], funds: funds.data || [] };
+  $('hhLabel').textContent = CTX.hh.name + ' household';
+}
+const who = pid => pid ? ((CTX.profiles.find(p => p.id === pid) || {}).display_name || '?') : (CTX.hh && CTX.hh.joint_label || 'Joint');
+const cardById = id => CTX.cards.find(c => c.id === id);
+function cardOptions(sel, withNone){
+  const KL = { credit_card:'credit card', debit_card:'debit card', bank:'bank', prepaid:'prepaid', cash:'cash' };
+  const live = CTX.cards.filter(c => !c.is_archived && c.kind !== 'cash');
+  const groups = [['credit_card', 'Credit cards'], ['debit_card', 'Debit cards'], ['bank', 'Bank accounts'], ['prepaid', 'Prepaid & wallets']];
+  let html = withNone ? '<option value="">— pick a card —</option>' : '';
+  groups.forEach(([k, label]) => {
+    const list = live.filter(c => c.kind === k);
+    if (!list.length) return;
+    html += '<optgroup label="' + esc(label) + '">' + list.map(c =>
+      '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.name)
+      + (c.currency ? ' · ' + esc(CURSYM[c.currency] || c.currency) : '')
+      + (k === 'credit_card' ? (c.closing_day ? ' · closes ' + c.closing_day : ' · no closing day') : '') + '</option>').join('') + '</optgroup>';
+  });
+  return html;
+}
+
+// ── statements ──────────────────────────────────────────────
+const st = { card: null, periods: [], period: null, rows: [], statement: null, margin: false, carry: false, sel: new Set() };
+function initStatements(){
+  $('stCard').innerHTML = cardOptions(null, true);
+  $('stCard').onchange = () => { st.card = cardById($('stCard').value) || null; st.sel.clear(); buildPeriods(); loadStatement(); };
+  $('stPeriod').onchange = () => { st.period = st.periods[parseInt($('stPeriod').value)] || null; st.sel.clear(); loadStatement(); };
+  $('stMargin').onclick = () => { st.margin = !st.margin; $('stMargin').classList.toggle('sel', st.margin); loadStatement(); };
+  $('stCarry').onclick = () => { st.carry = !st.carry; $('stCarry').classList.toggle('sel', st.carry); loadStatement(); };
+  $('stAll').onchange = () => {
+    st.rows.filter(r => !r.reconciled_at).forEach(r => { if ($('stAll').checked) st.sel.add(r.key); else st.sel.delete(r.key); });
+    renderStatement();
+  };
+  $('stTotal').onkeydown = e => { if (e.key === 'Enter') saveStatementTotal(); };
+  // deep link ?card=<id>
+  const u = new URL(location.href); const pre = u.searchParams.get('card');
+  if (pre && cardById(pre)) { $('stCard').value = pre; $('stCard').onchange(); }
+}
+// statement periods for a card: credit cards close on closing_day; everything else by calendar month
+function buildPeriods(){
+  st.periods = [];
+  const c = st.card; const sel = $('stPeriod');
+  if (!c) { sel.innerHTML = '<option>—</option>'; st.period = null; return; }
+  const today = new Date();
+  if (c.kind === 'credit_card' && c.closing_day) {
+    // most recent closing date on or before today, then 14 back
+    let y = today.getFullYear(), m = today.getMonth();
+    const closeOf = (yy, mm) => { const last = new Date(yy, mm + 1, 0).getDate(); return new Date(yy, mm, Math.min(c.closing_day, last)); };
+    let end = closeOf(y, m); if (end > today) { m -= 1; end = closeOf(y, m); }
+    // the first one is the one in progress (ends in the future) — handy for pre-ticking
+    const nextEnd = closeOf(y, m + 1);
+    st.periods.push({ start: addDays(isoDate(end), 1), end: isoDate(nextEnd), open: true });
+    for (let i = 0; i < 14; i++) {
+      const e = closeOf(y, m - i), s0 = closeOf(y, m - i - 1);
+      st.periods.push({ start: addDays(isoDate(s0), 1), end: isoDate(e) });
+    }
+  } else {
+    for (let i = 0; i < 15; i++) {
+      const ms = addMonths(curMonthIso(), -i), me = addDays(addMonths(ms, 1), -1);
+      st.periods.push({ start: ms, end: me, open: i === 0 });
+    }
+  }
+  sel.innerHTML = st.periods.map((p, i) => '<option value="' + i + '">' + fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.open ? ' · in progress' : '') + '</option>').join('');
+  // default to the most recent CLOSED period
+  const idx = st.periods.findIndex(p => !p.open); sel.value = String(idx < 0 ? 0 : idx);
+  st.period = st.periods[parseInt(sel.value)];
+  if (c.kind === 'credit_card' && !c.closing_day) $('stHint').textContent = 'this credit card has no closing day yet — set it in the app (Settings → Payment cards); showing calendar months meanwhile';
+  else $('stHint').textContent = 'tick what appears on the statement · untick to un-reconcile · close when the totals agree';
+}
+async function loadStatement(){
+  const c = st.card, p = st.period;
+  st.rows = []; st.statement = null;
+  if (!c || !p) { renderStatement(); return; }
+  $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
+  const from = st.margin ? addDays(p.start, -5) : p.start, to = st.margin ? addDays(p.end, 5) : p.end;
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, reconciled_at, reconciled_by, reconciled_statement_id';
+  const q = (t, extra) => {
+    let qq = sb.from(t).select(sel + (extra || '')).eq('payment_method_id', c.id).order('date', {ascending:false}).limit(1000);
+    return st.carry ? qq.or('and(date.gte.' + from + ',date.lte.' + to + '),and(date.lt.' + from + ',reconciled_at.is.null)') : qq.gte('date', from).lte('date', to);
+  };
+  const [d, t, s] = await Promise.all([
+    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name)'),
+    sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle(),
+  ]);
+  if (d.error || t.error) { toast('couldn’t load: ' + (d.error || t.error).message); return; }
+  st.statement = s.data || null;
+  st.rows = (d.data || []).map(r => Object.assign({ kind: 'daily', key: 'd:' + r.id }, r))
+    .concat((t.data || []).map(r => Object.assign({ kind: 'travel', key: 't:' + r.id }, r)))
+    .sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
+  // rows ticked against THIS statement vs. others
+  st.rows.forEach(r => { r.inPeriod = r.date >= p.start && r.date <= p.end; r.carry = r.date < from; });
+  $('stTotal').value = st.statement && st.statement.statement_total != null ? Number(st.statement.statement_total).toFixed(2) : '';
+  renderStatement();
+}
+function renderStatement(){
+  const c = st.card, p = st.period, body = $('stRows');
+  if (!c || !p) { body.innerHTML = '<tr><td colspan="8" class="empty">pick a card</td></tr>'; updateStatementKpis(); return; }
+  if (!st.rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">no rows on ' + esc(c.name) + ' for this period' + (st.margin ? '' : ' — try ± 5 days') + '</td></tr>'; updateStatementKpis(); return; }
+  const cur = c.currency;
+  body.innerHTML = st.rows.map(r => {
+    const locked = !!r.reconciled_at;
+    const other = locked && st.statement && r.reconciled_statement_id && r.reconciled_statement_id !== st.statement.id;
+    const checked = st.sel.has(r.key);
+    const curTag = cur && r.currency !== cur ? ' <span class="tag warn" title="a different currency from the card — the statement will show it converted">' + esc(r.currency) + '</span>' : '';
+    const posTag = r.carry ? ' <span class="tag">earlier</span>' : (!r.inPeriod ? ' <span class="tag">margin</span>' : '');
+    return '<tr class="' + (locked ? 'recd' : '') + (checked ? ' sel' : '') + '" data-key="' + r.key + '">'
+      + '<td>' + (locked ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + '>') + '</td>'
+      + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
+      + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
+      + '<td>' + esc(r.category) + '</td>'
+      + '<td>' + esc(who(r.payer_profile_id)) + '</td>'
+      + '<td><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
+      + '<td class="amt">−' + fmtMoney(r.amount, r.currency) + curTag + '</td>'
+      + '<td>' + (locked ? '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>' : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
+      + '</tr>';
+  }).join('');
+  body.querySelectorAll('.rowck').forEach(ck => ck.onchange = ev => {
+    const key = ev.target.closest('tr').dataset.key;
+    if (ev.target.checked) st.sel.add(key); else st.sel.delete(key);
+    ev.target.closest('tr').classList.toggle('sel', ev.target.checked);
+    updateStatementKpis();
+  });
+  body.querySelectorAll('button.lock').forEach(b => b.onclick = async () => {
+    const r = st.rows.find(x => x.key === b.dataset.key); if (!r) return;
+    const { error } = await sb.rpc('unreconcile_rows', { p_kind: r.kind, p_ids: [r.id] });
+    if (error) { toast('couldn’t un-reconcile: ' + error.message); return; }
+    r.reconciled_at = null; r.reconciled_by = null; r.reconciled_statement_id = null; r._wasLocked = true;
+    toast('un-reconciled 🔓'); renderStatement();
+  });
+  updateStatementKpis();
+}
+function updateStatementKpis(){
+  const c = st.card, p = st.period, cur = c ? (c.currency || (st.rows[0] || {}).currency || 'AUD') : 'AUD';
+  const inP = st.rows.filter(r => r.inPeriod && r.currency === cur);
+  const appTotal = inP.reduce((s, r) => s + Number(r.amount), 0);
+  const ticked = st.rows.filter(r => r.reconciled_at && (!st.statement || !r.reconciled_statement_id || r.reconciled_statement_id === st.statement.id) && r.currency === cur);
+  const tickedTotal = ticked.reduce((s, r) => s + Number(r.amount), 0);
+  const otherCur = st.rows.filter(r => r.inPeriod && r.currency !== cur).length;
+  $('kApp').textContent = c ? fmtMoney(appTotal, cur) : '—';
+  $('kAppSub').textContent = c ? inP.length + ' rows' + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
+  $('kTicked').textContent = c ? fmtMoney(tickedTotal, cur) : '—';
+  $('kTickedSub').textContent = c ? ticked.length + ' of ' + st.rows.length + ' rows shown' : '';
+  const stTotal = parseFloat($('stTotal').value);
+  if (c && !isNaN(stTotal)) {
+    const diff = Math.round((stTotal - tickedTotal) * 100) / 100;
+    $('kDiff').innerHTML = Math.abs(diff) < 0.005
+      ? '<span class="tag good">matches the ticked total ✓</span>'
+      : '<span class="tag ' + (diff > 0 ? 'warn' : 'bad') + '">' + (diff > 0 ? 'statement is ' + fmtMoney(diff, cur) + ' MORE than ticked — something is missing in the app' : 'ticked is ' + fmtMoney(-diff, cur) + ' more than the statement — something is ticked that isn’t on it') + '</span>';
+  } else $('kDiff').textContent = c ? 'type the closing balance / total new spend from the statement' : '';
+  const n = st.sel.size, selRows = st.rows.filter(r => st.sel.has(r.key));
+  const selTotal = selRows.reduce((s, r) => s + Number(r.amount), 0);
+  $('stSelInfo').textContent = n ? n + ' selected · ' + fmtMoney(selTotal, cur) : 'nothing selected';
+  $('stReconcile').disabled = !n;
+  $('stUnrec').disabled = !c || !st.rows.some(r => r.reconciled_at && r.reconciled_by !== 'auto');
+  $('stClose').disabled = !c;
+  const closed = st.statement && st.statement.closed_at;
+  $('stClose').textContent = closed ? 'Reopen statement' : 'Close statement';
+  $('stClose').className = 'btn ' + (closed ? 'btn-soft' : 'btn-primary');
+  $('stMeta').innerHTML = c ? (closed ? '<span class="tag good">closed ' + fmtD(st.statement.closed_at.slice(0, 10)) + '</span>' : (st.statement ? '<span class="tag blue">statement saved · open</span>' : '')) : '';
+  $('stAll').checked = n > 0 && st.rows.filter(r => !r.reconciled_at).every(r => st.sel.has(r.key));
+}
+async function ensureStatement(){
+  if (st.statement) return st.statement;
+  const c = st.card, p = st.period;
+  const { data, error } = await sb.from('statements').insert({
+    household_id: CTX.hh.id, payment_method_id: c.id, period_start: p.start, period_end: p.end,
+    label: c.name + ' · ' + fmtDs(p.start) + ' – ' + fmtD(p.end),
+  }).select('*').single();
+  if (error) throw error;
+  st.statement = data; return data;
+}
+async function reconcileSelected(){
+  const rows = st.rows.filter(r => st.sel.has(r.key) && !r.reconciled_at);
+  if (!rows.length) return;
+  $('stReconcile').disabled = true;
+  try {
+    const s = await ensureStatement();
+    for (const kind of ['daily', 'travel']) {
+      const ids = rows.filter(r => r.kind === kind).map(r => r.id);
+      if (!ids.length) continue;
+      const { error } = await sb.rpc('reconcile_rows', { p_kind: kind, p_ids: ids, p_statement: s.id });
+      if (error) throw error;
+    }
+    rows.forEach(r => { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'manual'; r.reconciled_statement_id = s.id; r._wasLocked = false; });
+    st.sel.clear();
+    toast(rows.length + ' reconciled 🔒');
+    renderStatement();
+  } catch (err) { toast('couldn’t reconcile: ' + (err.message || err)); $('stReconcile').disabled = false; }
+}
+async function unreconcileSelected(){
+  // un-ticks everything reconciled against THIS statement (or, before a statement exists, everything manual shown)
+  const rows = st.rows.filter(r => r.reconciled_at && r.reconciled_by !== 'auto' && (!st.statement || !r.reconciled_statement_id || r.reconciled_statement_id === st.statement.id));
+  if (!rows.length) { toast('nothing manual to un-reconcile here'); return; }
+  if (!confirm('Un-reconcile ' + rows.length + ' rows on this statement? They become editable again.')) return;
+  try {
+    for (const kind of ['daily', 'travel']) {
+      const ids = rows.filter(r => r.kind === kind).map(r => r.id);
+      if (!ids.length) continue;
+      const { error } = await sb.rpc('unreconcile_rows', { p_kind: kind, p_ids: ids });
+      if (error) throw error;
+    }
+    rows.forEach(r => { r.reconciled_at = null; r.reconciled_by = null; r.reconciled_statement_id = null; r._wasLocked = true; });
+    toast(rows.length + ' un-reconciled 🔓'); renderStatement();
+  } catch (err) { toast('couldn’t un-reconcile: ' + (err.message || err)); }
+}
+async function saveStatementTotal(){
+  if (!st.card || !st.period) return;
+  const v = $('stTotal').value === '' ? null : parseFloat($('stTotal').value);
+  try {
+    const s = await ensureStatement();
+    const { error } = await sb.from('statements').update({ statement_total: v }).eq('id', s.id);
+    if (error) throw error;
+    st.statement.statement_total = v; toast('statement total saved'); updateStatementKpis();
+  } catch (err) { toast('couldn’t save: ' + (err.message || err)); }
+}
+async function toggleCloseStatement(){
+  if (!st.card || !st.period) return;
+  try {
+    const s = await ensureStatement();
+    const closing = !s.closed_at;
+    if (closing) {
+      const open = st.rows.filter(r => r.inPeriod && !r.reconciled_at).length;
+      if (open && !confirm(open + ' rows in this period are still unticked — close anyway? (they stay unreconciled and carry over)')) return;
+    }
+    const { error } = await sb.from('statements').update({ closed_at: closing ? new Date().toISOString() : null }).eq('id', s.id);
+    if (error) throw error;
+    st.statement.closed_at = closing ? new Date().toISOString() : null;
+    toast(closing ? 'statement closed ✓' : 'statement reopened'); updateStatementKpis();
+  } catch (err) { toast('couldn’t update: ' + (err.message || err)); }
+}
+
+// ── no card ─────────────────────────────────────────────────
+const nc = { init: false, rows: [], dOff: 0, tOff: 0, dDone: false, tDone: false, sel: new Set() };
+const NC_PAGE = 100;
+async function loadNoCard(reset){
+  if (reset) { nc.rows = []; nc.dOff = 0; nc.tOff = 0; nc.dDone = false; nc.tDone = false; nc.sel.clear(); }
+  if (!nc.monthsBuilt) {
+    nc.monthsBuilt = true;
+    let opts = '<option value="">all months</option>';
+    for (let m = curMonthIso(), i = 0; i < 36; m = addMonths(m, -1), i++) opts += '<option value="' + m + '">' + monthName(m) + '</option>';
+    $('ncMonth').innerHTML = opts;
+    $('ncMonth').onchange = () => loadNoCard(true);
+    let deb = null; $('ncSearch').oninput = () => { clearTimeout(deb); deb = setTimeout(() => loadNoCard(true), 350); };
+    $('ncCard').innerHTML = cardOptions(null, true) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
+    $('ncCard').onchange = updateNcBar;
+    $('ncAll').onchange = () => { nc.rows.forEach(r => { if ($('ncAll').checked) nc.sel.add(r.key); else nc.sel.delete(r.key); }); renderNoCard(); };
+  }
+  const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch);
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, reconciled_at';
+  const mk = (t, off, extra) => {
+    let qq = sb.from(t).select(sel + (extra || '')).is('payment_method_id', null).neq('category', 'Payment')
+      .order('date', {ascending:false}).range(off, off + NC_PAGE - 1);
+    if (m) qq = qq.gte('date', m).lt('date', addMonths(m, 1));
+    if (q) qq = qq.ilike('description', '%' + q + '%');
+    return qq;
+  };
+  const [d, t] = await Promise.all([nc.dDone ? null : mk('daily_expenses', nc.dOff), nc.tDone ? null : mk('travel_expenses', nc.tOff, ', trips(name)')]);
+  if (d) { if (d.error) { toast('couldn’t load: ' + d.error.message); return; } nc.dOff += d.data.length; if (d.data.length < NC_PAGE) nc.dDone = true; d.data.forEach(r => nc.rows.push(Object.assign({ kind: 'daily', key: 'd:' + r.id }, r))); }
+  if (t) { if (t.error) { toast('couldn’t load: ' + t.error.message); return; } nc.tOff += t.data.length; if (t.data.length < NC_PAGE) nc.tDone = true; t.data.forEach(r => nc.rows.push(Object.assign({ kind: 'travel', key: 't:' + r.id }, r))); }
+  nc.rows.sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
+  renderNoCard();
+}
+function renderNoCard(){
+  const body = $('ncRows');
+  if (!nc.rows.length) { body.innerHTML = '<tr><td colspan="7" class="empty">every row here has a card 🐻</td></tr>'; }
+  else body.innerHTML = nc.rows.map(r => '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + '" data-key="' + r.key + '">'
+    + '<td><input type="checkbox" class="rowck"' + (nc.sel.has(r.key) ? ' checked' : '') + '></td>'
+    + '<td class="num">' + fmtD(r.date) + '</td>'
+    + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
+    + '<td>' + esc(r.category) + '</td><td>' + esc(who(r.payer_profile_id)) + '</td>'
+    + '<td><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
+    + '<td class="amt">−' + fmtMoney(r.amount, r.currency) + '</td></tr>').join('');
+  body.querySelectorAll('.rowck').forEach(ck => ck.onchange = ev => {
+    const key = ev.target.closest('tr').dataset.key;
+    if (ev.target.checked) nc.sel.add(key); else nc.sel.delete(key);
+    ev.target.closest('tr').classList.toggle('sel', ev.target.checked); updateNcBar();
+  });
+  $('ncMore').style.display = nc.dDone && nc.tDone ? 'none' : 'inline';
+  $('ncMeta').textContent = nc.rows.length + ' rows loaded' + (nc.dDone && nc.tDone ? '' : ' · more below');
+  updateNcBar();
+}
+function updateNcBar(){
+  const n = nc.sel.size;
+  $('ncSelInfo').textContent = n ? n + ' selected' : 'nothing selected';
+  $('ncApply').disabled = !n || !$('ncCard').value;
+}
+async function applyCardToSelected(){
+  const v = $('ncCard').value; if (!v) return;
+  const card = v === 'cash' ? CTX.cards.find(c => c.kind === 'cash') : cardById(v);
+  if (!card) { toast('no Cash card in Settings yet'); return; }
+  const rows = nc.rows.filter(r => nc.sel.has(r.key));
+  $('ncApply').disabled = true;
+  try {
+    for (const kind of ['daily', 'travel']) {
+      const ids = rows.filter(r => r.kind === kind).map(r => r.id);
+      if (!ids.length) continue;
+      const { error } = await sb.from(kind === 'daily' ? 'daily_expenses' : 'travel_expenses').update({ payment_method_id: card.id, paid_with: card.name }).in('id', ids);
+      if (error) throw error;
+    }
+    toast(rows.length + ' rows → ' + card.name + (card.kind === 'cash' ? ' (reconciled automatically)' : ''));
+    nc.rows = nc.rows.filter(r => !nc.sel.has(r.key)); nc.sel.clear(); renderNoCard();
+  } catch (err) { toast('couldn’t update: ' + (err.message || err)); updateNcBar(); }
+}
+
+// ── pots ────────────────────────────────────────────────────
+async function loadPots(){
+  const box = $('potCards'); box.innerHTML = '<p class="cap"><span class="spin"></span></p>';
+  const [b, c] = await Promise.all([
+    sb.from('fund_balances').select('fund_id, name, country, currency, balance, is_spend_pot, sort_order').eq('is_active', true).order('sort_order'),
+    sb.from('fund_balances_cleared').select('fund_id, cleared_balance, pending_spend'),
+  ]);
+  if (b.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(b.error.message) + '</p>'; return; }
+  const cl = {}; (c.error ? [] : c.data || []).forEach(r => cl[r.fund_id] = r);
+  const pots = (b.data || []).filter(f => f.is_spend_pot);
+  if (!pots.length) { box.innerHTML = '<p class="cap">no spending pots marked — Settings → Funds in the app</p>'; return; }
+  const countries = [...new Set(pots.map(p => p.country))];
+  box.innerHTML = countries.map(cc => '<div class="card"><p class="h2" style="margin-bottom:10px">' + esc(countryTitle(cc)) + '</p>'
+    + '<table><thead><tr><th>Pot</th><th class="amt">Spent · all rows</th><th class="amt">Cleared · reconciled only</th><th class="amt">Pending spend</th></tr></thead><tbody>'
+    + pots.filter(p => p.country === cc).map(p => { const x = cl[p.fund_id] || {}; return '<tr>'
+      + '<td><span class="dsc">🌊 ' + esc(p.name) + '</span></td>'
+      + '<td class="amt lbl">' + fmtMoney(p.balance, p.currency) + '</td>'
+      + '<td class="amt lbl" style="color:var(--primary)">' + (x.cleared_balance != null ? fmtMoney(x.cleared_balance, p.currency) : '—') + '</td>'
+      + '<td class="amt" style="color:' + (Number(x.pending_spend) > 0 ? 'var(--warn)' : 'var(--ink-soft)') + '">' + (x.pending_spend != null ? fmtMoney(x.pending_spend, p.currency) : '—') + '</td>'
+      + '</tr>'; }).join('')
+    + '</tbody></table></div>').join('')
+    + (c.error ? '<p class="cap">cleared balances need the latest database update (' + esc(c.error.message) + ')</p>' : '')
+    + '<p class="cap">Cleared only counts rows that have been reconciled, so it starts low and catches up as statements are closed. Pending is what to expect on the next statements.</p>';
+}
+</script>
+</body>
+</html>
