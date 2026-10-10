@@ -166,7 +166,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="stAll" title="select every unreconciled row shown"></th>
-              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:80px">Who</th><th style="width:96px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:50px"></th>
+              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:100px">Who</th><th style="width:96px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:50px"></th>
             </tr></thead>
             <tbody id="stRows"><tr><td colspan="8" class="empty">pick a card</td></tr></tbody>
           </table>
@@ -199,7 +199,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="ncAll"></th>
-              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:80px">Who</th><th style="width:160px">Card</th><th style="width:70px">Source</th><th class="amt" style="width:110px">Amount</th>
+              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:100px">Who</th><th style="width:160px">Card</th><th style="width:70px">Source</th><th class="amt" style="width:110px">Amount</th>
             </tr></thead>
             <tbody id="ncRows"><tr><td colspan="7" class="empty">loading…</td></tr></tbody>
           </table>
@@ -389,7 +389,7 @@ async function loadContext(){
   CTX = { hh: hh.data, profiles: profiles.data || [], cards: cards.data || [], funds: funds.data || [], cats: cats.data || [] };
   $('hhLabel').textContent = CTX.hh.name + ' household';
 }
-const who = pid => pid ? ((CTX.profiles.find(p => p.id === pid) || {}).display_name || '?') : (CTX.hh && CTX.hh.joint_label || 'Joint');
+const who = pid => (pid && (CTX.profiles.find(p => p.id === pid) || {}).display_name) || (CTX.hh && CTX.hh.joint_label) || 'Joint';
 const cardById = id => CTX.cards.find(c => c.id === id);
 function cardOptions(sel, withNone){
   const KL = { credit_card:'credit card', debit_card:'debit card', bank:'bank', prepaid:'prepaid', cash:'cash' };
@@ -827,7 +827,7 @@ function openBulk(src){
   const cats = CTX.cats.filter(c => kinds.includes(c.kind));
   const groups = [...new Set(cats.map(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other')))];
   $('bkCat').innerHTML = keep + groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other') === g).map(c => '<option value="' + esc(c.name) + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
-  $('bkWho').innerHTML = keep + CTX.profiles.map(p => '<option value="' + p.id + '">' + esc(p.display_name) + '</option>').join('') + '<option value="joint">' + esc(CTX.hh.joint_label || 'Joint') + '</option>';
+  $('bkWho').innerHTML = keep + '<option value="owner">whoever owns the card</option>' + CTX.profiles.map(p => '<option value="' + p.id + '">' + esc(p.display_name) + '</option>').join('') + '<option value="joint">' + esc(CTX.hh.joint_label || 'Joint') + '</option>';
   ['bkCard', 'bkCat', 'bkWho'].forEach(id => { $(id).value = NOCHG; $(id).classList.remove('changed'); $(id).onchange = () => $(id).classList.toggle('changed', $(id).value !== NOCHG); });
   const cm = same('comments'); $('bkComments').value = ''; $('bkComments').placeholder = cm ? cm : (cm === undefined ? 'mixed — type to replace on all' : '— no change —'); $('bkComments').classList.remove('changed');
   $('bkComments').oninput = () => $('bkComments').classList.toggle('changed', !!$('bkComments').value);
@@ -845,10 +845,10 @@ async function applyBulk(){
     if (cardV === 'none') { full.payment_method_id = null; full.paid_with = null; }
     else { cardObj = cardV === 'cash' ? CTX.cards.find(c => c.kind === 'cash') : cardById(cardV); if (!cardObj) { toast('no Cash card in Settings yet'); return; } full.payment_method_id = cardObj.id; full.paid_with = cardObj.name; }
   }
-  if (whoV !== NOCHG) full.payer_profile_id = whoV === 'joint' ? null : whoV;
+  if (whoV !== NOCHG && whoV !== 'owner') full.payer_profile_id = whoV === 'joint' ? null : whoV;
   if (catV !== NOCHG) soft.category = catV;
   if (cmV) soft.comments = cmV;
-  if (!Object.keys(full).length && !Object.keys(soft).length) { toast('nothing changed'); return; }
+  if (!Object.keys(full).length && !Object.keys(soft).length && whoV !== 'owner') { toast('nothing changed'); return; }
   $('bkApply').disabled = true;
   let done = 0, skipped = 0;
   try {
@@ -857,10 +857,16 @@ async function applyBulk(){
       const open = rows.filter(r => r.kind === kind && !r.reconciled_at).map(r => r.id);
       const lockedIds = rows.filter(r => r.kind === kind && r.reconciled_at).map(r => r.id);
       const all = Object.assign({}, soft, full);
-      if (open.length) { const { error } = await sb.from(t).update(all).in('id', open); if (error) throw error; done += open.length; }
+      if (whoV === 'owner') {
+        // group the open rows by the owner of their (new or existing) card
+        const byOwner = {};
+        rows.filter(r => r.kind === kind && !r.reconciled_at).forEach(r => { const c = cardObj || cardById(r.payment_method_id); const o = c && c.profile_id ? c.profile_id : 'joint'; (byOwner[o] = byOwner[o] || []).push(r.id); });
+        for (const [o, ids] of Object.entries(byOwner)) { const { error } = await sb.from(t).update(Object.assign({}, all, { payer_profile_id: o === 'joint' ? null : o })).in('id', ids); if (error) throw error; done += ids.length; }
+        rows.filter(r => r.kind === kind && !r.reconciled_at).forEach(r => { const c = cardObj || cardById(r.payment_method_id); r.payer_profile_id = c && c.profile_id ? c.profile_id : null; });
+      } else if (open.length) { const { error } = await sb.from(t).update(all).in('id', open); if (error) throw error; done += open.length; }
       if (lockedIds.length) {
         if (Object.keys(soft).length) { const { error } = await sb.from(t).update(soft).in('id', lockedIds); if (error) throw error; done += lockedIds.length; }
-        if (Object.keys(full).length) skipped += lockedIds.length;
+        if (Object.keys(full).length || whoV === 'owner') skipped += lockedIds.length;
       }
     }
     rows.forEach(r => { Object.assign(r, soft); if (!r.reconciled_at) { Object.assign(r, full); if (cardObj && cardObj.kind === 'cash') { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'auto'; } } });
