@@ -754,17 +754,25 @@ function parseStatementText(text, hintYear){
   }
   // free text (pasted PDF): a date somewhere near the start, an amount at the end
   const out = [];
+  let lastDated = -9;
   lines.forEach((l, idx) => {
+    // a continuation line (e.g. "OVERSEAS TRANSACTION FEE  $5.40" under a purchase): no date, an amount, right after a dated line
+    if (idx - lastDated <= 2 && out.length && /^[A-Za-z]/.test(l)) {
+      const cm = l.match(/^(.*?)\s+(-?\(?(?:\b(?:S\$|A\$|US\$|SGD|AUD|USD)\s?|[$€£])?-?\d{1,3}(?:[,\d]{0,3})*(?:\.\d{2})\)?\s*(?:CR|DR)?)\s*$/i);
+      if (cm && !/balance|total|minimum|limit|credit available|points/i.test(cm[1])) { const a = parseAmt(cm[2]); if (!isNaN(a) && a !== 0) { out.push({ n: idx, date: out[out.length - 1].date, amount: a, desc: cm[1].replace(/\s+/g, ' ').trim() }); lastDated = idx; return; } }
+    }
     const dm = l.match(/^(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\.?(?:\s+(?:\d{4}|\d{2}(?![\s\d]*[A-Za-z])))?|[A-Za-z]{3,9}\.?\s+\d{1,2},?(?:\s+\d{4})?)\b/);
     if (!dm) return;
     const date = parseDateToken(dm[1], hintYear); if (!date) return;
     const rest = l.slice(dm[0].length).trim();
+    if (/opening balance|closing balance|^total\b|balance brought|balance carried|minimum payment/i.test(rest)) return;   // statement furniture, not a line
     const am = rest.match(/(-?\(?(?:\b(?:S\$|A\$|US\$|SGD|AUD|USD)\s?|[$€£])?-?\d{1,3}(?:[,\d]{0,3})*(?:\.\d{2})\)?\s*(?:CR|DR)?)\s*$/i);
     if (!am) return;
     const amt = parseAmt(am[1]); if (isNaN(amt) || amt === 0) return;
     // a second date (posting date) right after the first is common on card statements
-    const desc = rest.slice(0, rest.length - am[0].length).replace(/^(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\.?)\s+/, '').replace(/\s+/g, ' ').trim();
+    const desc = rest.slice(0, rest.length - am[0].length).replace(/^(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\.?)\s+/, '').replace(/^\d{4}\s+/, '').replace(/\s+/g, ' ').trim();
     out.push({ n: idx, date, amount: amt, desc });
+    lastDated = idx;
   });
   return out;
   function splitCsv(line, d){ const out = []; let cur = '', q = false; for (let i = 0; i < line.length; i++) { const ch = line[i]; if (ch === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q; } else if (ch === d && !q) { out.push(cur.trim()); cur = ''; } else cur += ch; } out.push(cur.trim()); return out; }
@@ -775,19 +783,25 @@ async function runImport(){
   if (f) text = await f.text();
   if (!text.trim()) { toast('paste the statement or choose a CSV'); return; }
   const hintYear = +st.period.end.slice(0, 4);
-  const lines = parseStatementText(text, hintYear);
-  if (!lines.length) { toast('couldn’t find lines with a date and an amount — check the paste, or send the file to Claude to convert'); return; }
-  // match: same |amount| (credits to credits), date within 3 days, nearest date wins, one-to-one
+  const all = parseStatementText(text, hintYear);
+  if (!all.length) { toast('couldn’t find lines with a date and an amount — check the paste, or send the file to Claude to convert'); return; }
+  // a bank export often spans months: only the lines inside this statement's window (± margin) count
+  const wFrom = addDays(st.period.start, -5), wTo = addDays(st.period.end, 5);
+  const lines = all.filter(L => L.date >= wFrom && L.date <= wTo);
+  const skipped = all.length - lines.length;
+  if (!lines.length) { toast('the file has ' + all.length + ' lines but none dated ' + fmtDs(st.period.start) + ' – ' + fmtD(st.period.end) + ' — pick that period first'); return; }
   const cands = st.rows.filter(r => !r.reconciled_at && r.currency === (st.card.currency || r.currency));
-  st.rows.forEach(r => { r._foreign = !r.reconciled_at && st.card.currency && r.currency !== st.card.currency; });
-  const used = new Set(); st.rows.forEach(r => r._matched = false);
-  const dayDiff = (a, b) => Math.abs((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 864e5);
-  lines.forEach(L => {
-    const want = Math.abs(L.amount), credit = L.amount < 0;
-    const hits = cands.filter(r => !used.has(r.key) && Math.abs(Number(r.amount) - want) < 0.005 && !!r.credit === credit && dayDiff(r.date, L.date) <= 3).sort((a, b) => dayDiff(a.date, L.date) - dayDiff(b.date, L.date));
-    if (hits.length) { used.add(hits[0].key); hits[0]._matched = true; L.match = hits[0]; }
-  });
-  st.imp = { lines, total: lines.length, matched: lines.filter(L => L.match).length };
+  st.rows.forEach(r => { r._foreign = !r.reconciled_at && st.card.currency && r.currency !== st.card.currency; r._matched = false; });
+  // rows on OTHER cards (or none) in the window, for "wrong card?" hints only
+  const sel2 = 'id, date, description, amount, currency, payment_method_id';
+  const [od, ot] = await Promise.all([
+    sb.from('daily_expenses').select(sel2).gte('date', wFrom).lte('date', wTo).is('reconciled_at', null).or('payment_method_id.is.null,payment_method_id.neq.' + st.card.id).limit(1000),
+    sb.from('travel_expenses').select(sel2).gte('date', wFrom).lte('date', wTo).is('reconciled_at', null).or('payment_method_id.is.null,payment_method_id.neq.' + st.card.id).limit(1000),
+  ]);
+  const others = [...(od.data || []), ...(ot.data || [])].map(r => Object.assign(r, { cardName: r.payment_method_id ? (cardById(r.payment_method_id) || {}).name : null }));
+  const M = matchLines(lines, cands, others);
+  M.matches.forEach(([L, r]) => { r._matched = true; L.match = r; });
+  st.imp = { lines, total: lines.length, matched: M.matches.length, skipped, payments: M.payments, near: M.near };
   st.sel.clear(); lines.forEach(L => { if (L.match) st.sel.add(L.match.key); });
   closeImport(); renderImportResult(); renderStatement();
   const spend = lines.filter(L => L.amount > 0).reduce((a, L) => a + L.amount, 0) - lines.filter(L => L.amount < 0).reduce((a, L) => a - L.amount, 0);
@@ -795,16 +809,55 @@ async function runImport(){
   if (!$('impSelectOnly').checked && st.sel.size) reconcileSelected();
   toast(st.imp.matched + ' of ' + st.imp.total + ' statement lines matched' + (st.imp.matched ? ' — ticked for review' : ''));
 }
+// the matcher, kept pure so it can be tested on real bank files:
+//  · exact: same |amount| (credits to credits), date within 3 days, nearest date wins, one-to-one
+//  · a fee line right under a purchase (same date, "fee" in the name) is tried together with it
+//  · card payments ("BPAY PAYMENT", "PAYMENT - THANK YOU", direct debits) are not expenses — set aside
+//  · for what's left, a near miss is suggested: same amount but up to 10 days off, or within A$1 / 2 %
+function matchLines(lines, cands, others){
+  const dayDiff = (a, b) => Math.abs((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 864e5);
+  const isPayment = L => L.amount < 0 && /\b(bpay|payment|direct debit|autopay|thank ?you|internet banking|transfer from)\b/i.test(L.desc || '');
+  const used = new Set(), matches = [], payments = [], near = [];
+  const take = (L, r) => { used.add(r.key); matches.push([L, r]); };
+  const find = (amt, credit, date, days) => cands.filter(r => !used.has(r.key) && Math.abs(Number(r.amount) - amt) < 0.005 && !!r.credit === credit && dayDiff(r.date, date) <= days).sort((a, b) => dayDiff(a.date, date) - dayDiff(b.date, date))[0];
+  const feeOf = i => { const F = lines[i + 1]; return F && F.date === lines[i].date && F.amount > 0 && /fee|surcharge|levy/i.test(F.desc || '') ? F : null; };
+  const done = new Set();
+  lines.forEach((L, i) => {
+    if (done.has(L)) return;
+    if (isPayment(L)) { payments.push(L); done.add(L); return; }
+    const want = Math.abs(L.amount), credit = L.amount < 0;
+    let r = find(want, credit, L.date, 3);
+    if (r) { take(L, r); done.add(L); return; }
+    const F = feeOf(i);   // purchase + its fee entered as one row in the app
+    if (F) { const r2 = find(Math.round((want + F.amount) * 100) / 100, credit, L.date, 3); if (r2) { take(L, r2); done.add(L); done.add(F); F.match = r2; F.viaFee = true; return; } }
+  });
+  // second pass: near misses for whatever is still open (not taken as matches — shown as hints)
+  lines.forEach(L => {
+    if (done.has(L) || L.match) return;
+    const want = Math.abs(L.amount), credit = L.amount < 0;
+    const sameAmt = find(want, credit, L.date, 10);
+    const close = cands.filter(r => !used.has(r.key) && !!r.credit === credit && dayDiff(r.date, L.date) <= 3 && Math.abs(Number(r.amount) - want) <= Math.max(1, want * 0.02)).sort((a, b) => Math.abs(Number(a.amount) - want) - Math.abs(Number(b.amount) - want))[0];
+    // the same amount on another card (or no card) in these days: probably entered against the wrong card
+    const other = (others || []).find(r => Math.abs(Number(r.amount) - want) < 0.005 && dayDiff(r.date, L.date) <= 3);
+    const hint = sameAmt ? { r: sameAmt, why: 'same amount, ' + Math.round(dayDiff(sameAmt.date, L.date)) + ' days apart' }
+               : other ? { r: other, why: 'same amount on ' + (other.cardName || 'no card') + ' — wrong card? fix it under Transactions' }
+               : close ? { r: close, why: 'Δ ' + fmtMoney(Math.abs(Number(close.amount) - want), close.currency) + ', same days' } : null;
+    if (hint) near.push([L, hint]);
+  });
+  return { matches, payments, near };
+}
 function renderImportResult(){
   const I = st.imp; if (!I) { $('impResult').style.display = 'none'; return; }
   $('impResult').style.display = '';
-  const missing = I.lines.filter(L => !L.match);
+  const missing = I.lines.filter(L => !L.match && !(I.payments || []).includes(L));
+  const nearOf = L => ((I.near || []).find(x => x[0] === L) || [])[1];
   const unmatchedApp = st.rows.filter(r => r.inPeriod && !r.reconciled_at && !r._matched && !r._foreign);
   const foreign = st.rows.filter(r => r.inPeriod && r._foreign);
-  $('impTitle').textContent = I.total + ' statement lines · ' + I.matched + ' matched';
+  const fees = I.lines.filter(L => L.viaFee).length;
+  $('impTitle').textContent = I.total + ' statement lines · ' + (I.matched + fees) + ' matched' + ((I.payments || []).length ? ' · ' + I.payments.length + ' card payment' + (I.payments.length > 1 ? 's' : '') + ' set aside' : '') + (I.skipped ? ' · ' + I.skipped + ' outside this period ignored' : '');
   $('impSummary').innerHTML = (missing.length ? '<b>' + missing.length + ' on the statement but not in the app</b> — add them (＋ add transaction) or they may be fees/interest. ' : 'every statement line found a row ✓ ') + (unmatchedApp.length ? '<b>' + unmatchedApp.length + ' app rows in this period had no statement line</b> (marked ?) — wrong card, wrong date, or still to post. ' : '') + (foreign.length ? '<b>' + foreign.length + ' can’t be matched</b> — entered in another currency than the card (' + foreign.map(r => esc(r.description) + ' ' + fmtMoney(r.amount, r.currency)).slice(0, 4).join(', ') + (foreign.length > 4 ? '…' : '') + '); the statement shows them converted, so tick them by hand.' : '');
   $('impMissing').innerHTML = missing.length ? '<table><thead><tr><th style="width:110px">Date</th><th>Statement line</th><th class="amt" style="width:120px">Amount</th></tr></thead><tbody>'
-    + missing.map(L => '<tr><td class="num">' + fmtD(L.date) + '</td><td class="ell">' + esc(L.desc || '(no description)') + '</td><td class="amt"' + (L.amount < 0 ? ' style="color:var(--good)"' : '') + '>' + (L.amount < 0 ? '+' : '−') + fmtMoney(Math.abs(L.amount), st.card.currency || 'AUD') + '</td></tr>').join('') + '</tbody></table>' : '';
+    + missing.map(L => { const h = nearOf(L); return '<tr><td class="num">' + fmtD(L.date) + '</td><td class="ell">' + esc(L.desc || '(no description)') + (h ? '<br><span class="cap">≈ ' + esc(h.r.description) + ' ' + fmtMoney(h.r.amount, h.r.currency) + ' on ' + fmtDs(h.r.date) + ' in the app — ' + esc(h.why) + '</span>' : '') + '</td><td class="amt"' + (L.amount < 0 ? ' style="color:var(--good)"' : '') + '>' + (L.amount < 0 ? '+' : '−') + fmtMoney(Math.abs(L.amount), st.card.currency || 'AUD') + '</td></tr>'; }).join('') + '</tbody></table>' : '';
 }
 async function saveStatementTotal(){
   if (!st.card || !st.period) return;
