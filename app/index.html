@@ -2564,8 +2564,7 @@ function renderAllTx(type){
       return;
     }
     if (kind === 'd' || kind === 't') {
-      const who = r.payer_profile_id
-        ? ((CTX.profiles.find(p => p.id === r.payer_profile_id) || {}).display_name || '?') : (jointLabel() || 'Joint');
+      const who = (r.payer_profile_id && (CTX.profiles.find(p => p.id === r.payer_profile_id) || {}).display_name) || jointLabel() || 'Joint';
       const trip = kind === 't' ? tripById(r.trip_id) : null;
       const tripTag = kind === 't'
         ? esc(((trip && trip.countries) || []).map(flagOf).join('') || '✈️') + ' ' + esc(trip ? trip.name : 'trip') + ' · ' : '';
@@ -2877,7 +2876,7 @@ async function renderSetCards(box){
   box.innerHTML = '';
   if (hasKind) box.appendChild(capEl('type · statement closing day (credit cards) · currency — statements and reconciliation use these'));
   cards.forEach(c => {
-    const owner = c.profile_id ? ((CTX.profiles.find(p => p.id === c.profile_id) || {}).display_name || '?') : (jointLabel() || 'Joint');
+    const owner = (c.profile_id && (CTX.profiles.find(p => p.id === c.profile_id) || {}).display_name) || jointLabel() || 'Joint';
     const d = document.createElement('div'); d.className = 'srow';
     d.style.flexWrap = 'wrap';
     if (c.is_archived) d.style.opacity = '.45';
@@ -3328,8 +3327,7 @@ function renderTripDetail(){
     d.innerHTML = '<summary><span class="arr">›</span> ' + esc(g)
       + ' <span class="gamt">' + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join('<br>') + '</span></summary>';
     list.forEach(e => {
-      const who = e.payer_profile_id
-        ? ((CTX.profiles.find(p => p.id === e.payer_profile_id) || {}).display_name || '?') : (jointLabel() || 'Joint');
+      const who = (e.payer_profile_id && (CTX.profiles.find(p => p.id === e.payer_profile_id) || {}).display_name) || jointLabel() || 'Joint';
       const row = document.createElement('div'); row.className = 'trow';
       row.innerHTML = '<div class="td"><span>' + esc(e.description) + '</span>'
         + '<span class="cap">' + esc(who) + ' · ' + new Date(e.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})
