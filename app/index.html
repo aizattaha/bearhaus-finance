@@ -569,7 +569,7 @@ input[type="date"].descinput{min-width:0}
     <div class="f-sec" id="rowMode" style="margin-top:0"><div class="seg grow" id="segMode"></div></div>
     <div class="f-sec" id="rowScope"><div class="seg grow" id="segScope"></div></div>
     <div class="f-sec descwrap">
-      <input class="descinput" id="descInput" placeholder="description" autocomplete="off">
+      <input class="descinput" id="descInput" placeholder="description" autocomplete="off" maxlength="200">
     </div>
     <div class="take" id="takeBox" style="display:none"></div>
     <div id="formBody">
@@ -1060,7 +1060,7 @@ function renderHome(state){
     el.onkeydown = ev => { if (ev.key === 'Enter') el.click(); };
     el.onclick = async () => {
       const { data, error } = await sb.from('daily_expenses')
-        .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id, daily_expense_splits(profile_id, amount)')
+        .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)')
         .eq('id', r.id).single();
       if (error) { toast('couldn’t open: ' + error.message); return; }
       openEditDaily(data);
@@ -1432,7 +1432,7 @@ function renderBudget(st){
             lr.onclick = async ev => {
               ev.stopPropagation();
               const { data, error } = await sb.from('daily_expenses')
-                .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id, daily_expense_splits(profile_id, amount)')
+                .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)')
                 .eq('id', r.id).single();
               if (error) { toast('couldn’t open: ' + error.message); return; }
               openEditDaily(data);
@@ -1472,7 +1472,9 @@ function renderBudget(st){
 let fundsInit = false, fundsState = null, fundsExpanded = { AU:false, SG:false };
 let fundsEdit = { AU:false, SG:false }, fundsExtraGroups = { AU:[], SG:[] };
 function fundIcon(name){
-  const n = name.toLowerCase();
+  const stored = (CTX.funds || []).find(f => f.name === name);
+  if (stored && stored.icon) return stored.icon;
+  const n = (name || '').toLowerCase();
   if (n.includes('float')) return '🌊';
   if (n.includes('car')) return '🚗';
   if (n.includes('travel')) return '✈️';
@@ -2270,7 +2272,8 @@ const ATX_PAGE = 60;
 const RECON_COLS = 'reconciled_at, reconciled_by, reconciled_statement_id';
 let reconOK = true;   // false until the reconciliation migration has landed (probed in loadContext)
 let swapOK = true;    // false until the pot-swap migration has landed
-const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '');
+let updOK = true;     // false until expenses carry updated_at (batch 4)
+const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '') + (!fund && updOK ? ', updated_at' : '');
 let atx = null, atxSeq = 0;
 // 🔒 reconciled (locked) · 🔓 un-reconciled just now (tap to lock again) · nothing = never reconciled.
 // Internal fund rows (plan writes, transfers) are reconciled automatically and stay that way.
@@ -2746,7 +2749,12 @@ async function renderSetPeople(box){
     d.querySelector('.edit').onclick = () => editInline(d, p.display_name, async v => {
       const r = await sb.from('profiles').update({ display_name: v }).eq('id', p.id);
       if (r.error) { toast('couldn’t rename: ' + r.error.message); return; }
-      await loadContext(); renderSetPeople(box); renderSettings(); toast('renamed 🐻');
+      // cards named after the person follow ("Amex — Sam" → "Amex — Samira")
+      const old = p.display_name;
+      const cards = (CTX.cards || []).filter(c => c.profile_id === p.id && c.name.includes(old));
+      let n = 0;
+      for (const c of cards) { const u = await sb.from('payment_methods').update({ name: c.name.split(old).join(v) }).eq('id', c.id); if (!u.error) n++; }
+      await loadContext(); renderSetPeople(box); renderSettings(); toast('renamed 🐻' + (n ? ' — and ' + n + (n === 1 ? ' card' : ' cards') + ' with it' : ''));
     });
     box.appendChild(d);
   });
@@ -2780,7 +2788,8 @@ async function renderSetPeople(box){
 }
 
 async function renderSetFunds(box){
-  const r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, is_spend_pot, group_name, sort_order').order('sort_order');
+  let r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, is_spend_pot, group_name, sort_order, icon').order('sort_order');
+  if (r.error && /icon/.test(r.error.message || '')) r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, is_spend_pot, group_name, sort_order').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const funds = r.data || [], active = funds.filter(f => f.is_active);
   box.innerHTML = '';
@@ -2847,14 +2856,24 @@ async function renderSetFunds(box){
     arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
     arch.textContent = f.is_active ? 'Archive' : 'Restore';
     arch.onclick = async () => {
+      if (f.is_active) {
+        const bal = await sb.from('fund_balances').select('balance').eq('fund_id', f.id).maybeSingle();
+        const b0 = bal.data ? Number(bal.data.balance) : 0;
+        if (Math.abs(b0) >= 0.005) { toast(f.name + ' still holds ' + fmtMoney(b0, f.currency) + ' — move it to another fund first (+ → Transfer), then archive'); return; }
+      }
       const u = await sb.from('funds').update({ is_active: !f.is_active }).eq('id', f.id);
       if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
       await loadContext(); if (fundsInit) loadFunds();
       renderSetFunds(box); toast(f.name + (f.is_active ? ' archived' : ' restored') + ' 🐻');
     };
     d.querySelector('.edit').onclick = () => editInline(d, f.name, async v => {
-      const u = await sb.from('funds').update({ name: v }).eq('id', f.id);
-      if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+      // keep the icon the fund has today, whatever the new name would suggest
+      const patch = { name: v }; if (!f.icon) patch.icon = fundIcon(f.name);
+      const u = await sb.from('funds').update(patch).eq('id', f.id);
+      if (u.error && /icon/.test(u.error.message || '')) {   // database not updated yet: rename without the icon
+        delete patch.icon; const u2 = await sb.from('funds').update(patch).eq('id', f.id);
+        if (u2.error) { toast('couldn’t rename: ' + u2.error.message); return; }
+      } else if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
       await loadContext(); if (fundsInit) loadFunds();
       renderSetFunds(box); toast('renamed 🐻');
     });
@@ -3607,7 +3626,7 @@ async function loadContext(){
   const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD, incSrc, incPast] = await Promise.all([
     sb.from('households').select('id, name, travel_fund_id, joint_label, pot_start').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
-    sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot').eq('is_active', true).order('sort_order'),
+    sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot, icon').eq('is_active', true).order('sort_order'),
     sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
     sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order, kind, currency').eq('is_archived', false).order('sort_order'),
     sb.from('categories').select('kind, name, group_name, icon').eq('is_active', true).order('sort_order'),
@@ -3618,6 +3637,10 @@ async function loadContext(){
     sb.from('fund_transactions').select('income_source, created_at').not('income_source', 'is', null)
       .order('created_at', {ascending:false}).limit(120),
   ]);
+  if (funds.error && /icon/.test(funds.error.message || '')) {   // database not updated yet
+    const f2 = await sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot').eq('is_active', true).order('sort_order');
+    funds.data = f2.data; funds.error = f2.error;
+  }
   if (hh.error && (hh.error.code === 'PGRST116' || hh.status === 401 || hh.status === 403 || hh.status === 406 || /JWT|token/i.test(hh.error.message || ''))) {
     // not a flaky network: this login can't read exactly one household (expired/garbled session, or
     // something wrong with the account) — never run on cached numbers as if nothing happened
@@ -3656,6 +3679,8 @@ async function loadContext(){
     reconOK = !probe.error;
     const probe2 = await sb.from('daily_expenses').select('pot_swap_id').limit(1);
     swapOK = !probe2.error;
+    const probe3 = await sb.from('daily_expenses').select('updated_at').limit(1);
+    updOK = !probe3.error;
     const chip = $('atxOpenOnly'); if (chip) chip.style.display = reconOK ? '' : 'none';
   }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
@@ -3759,7 +3784,7 @@ function refreshCards(payerName){
   renderCardRow();
 }
 
-let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false, curMismatchOk = false;
+let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false, curMismatchOk = false, bigOk = false;
 let pendOp = null, pendVal = null;   // calculator: pendVal ⟨pendOp⟩ amt, evaluated left-to-right
 
 function openSheet(){
@@ -4447,12 +4472,23 @@ async function saveEntry(){
       }
     }
     curMismatchOk = false;
+    // a sanity check, not a rule: very large amounts and dates far from today are usually typos
+    if (!bigOk && (mode === 'daily' || mode === 'trip' || mode === 'editDaily' || mode === 'edit')) {
+      const far = Math.abs((new Date(date + 'T00:00:00') - new Date(todayIso() + 'T00:00:00')) / 864e5) > 365;
+      if (cost >= 100000 || far) {
+        bigOk = true; setTimeout(() => { bigOk = false; }, 8000);
+        done(false, (cost >= 100000 ? fmtMoney(cost, currency) + ' is a lot' : fmtDayMonYr(date) + ' is more than a year from today') + ' — tap ✓ again if that’s right');
+        return;
+      }
+    }
+    bigOk = false;
     if (mode === 'edit') {
       // one server-side transaction: row + splits can never diverge (QA-5)
       const { error } = await sb.rpc('save_expense', {
         p_kind: 'travel', p_id: editingExp.id, p_date: date, p_description: desc,
         p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
         p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
+        p_seen_updated_at: editingExp.updated_at || null,
       });
       if (error) throw error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
@@ -4467,6 +4503,7 @@ async function saveEntry(){
         p_kind: 'daily', p_id: editingExp.id, p_date: date, p_description: desc,
         p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
         p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
+        p_seen_updated_at: editingExp.updated_at || null,
       });
       if (error) throw error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
