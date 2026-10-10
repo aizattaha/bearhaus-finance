@@ -525,6 +525,7 @@ input[type="date"].descinput{min-width:0}
           <span class="cap">🔒 reconciled rows are locked · tap the lock to un-reconcile</span>
         </div>
       </div>
+      <div class="card" id="atxSched" style="display:none;padding-top:8px;padding-bottom:8px;background:var(--accent-soft)"></div>
       <div class="card" id="atxList" style="padding-top:8px;padding-bottom:8px"><p class="cap" style="padding:12px 0">loading…</p></div>
       <button class="btn-tert" id="atxMore" style="align-self:center;display:none" onclick="loadAllTx(false)">Load more</button>
     </section>
@@ -960,6 +961,7 @@ async function loadHome(){
         .gte('date', isoDate(weekStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
       sb.from('daily_expenses')
         .select('id, date, description, category, amount, currency, profiles(display_name)')
+        .lte('date', isoDate(now))
         .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(5),
       sb.from('daily_expenses').select('category, amount, currency')
         .gte('date', isoDate(monthStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
@@ -1037,7 +1039,7 @@ function renderHome(state){
     const who = r.profiles ? r.profiles.display_name : (jointLabel() || 'Joint');
     const d = new Date(r.date + 'T00:00:00');
     const daysAgo = Math.round((new Date(state.today + 'T00:00:00') - d) / 86400000);
-    const when = daysAgo <= 0 ? 'today' : daysAgo === 1 ? 'yesterday'
+    const when = daysAgo < 0 ? 'scheduled · ' + d.toLocaleDateString('en-AU', {day:'numeric', month:'short'}) : daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday'
                : daysAgo < 7 ? d.toLocaleDateString('en-AU', {weekday:'long'})
                : d.toLocaleDateString('en-AU', {day:'numeric', month:'short'});
     return `<div class="row"><div class="rowicon">${icon}</div>
@@ -1287,12 +1289,14 @@ function renderBudget(st){
   $('budCurPill').textContent = curLabel(PC);
   const months = []; for (let i = 5; i >= 0; i--) months.push(addMonths(st.month, -i));
   // sums[month] = {group: amount}, totals + budgets per month
-  const sums = {}, budTot = {}, budByLabel = {};
-  months.forEach(m => { sums[m] = {}; budTot[m] = 0; });
+  const sums = {}, budTot = {}, budByLabel = {}, schedTot = {};
+  const todayS = todayIso();
+  months.forEach(m => { sums[m] = {}; budTot[m] = 0; schedTot[m] = 0; });
   (st.exp || []).forEach(r => {
     if (r.currency !== PC) return;
     const m = r.date.slice(0, 7) + '-01';
     if (!sums[m]) return;
+    if (r.date > todayS) { schedTot[m] += Number(r.amount); return; }   // Scheduled: counts on its day, not before
     const g = GROUP_OF[r.category] || 'Other';
     sums[m][g] = (sums[m][g] || 0) + Number(r.amount);
   });
@@ -1348,9 +1352,10 @@ function renderBudget(st){
   $('budTotalMain').innerHTML = fmtMoney(spent, PC)
     + (budget > 0 ? ' <span style="font-size:15px;font-weight:400;color:var(--accent)">of ' + fmtMoney(budget, PC) + '</span>' : '');
   const sub = $('budTotalSub');
-  if (!budget) { sub.textContent = 'no budget set for this month'; sub.style.color = ''; }
-  else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, PC) + ' still available'; sub.style.color = ''; }
-  else { sub.textContent = fmtMoney(spent - budget, PC) + ' over budget'; sub.style.color = '#F0A8A8'; }
+  const schedNote = schedTot[st.month] > 0 ? ' · ' + fmtMoney(schedTot[st.month], PC) + ' scheduled, not counted yet' : '';
+  if (!budget) { sub.textContent = 'no budget set for this month' + schedNote; sub.style.color = ''; }
+  else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, PC) + ' still available' + schedNote; sub.style.color = ''; }
+  else { sub.textContent = fmtMoney(spent - budget, PC) + ' over budget' + schedNote; sub.style.color = '#F0A8A8'; }
 
   // current month links straight into the plan editor; the whole card opens the month's transactions
   $('budPlanBtn').style.display = st.month === curMonthIso() ? 'inline-block' : 'none';
@@ -1382,7 +1387,7 @@ function renderBudget(st){
     // drill level 1: this group's categories, biggest spend first;
     // level 2: a category's line items, revealed on tap
     const monthExp = (st.exp || []).filter(r =>
-      r.currency === PC && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group);
+      r.currency === PC && r.date <= todayS && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group);
     const catSums = {};
     monthExp.forEach(r => catSums[r.category] = (catSums[r.category] || 0) + Number(r.amount));
     const card = document.createElement('div');
@@ -1984,7 +1989,7 @@ function renderPlanSheet(){
     const pots = potsFor(d.funds, cur);
     box.appendChild(sec('spending budget' + (pots.length ? ' · lands in ' + (pots.length > 1 ? 'the pot on each line' : esc(pots[0].name)) : '')));
     const keysHere = [];
-    if (cur === PC) BUDGET_ROWS.forEach(b => keysHere.push(b.blabel + '|' + PC));
+    if (cur === PC || edit) BUDGET_ROWS.forEach(b => keysHere.push(b.blabel + '|' + cur));
     Object.keys(d.cat).forEach(k => { if (k.endsWith('|' + cur) && !keysHere.includes(k) && (edit || d.cat[k] > 0)) keysHere.push(k); });
     if (edit) {
       keysHere.forEach(k => {
@@ -2429,6 +2434,8 @@ async function loadAllTx(reset){
 }
 function renderAllTx(type){
   const box = $('atxList'); box.innerHTML = '';
+  const schedBox = $('atxSched'); schedBox.innerHTML = ''; schedBox.style.display = 'none';
+  let schedRows = [];
   const src = atxSources(type);
   const isDone = k => k === 'd' ? atx.dDone : k === 't' ? atx.tDone : atx.fDone;
   let rows = atx.rows.slice().sort((a, b) => b.r.date > a.r.date ? 1 : b.r.date < a.r.date ? -1 : 0);
@@ -2507,21 +2514,33 @@ function renderAllTx(type){
       tot[cur] = (tot[cur] || 0) + sgn * Number(x.r.amount);
     });
     const next = sched[sched.length - 1].r.date;   // soonest due
+    const outT = {}, inT = {};
+    sched.forEach(x => {
+      const cur = x.kind === 'f' || x.kind === 'x' ? (x.r.funds ? x.r.funds.currency : 'AUD') : x.r.currency;
+      if (x.kind === 'x') return;
+      const isIn = x.kind === 'f' && x.r.type === 'income';
+      (isIn ? inT : outT)[cur] = ((isIn ? inT : outT)[cur] || 0) + Number(x.r.amount);
+    });
     const hb = document.createElement('button');
     hb.type = 'button'; hb.className = 'fundrow';
     hb.innerHTML = '<div class="rowicon">🗓️</div>'
       + '<div style="min-width:0;flex:1"><div class="lbl">Scheduled · ' + sched.length + '</div>'
-      + '<div class="cap">next due ' + fmtDayMonYr(next) + ' · not counted yet · tap to ' + (atxOpenSched ? 'collapse' : 'expand') + '</div></div>'
-      + '<div class="amt num" style="color:var(--ink-soft)">' + Object.entries(tot).map(([c, v]) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtMoney(Math.abs(v), c)).join(' · ') + '</div>';
+      + '<div class="cap">next due ' + fmtDayMonYr(next) + ' · not counted until the day · tap to ' + (atxOpenSched ? 'collapse' : 'expand') + '</div></div>'
+      + '<div class="amt num cap" style="text-align:right;line-height:16px">'
+      + (Object.keys(outT).length ? 'out ' + Object.entries(outT).map(([c, v]) => fmtMoney(v, c)).join(' · ') : '')
+      + (Object.keys(inT).length ? (Object.keys(outT).length ? '<br>' : '') + 'in ' + Object.entries(inT).map(([c, v]) => fmtMoney(v, c)).join(' · ') : '') + '</div>';
     hb.onclick = () => { atxOpenSched = !atxOpenSched; renderAllTx(type); };
-    box.appendChild(hb);
-    if (atxOpenSched) final = sched.slice().reverse().map(x => Object.assign({}, x, { sched: true })).concat(final);
+    schedBox.appendChild(hb);
+    schedBox.style.display = '';
+    schedRows = sched.slice().reverse().map(x => Object.assign({}, x, { sched: true }));
   }
-  final.forEach((row) => {
+  // scheduled rows render into their own card (above), everything else into the list
+  (atxOpenSched ? schedRows : []).concat(final).forEach((row) => {
     const { kind, r, inn } = row;
+    const box = row.sched ? schedBox : $('atxList');   // scheduled rows live in their own card
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'fundrow';
-    if (row.sched) b.style.opacity = '.6';
+    if (row.sched) b.style.opacity = '.75';
     if (r && r.reconciled_at && ['d', 't', 'f', 'x'].includes(kind)) b.classList.add('recd');
     if (kind === 'pg') {
       const tot = {};
@@ -3525,6 +3544,15 @@ async function loadContext(){
     sb.from('fund_transactions').select('income_source, created_at').not('income_source', 'is', null)
       .order('created_at', {ascending:false}).limit(120),
   ]);
+  if (hh.error && (hh.error.code === 'PGRST116' || hh.status === 401 || hh.status === 403 || hh.status === 406 || /JWT|token/i.test(hh.error.message || ''))) {
+    // not a flaky network: this login can't read exactly one household (expired/garbled session, or
+    // something wrong with the account) — never run on cached numbers as if nothing happened
+    localStorage.removeItem('bh-ctx');
+    await sb.auth.signOut().catch(() => {});
+    $('app').style.display = 'none'; $('onboard').style.display = 'none'; $('login').style.display = 'flex';
+    const el = $('loginError'); if (el) el.textContent = hh.error.code === 'PGRST116' && /multiple/i.test(hh.error.details || '') ? 'something’s wrong with this account — more than one household is attached. Tell Aizat.' : 'your session expired — sign in again';
+    throw new Error('session invalid');
+  }
   if (!hh.error) {
     // table may predate the categories migration — fall back to built-ins
     const catRows = cats.error ? (CTX.cats || []) : (cats.data || []);

@@ -134,9 +134,10 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
       <div class="toolbar">
         <select class="descinput" id="stCard" style="min-width:260px"></select>
         <select class="descinput" id="stPeriod" style="min-width:230px"></select>
-        <button class="chip" id="stMargin" title="banks post a few days late — show rows up to 5 days either side of the period">± 5 days</button>
+        <button class="chip sel" id="stMargin" title="banks post a few days late — rows up to 5 days either side of the period are shown; click to show the exact period only">± 5 days</button>
         <button class="chip" id="stCarry" title="older rows on this card that were never ticked">include earlier unreconciled</button>
         <button class="chip" id="stImport" onclick="openImport()" title="drop in the bank's CSV or paste the statement text — matching rows get ticked for you">⬇ import statement</button>
+        <button class="chip" id="stAdd" onclick="openAddTx('st')" title="a line on the statement that isn't in the app yet">＋ add transaction</button>
         <span class="cap" id="stMeta"></span>
       </div>
 
@@ -192,6 +193,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         <select class="descinput" id="ncMonth" style="min-width:180px"></select>
         <select class="descinput" id="ncCardF" style="min-width:220px"></select>
         <input class="descinput" id="ncSearch" placeholder="search descriptions" style="min-width:240px">
+        <button class="chip" onclick="openAddTx('nc')">＋ add transaction</button>
         <span class="cap" id="ncMeta"></span>
       </div>
       <div class="card" style="margin-top:14px;padding:0">
@@ -318,6 +320,33 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     </div>
   </div>
 </div>
+<div id="addtx" class="overlay" onclick="if(event.target===this)closeAddTx()">
+  <div class="card bulkcard" style="max-width:640px">
+    <div class="row" style="justify-content:space-between">
+      <div><p class="cap">Add transaction</p><h2 class="h2">New expense</h2></div>
+      <button class="btn-tert" onclick="closeAddTx()">✕ close</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="chip sel" id="axKindDaily" onclick="setAxKind('daily')">🛍️ Daily</button>
+      <button class="chip" id="axKindTrip" onclick="setAxKind('travel')">✈️ Trip</button>
+      <select class="descinput" id="axTrip" style="display:none;min-width:200px"></select>
+    </div>
+    <div class="bkgrid">
+      <label class="bkf"><span class="cap">Date</span><input class="descinput" id="axDate" type="date"></label>
+      <label class="bkf"><span class="cap">Amount</span><div class="row" style="gap:6px;flex-wrap:nowrap"><input class="descinput num" id="axAmount" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="flex:1;min-width:0"><select class="descinput" id="axCur" style="width:92px"></select></div></label>
+      <label class="bkf" style="grid-column:1 / -1"><span class="cap">Description</span><input class="descinput" id="axDesc" placeholder="the shop or what it was" maxlength="200"></label>
+      <label class="bkf"><span class="cap">Category</span><select class="descinput" id="axCat"></select></label>
+      <label class="bkf"><span class="cap">Card</span><select class="descinput" id="axCard"></select></label>
+      <label class="bkf"><span class="cap">Who paid</span><select class="descinput" id="axWho"></select><span class="cap" id="axWhoNote"></span></label>
+      <label class="bkf"><span class="cap">Comments</span><input class="descinput" id="axComments" placeholder="optional"></label>
+    </div>
+    <p class="cap" id="axErr" style="margin-top:10px;color:var(--bad)"></p>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-soft" onclick="closeAddTx()">Cancel</button>
+      <button class="btn btn-primary" id="axSave" onclick="saveAddTx()">Save</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -408,7 +437,7 @@ function cardOptions(sel, withNone){
 }
 
 // ── statements ──────────────────────────────────────────────
-const st = { card: null, periods: [], period: null, rows: [], statement: null, margin: false, carry: false, sel: new Set() };
+const st = { card: null, periods: [], period: null, rows: [], statement: null, margin: true, carry: false, sel: new Set() };
 function initStatements(){
   $('stCard').innerHTML = cardOptions(null, true);
   $('stCard').onchange = () => { st.card = cardById($('stCard').value) || null; st.sel.clear(); buildPeriods(); loadStatement(); };
@@ -461,9 +490,14 @@ async function loadStatement(){
   if (!c || !p) { renderStatement(); return; }
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
   const from = st.margin ? addDays(p.start, -5) : p.start, to = st.margin ? addDays(p.end, 5) : p.end;
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, reconciled_at, reconciled_by, reconciled_statement_id';
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id';
+  // the statement record first: a CLOSED statement shows exactly the rows ticked on it, whatever their date
+  const s0 = await sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle();
+  const closed = !!(s0.data && s0.data.closed_at);
   const q = (t, extra) => {
-    let qq = sb.from(t).select(sel + (extra || '')).eq('payment_method_id', c.id).order('date', {ascending:false}).limit(1000);
+    let qq = sb.from(t).select(sel + (extra || '')).order('date', {ascending:false}).limit(1000);
+    if (closed) return qq.eq('reconciled_statement_id', s0.data.id);
+    qq = qq.eq('payment_method_id', c.id);
     return st.carry ? qq.or('and(date.gte.' + from + ',date.lte.' + to + '),and(date.lt.' + from + ',reconciled_at.is.null)') : qq.gte('date', from).lte('date', to);
   };
   // bank accounts also carry fund rows (salary in, premiums out…): rows already tied to this
@@ -471,21 +505,21 @@ async function loadStatement(){
   const isBank = c.kind === 'bank';
   const qf = () => {
     let qq = sb.from('fund_transactions').select('id, date, remarks, type, amount, income_source, origin, fund_id, account_payment_method_id, transfer_group_id, reconciled_at, reconciled_by, reconciled_statement_id, funds!inner(name, currency)')
-      .eq('funds.currency', c.currency || 'AUD').neq('origin', 'planned').not('remarks', 'ilike', 'Transfer %')
       .order('date', {ascending:false}).limit(1000);
+    if (closed) return qq.eq('reconciled_statement_id', s0.data.id);
+    qq = qq.eq('funds.currency', c.currency || 'AUD').neq('origin', 'planned').not('remarks', 'ilike', 'Transfer %');
     const acct = 'or(account_payment_method_id.eq.' + c.id + ',account_payment_method_id.is.null)';
     return st.carry ? qq.or('and(' + acct + ',or(and(date.gte.' + from + ',date.lte.' + to + '),and(date.lt.' + from + ',reconciled_at.is.null)))')
                     : qq.or(acct).gte('date', from).lte('date', to);
   };
-  const [d, t, f, s] = await Promise.all([
-    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name)'), isBank ? qf() : { data: [] },
-    sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle(),
+  const [d, t, f] = await Promise.all([
+    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name)'), (isBank || closed) ? qf() : { data: [] },
   ]);
   if (d.error || t.error || f.error) { toast('couldn’t load: ' + (d.error || t.error || f.error).message); return; }
-  st.statement = s.data || null;
+  st.statement = s0.data || null;
   st.rows = (d.data || []).map(r => Object.assign({ kind: 'daily', key: 'd:' + r.id }, r))
     .concat((t.data || []).map(r => Object.assign({ kind: 'travel', key: 't:' + r.id }, r)))
-    .concat((f.data || []).filter(r => r.reconciled_by !== 'auto' || r.account_payment_method_id === c.id).map(r => Object.assign({ kind: 'fund', key: 'f:' + r.id }, r, {
+    .concat((f.data || []).filter(r => closed || r.reconciled_by !== 'auto' || r.account_payment_method_id === c.id).map(r => Object.assign({ kind: 'fund', key: 'f:' + r.id }, r, {
       description: r.remarks || r.income_source || (r.type === 'income' ? 'money in' : 'money out'),
       category: r.funds ? r.funds.name : 'fund', currency: r.funds ? r.funds.currency : c.currency, payer_profile_id: null,
       credit: r.type === 'income' })))
@@ -501,8 +535,9 @@ async function loadStatement(){
 function renderStatement(){
   const c = st.card, p = st.period, body = $('stRows');
   if (!c || !p) { body.innerHTML = '<tr><td colspan="8" class="empty">pick a card</td></tr>'; updateStatementKpis(); return; }
-  if (!st.rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">no rows on ' + esc(c.name) + ' for this period' + (st.margin ? '' : ' — try ± 5 days') + '</td></tr>'; updateStatementKpis(); return; }
+  if (!st.rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">' + (st.statement && st.statement.closed_at ? 'this statement was closed with no rows ticked — reopen it to tick some' : 'no rows on ' + esc(c.name) + ' for this period' + (st.margin ? '' : ' — try ± 5 days')) + '</td></tr>'; updateStatementKpis(); return; }
   const cur = c.currency;
+  const closedSt = !!(st.statement && st.statement.closed_at);
   body.innerHTML = st.rows.map(r => {
     const locked = !!r.reconciled_at;
     const other = locked && st.statement && r.reconciled_statement_id && r.reconciled_statement_id !== st.statement.id;
@@ -510,14 +545,14 @@ function renderStatement(){
     const curTag = cur && r.currency !== cur ? ' <span class="tag warn" title="a different currency from the card — the statement will show it converted">' + esc(r.currency) + '</span>' : '';
     const posTag = r.carry ? ' <span class="tag">earlier</span>' : (!r.inPeriod ? ' <span class="tag">margin</span>' : '');
     return '<tr class="' + (locked ? 'recd' : '') + (checked ? ' sel' : '') + '" data-key="' + r.key + '">'
-      + '<td>' + (locked ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + '>') + '</td>'
+      + '<td>' + (locked || closedSt ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + '>') + '</td>'
       + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
       + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
       + '<td class="ell">' + esc(r.category) + '</td>'
       + '<td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
       + '<td style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
       + '<td class="amt"' + (r.credit ? ' style="color:var(--good)"' : '') + '>' + (r.credit ? '+' : '−') + fmtMoney(r.amount, r.currency) + curTag + '</td>'
-      + '<td>' + (locked ? '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>' : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
+      + '<td>' + (locked ? (closedSt ? '<span class="lock muted" title="on a closed statement — reopen it to change anything">🔒</span>' : '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>') : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
       + '</tr>';
   }).join('');
   body.querySelectorAll('.rowck').forEach(ck => ck.onchange = ev => {
@@ -559,14 +594,16 @@ function updateStatementKpis(){
   const n = st.sel.size, selRows = st.rows.filter(r => st.sel.has(r.key));
   const selTotal = selRows.reduce((s, r) => s + signed(r), 0);
   $('stSelInfo').textContent = n ? n + ' selected · ' + fmtMoney(selTotal, cur) : 'nothing selected';
-  $('stReconcile').disabled = !n;
-  $('stEdit').disabled = !n;
-  $('stUnrec').disabled = !c || !st.rows.some(r => r.reconciled_at && r.reconciled_by !== 'auto');
-  $('stClose').disabled = !c;
   const closed = st.statement && st.statement.closed_at;
+  $('stReconcile').disabled = !n || closed;
+  $('stEdit').disabled = !n;
+  $('stUnrec').disabled = !c || closed || !st.rows.some(r => r.reconciled_at && r.reconciled_by !== 'auto');
+  $('stClose').disabled = !c;
+  $('stImport').disabled = !c || closed; $('stAdd').disabled = !c;
+  $('stMargin').style.opacity = closed ? '.4' : ''; $('stCarry').style.opacity = closed ? '.4' : '';
   $('stClose').textContent = closed ? 'Reopen statement' : 'Close statement';
   $('stClose').className = 'btn ' + (closed ? 'btn-soft' : 'btn-primary');
-  $('stMeta').innerHTML = c ? (closed ? '<span class="tag good">closed ' + fmtD(st.statement.closed_at.slice(0, 10)) + '</span>' : (st.statement ? '<span class="tag blue">statement saved · open</span>' : '')) : '';
+  $('stMeta').innerHTML = c ? (closed ? '<span class="tag good">closed ' + fmtD(st.statement.closed_at.slice(0, 10)) + ' · showing only the rows on it</span>' : (st.statement ? '<span class="tag blue">statement saved · open</span>' : '')) : '';
   $('stAll').checked = n > 0 && st.rows.filter(r => !r.reconciled_at).every(r => st.sel.has(r.key));
 }
 async function ensureStatement(){
@@ -742,7 +779,7 @@ async function toggleCloseStatement(){
     const { error } = await sb.from('statements').update({ closed_at: closing ? new Date().toISOString() : null }).eq('id', s.id);
     if (error) throw error;
     st.statement.closed_at = closing ? new Date().toISOString() : null;
-    toast(closing ? 'statement closed ✓' : 'statement reopened'); updateStatementKpis();
+    toast(closing ? 'statement closed ✓ — only its rows are shown now' : 'statement reopened'); st.sel.clear(); loadStatement();
   } catch (err) { toast('couldn’t update: ' + (err.message || err)); }
 }
 
@@ -829,9 +866,12 @@ function openBulk(src){
   $('bkCat').innerHTML = keep + groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other') === g).map(c => '<option value="' + esc(c.name) + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
   $('bkWho').innerHTML = keep + '<option value="owner">whoever owns the card</option>' + CTX.profiles.map(p => '<option value="' + p.id + '">' + esc(p.display_name) + '</option>').join('') + '<option value="joint">' + esc(CTX.hh.joint_label || 'Joint') + '</option>';
   ['bkCard', 'bkCat', 'bkWho'].forEach(id => { $(id).value = NOCHG; $(id).classList.remove('changed'); $(id).onchange = () => $(id).classList.toggle('changed', $(id).value !== NOCHG); });
+  // a personal card names its owner as the payer (the database enforces it) — say so when a card is picked
+  const lockNote = locked ? '<span class="tag warn">' + locked + ' reconciled</span> card and who-paid stay as they are on reconciled rows (un-reconcile first); category and comments still change.' : '';
+  $('bkCard').onchange = () => { $('bkCard').classList.toggle('changed', $('bkCard').value !== NOCHG); const c = $('bkCard').value === 'cash' ? CTX.cards.find(x => x.kind === 'cash') : cardById($('bkCard').value); const o = c && c.profile_id ? who(c.profile_id) : null; $('bkNote').innerHTML = (o ? '<span class="tag blue">who paid → ' + esc(o) + '</span> the card’s owner becomes the payer. ' : '') + lockNote; };
   const cm = same('comments'); $('bkComments').value = ''; $('bkComments').placeholder = cm ? cm : (cm === undefined ? 'mixed — type to replace on all' : '— no change —'); $('bkComments').classList.remove('changed');
   $('bkComments').oninput = () => $('bkComments').classList.toggle('changed', !!$('bkComments').value);
-  $('bkNote').innerHTML = locked ? '<span class="tag warn">' + locked + ' reconciled</span> card and who-paid stay as they are on reconciled rows (un-reconcile first); category and comments still change.' : '';
+  $('bkNote').innerHTML = lockNote;
   $('bkApply').disabled = false;
   $('bulk').classList.add('show');
 }
@@ -842,7 +882,7 @@ async function applyBulk(){
   const cardV = $('bkCard').value, catV = $('bkCat').value, whoV = $('bkWho').value, cmV = $('bkComments').value;
   let cardObj = null;
   if (cardV !== NOCHG) {
-    if (cardV === 'none') { full.payment_method_id = null; full.paid_with = null; }
+    if (cardV === 'none') { full.payment_method_id = null; full.paid_with = ''; }
     else { cardObj = cardV === 'cash' ? CTX.cards.find(c => c.kind === 'cash') : cardById(cardV); if (!cardObj) { toast('no Cash card in Settings yet'); return; } full.payment_method_id = cardObj.id; full.paid_with = cardObj.name; }
   }
   if (whoV !== NOCHG && whoV !== 'owner') full.payer_profile_id = whoV === 'joint' ? null : whoV;
@@ -869,7 +909,7 @@ async function applyBulk(){
         if (Object.keys(full).length || whoV === 'owner') skipped += lockedIds.length;
       }
     }
-    rows.forEach(r => { Object.assign(r, soft); if (!r.reconciled_at) { Object.assign(r, full); if (cardObj && cardObj.kind === 'cash') { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'auto'; } } });
+    rows.forEach(r => { Object.assign(r, soft); if (!r.reconciled_at) { Object.assign(r, full); if (cardObj && cardObj.profile_id) r.payer_profile_id = cardObj.profile_id; if (cardObj && cardObj.kind === 'cash') { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'auto'; } } });
     toast(done + ' updated' + (skipped ? ' · ' + skipped + ' reconciled rows kept their card/payer' : '') + (cardObj && cardObj.kind === 'cash' ? ' · cash rows reconcile automatically' : ''));
     closeBulk();
     if (bk.src === 'st') { st.sel.clear(); loadStatement(); }
@@ -1011,6 +1051,64 @@ async function loadSwaps(){
     if (error) { toast('couldn’t undo: ' + error.message); return; }
     toast('swap undone'); loadSwaps(); loadSwapRows();
   });
+}
+
+// ── add a transaction from the Desk (a statement line the app doesn't have yet) ──
+const ax = { src: null, kind: 'daily', trips: [] };
+async function openAddTx(src){
+  ax.src = src; ax.kind = 'daily';
+  if (!ax.trips.length) { const t = await sb.from('trips').select('id, name, currency, currencies, start_date').order('start_date', {ascending:false}).limit(30); ax.trips = t.data || []; }
+  $('axTrip').innerHTML = ax.trips.map(t => '<option value="' + t.id + '">' + esc(t.name) + '</option>').join('') || '<option value="">no trips yet</option>';
+  const card = src === 'st' && st.card ? st.card : null;
+  $('axCard').innerHTML = cardOptions(card ? card.id : null, true) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
+  const curs = [...new Set(CTX.funds.map(f => f.currency))]; if (card && card.currency && !curs.includes(card.currency)) curs.unshift(card.currency);
+  $('axCur').innerHTML = curs.map(c => '<option value="' + c + '">' + c + '</option>').join('');
+  $('axCur').value = (card && card.currency) || curs[0];
+  $('axDate').value = src === 'st' && st.period ? (st.period.end < todayIso() ? st.period.end : todayIso()) : todayIso();
+  $('axAmount').value = ''; $('axDesc').value = ''; $('axComments').value = ''; $('axErr').textContent = '';
+  setAxKind('daily'); axWhoFromCard();
+  $('axCard').onchange = axWhoFromCard;
+  $('addtx').classList.add('show'); setTimeout(() => $('axDesc').focus(), 50);
+}
+function closeAddTx(){ $('addtx').classList.remove('show'); }
+function setAxKind(k){
+  ax.kind = k;
+  $('axKindDaily').classList.toggle('sel', k === 'daily'); $('axKindTrip').classList.toggle('sel', k === 'travel');
+  $('axTrip').style.display = k === 'travel' ? '' : 'none';
+  const cats = CTX.cats.filter(c => c.kind === k);
+  const groups = [...new Set(cats.map(c => c.group_name || 'Other'))];
+  $('axCat').innerHTML = groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.group_name || 'Other') === g).map(c => '<option value="' + esc(c.name) + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
+}
+function axWhoFromCard(){
+  const v = $('axCard').value; const c = v === 'cash' ? CTX.cards.find(x => x.kind === 'cash') : cardById(v);
+  const owner = c && c.profile_id ? c.profile_id : null;
+  $('axWho').innerHTML = CTX.profiles.map(p => '<option value="' + p.id + '">' + esc(p.display_name) + '</option>').join('') + '<option value="joint">' + esc(CTX.hh.joint_label || 'Joint') + '</option>';
+  $('axWho').value = owner || 'joint'; $('axWho').disabled = !!owner;
+  $('axWhoNote').textContent = owner ? 'follows the card' : (c ? 'a shared card — pick who paid' : 'pick a card');
+  if (c && c.currency && [...$('axCur').options].some(o => o.value === c.currency)) $('axCur').value = c.currency;
+}
+async function saveAddTx(){
+  const amount = parseFloat($('axAmount').value), desc = $('axDesc').value.trim(), date = $('axDate').value, cardV = $('axCard').value;
+  const err = m => { $('axErr').textContent = m; };
+  if (!date) return err('pick a date'); if (!(amount > 0)) return err('enter the amount'); if (!desc) return err('add a description');
+  if (!cardV) return err('pick the card (or Cash) — every row needs one to sit on a statement');
+  if (ax.kind === 'travel' && !$('axTrip').value) return err('pick a trip');
+  const card = cardV === 'cash' ? CTX.cards.find(x => x.kind === 'cash') : cardById(cardV);
+  if (!card) return err('no Cash card in Settings yet');
+  const whoV = $('axWho').value, pid = whoV === 'joint' ? null : whoV;
+  const row = { household_id: CTX.hh.id, date, description: desc, category: $('axCat').value, amount, currency: $('axCur').value, payer_profile_id: pid, payment_method_id: card.id, paid_with: card.name, comments: $('axComments').value.trim() };
+  if (ax.kind === 'travel') row.trip_id = $('axTrip').value;
+  $('axSave').disabled = true;
+  const t = ax.kind === 'daily' ? 'daily_expenses' : 'travel_expenses';
+  const ins = await sb.from(t).insert(row).select('id').single();
+  if (ins.error) { $('axSave').disabled = false; return err('couldn’t save: ' + ins.error.message); }
+  // the same split rows the app writes: the payer is owed the amount, the joint pot owes it
+  const splits = (pid ? [{ profile_id: pid, amount }] : []).concat([{ profile_id: null, amount: -amount }]).map(x => Object.assign({ household_id: CTX.hh.id, expense_id: ins.data.id }, x));
+  const sp = await sb.from(ax.kind === 'daily' ? 'daily_expense_splits' : 'travel_expense_splits').insert(splits);
+  $('axSave').disabled = false;
+  if (sp.error) toast('saved, but the split rows failed: ' + sp.error.message); else toast('saved — ' + desc + ' · ' + fmtMoney(amount, row.currency));
+  closeAddTx();
+  if (ax.src === 'st') loadStatement(); else loadNoCard(true);
 }
 
 // ── pots ────────────────────────────────────────────────────
