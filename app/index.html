@@ -1448,6 +1448,24 @@ function renderBudget(st){
     card.onclick = () => drill.classList.toggle('open');
     box.appendChild(card);
   });
+  // budget lines that aren't one of the category groups (added by hand in the plan): shown, with the gap made plain
+  Object.keys(budByLabel).forEach(label => {
+    if (BUDGET_ROWS.some(r => r.blabel === label) || !(budByLabel[label] > 0)) return;
+    const b = budByLabel[label];
+    const card = document.createElement('div'); card.className = 'card pacecard';
+    card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
+        <div class="rowicon">🎯</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-end">
+            <span class="lbl">${esc(label)}</span>
+            <span style="text-align:right"><div class="lbl num" style="color:var(--good)">${fmtMoney(b, PC)} left</div><div class="cap num">${fmtMoney(0, PC)} of ${fmtMoney(b, PC)}</div></span>
+          </div>
+          <div class="pace"><i style="width:0%"></i></div>
+          <p class="cap" style="margin-top:4px">no category group has this name, so spending can't count against it yet — rename it to a group, or add a group called “${esc(label)}” in Settings → Categories</p>
+        </div>
+      </div>`;
+    box.appendChild(card);
+  });
 }
 
 // ══ FUNDS ═══════════════════════════════════
@@ -2299,11 +2317,12 @@ const ATX_TYPES = ['All', 'Daily', 'Trips', 'Income', 'Funds'];
 const atxSources = type => type === 'All' ? ['d', 't', 'f'] : type === 'Daily' ? ['d'] : type === 'Trips' ? ['t'] : ['f'];
 let atxAux = null;                 // {inc: income_budgets rows, applied: {month: date}} — the plan's story
 let atxOpenPlans = new Set();      // months whose plan group is expanded
+let atxOpenSwaps = new Set();      // pot swaps whose legs are expanded
 let atxOpenSched = false;          // the Scheduled (future-dated) block, collapsed by default
 // preset: { type, month, what } — what = category (Daily) · trip id (Trips) · fund id (Funds)
 function openAllTx(preset){
   atxAux = null;
-  atxOpenPlans = new Set();
+  atxOpenPlans = new Set(); atxOpenSwaps = new Set();
   atxOpenSched = false;
   if (!atx) {
     $('atxMonth').onchange = () => loadAllTx(true);
@@ -2473,8 +2492,20 @@ function renderAllTx(type){
   let final = merged;
   if (type === 'All') {
     final = [];
-    const seenPlan = {};
+    const seenPlan = {}, seenSwap = {};
     merged.forEach(x => {
+      // a pot swap's legs (two transfer pairs + maybe a bank-pot spend row) collapse into one ⇄ line
+      const swapTag = (x.kind === 'x' || x.kind === 'f') && /Pot swap · /.test(x.r.remarks || '') ? (x.r.remarks.split('Pot swap · ')[1] || '').split(' @ ')[0] : null;
+      if (swapTag) {
+        const K = x.r.date + '|' + swapTag;
+        if (!seenSwap[K]) {
+          seenSwap[K] = { kind: 'ps', key: K, tag: swapTag, r: { date: x.r.date }, legs: [], open: atxOpenSwaps.has(K) };
+          final.push(seenSwap[K]);
+        }
+        seenSwap[K].legs.push(x);
+        if (seenSwap[K].open) final.push(x);
+        return;
+      }
       if (x.kind === 'f' && x.r.origin === 'planned') {
         const M = x.r.date.slice(0, 7);
         if (!seenPlan[M]) {
@@ -2556,6 +2587,21 @@ function renderAllTx(type){
         + '<div class="amt num" style="color:var(--ink-soft)">' + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join(' · ') + '</div>';
       b.onclick = () => {
         if (atxOpenPlans.has(row.month)) atxOpenPlans.delete(row.month); else atxOpenPlans.add(row.month);
+        renderAllTx(type);
+      };
+      box.appendChild(b);
+      return;
+    }
+    if (kind === 'ps') {
+      const pairs = row.legs.filter(l => l.kind === 'x');
+      const legs = pairs.map(l => fmtMoney(l.r.amount, l.r.funds ? l.r.funds.currency : 'AUD')).join(' ⇄ ');
+      const desc = row.tag.split(' · ')[0];
+      b.innerHTML = '<div class="rowicon">⇄</div>'
+        + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Pot swap · ' + esc(desc) + '</div>'
+        + '<div class="cap">' + row.legs.length + (row.legs.length === 1 ? ' leg' : ' legs') + ' · ' + fmtDayMonYr(row.r.date) + ' · tap to ' + (row.open ? 'collapse' : 'expand') + '</div></div>'
+        + '<div class="amt num" style="color:var(--ink-soft)">' + legs + '</div>';
+      b.onclick = () => {
+        if (atxOpenSwaps.has(row.key)) atxOpenSwaps.delete(row.key); else atxOpenSwaps.add(row.key);
         renderAllTx(type);
       };
       box.appendChild(b);
@@ -3713,7 +3759,7 @@ function refreshCards(payerName){
   renderCardRow();
 }
 
-let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false;
+let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false, curMismatchOk = false;
 let pendOp = null, pendVal = null;   // calculator: pendVal ⟨pendOp⟩ amt, evaluated left-to-right
 
 function openSheet(){
@@ -4392,6 +4438,15 @@ async function saveEntry(){
       if ($('cardWrap')) $('cardWrap').style.display = 'block';
       done(false, 'pick the card you paid with (or Cash)'); return;
     }
+    if ((mode === 'daily' || mode === 'trip') && !curMismatchOk) {
+      const cardRow = (CTX.cards || []).find(c => c.name === $('cardSel').value);
+      if (cardRow && cardRow.currency && cardRow.currency !== currency) {
+        curMismatchOk = true; setTimeout(() => { curMismatchOk = false; }, 8000);
+        done(false, cardRow.name + ' is a ' + curLabel(cardRow.currency) + ' card — enter the ' + curLabel(cardRow.currency) + ' amount from the statement so it can reconcile, or tap ✓ again to keep ' + curLabel(currency));
+        return;
+      }
+    }
+    curMismatchOk = false;
     if (mode === 'edit') {
       // one server-side transaction: row + splits can never diverge (QA-5)
       const { error } = await sb.rpc('save_expense', {
