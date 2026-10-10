@@ -176,7 +176,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         <div class="sticky-bar">
           <span class="lbl" id="stSelInfo">nothing selected</span>
           <button class="btn btn-primary" id="stReconcile" onclick="reconcileSelected()" disabled>Reconcile selected</button>
-          <button class="btn btn-soft" id="stUnrec" onclick="unreconcileSelected()" disabled>Un-reconcile selected</button>
+          <button class="btn btn-soft" id="stUnrec" onclick="unreconcileSelected()" disabled title="tick locked rows, then un-reconcile them together">Un-reconcile selected</button>
           <button class="btn btn-soft" id="stEdit" onclick="openBulk('st')" disabled>Edit selected</button>
           <span style="flex:1"></span>
           <button class="btn btn-soft" id="stClose" onclick="toggleCloseStatement()" disabled>Close statement</button>
@@ -219,8 +219,8 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <!-- POT SWAP -->
     <section class="screen" id="scr-swap">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
-        <div><p class="cap">Paid with Singapore money</p><h1 class="h1">Pot swap</h1></div>
-        <p class="cap" style="max-width:560px">bought on an SG card for an AU pot? pick the purchase, check the rate, and the app moves the AUD (cover fund → Rainy Day) and the SGD (DreamHouse → your SG bank pot). Nothing crosses the border.</p>
+        <div><p class="cap">Paid in one currency for the other country's pot</p><h1 class="h1">Pot swap</h1></div>
+        <p class="cap" style="max-width:560px" id="swIntro">bought on one country's card for the other country's pot? pick the purchase, check the rate, and the app moves the equivalent between two funds over there and the purchase money between two funds here. Nothing crosses the border.</p>
       </div>
       <div class="swapgrid">
         <div class="card" style="padding:0">
@@ -400,6 +400,7 @@ function go(scr){
   if (scr === 'nocard' && !nc.init) { nc.init = true; loadNoCard(true); }
   if (scr === 'pots') loadPots();
   if (scr === 'swap' && !sw.init) { sw.init = true; initSwap(); }
+  if (scr === 'swap' && [...new Set(CTX.funds.map(f => f.currency))].length < 2) $('swIntro').innerHTML = '<span class="tag warn">one currency</span> this household has funds in one currency only, so there is nothing to swap between — add a second country\'s funds in the app (Settings → Funds) first.';
 }
 
 // ── auth ────────────────────────────────────────────────────
@@ -434,12 +435,14 @@ async function loadContext(){
     sb.from('households').select('id, name, joint_label, pot_start').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('payment_methods').select('id, name, profile_id, kind, closing_day, currency, travel_only, is_archived, sort_order').order('sort_order'),
-    sb.from('funds').select('id, name, country, currency, is_spend_pot, sort_order').eq('is_active', true).order('sort_order'),
+    sb.from('funds').select('id, name, country, currency, is_spend_pot, is_leftover_target, sort_order').eq('is_active', true).order('sort_order'),
     sb.from('categories').select('id, kind, name, group_name, icon, sort_order').eq('is_active', true).order('sort_order'),
   ]);
   if (hh.error) { toast('couldn’t load household: ' + hh.error.message); return; }
   CTX = { hh: hh.data, profiles: profiles.data || [], cards: cards.data || [], funds: funds.data || [], cats: cats.data || [] };
   $('hhLabel').textContent = CTX.hh.name + ' household';
+  const nSwapCur = [...new Set(CTX.funds.map(f => f.currency))].length;
+  document.querySelector('nav .nv[data-scr="swap"]').style.display = nSwapCur < 2 ? 'none' : '';
 }
 const who = pid => (pid && (CTX.profiles.find(p => p.id === pid) || {}).display_name) || (CTX.hh && CTX.hh.joint_label) || 'Joint';
 const cardById = id => CTX.cards.find(c => c.id === id);
@@ -468,13 +471,14 @@ function initStatements(){
   $('stMargin').onclick = () => { st.margin = !st.margin; $('stMargin').classList.toggle('sel', st.margin); loadStatement(); };
   $('stCarry').onclick = () => { st.carry = !st.carry; $('stCarry').classList.toggle('sel', st.carry); loadStatement(); };
   $('stAll').onchange = () => {
-    st.rows.filter(r => !r.reconciled_at).forEach(r => { if ($('stAll').checked) st.sel.add(r.key); else st.sel.delete(r.key); });
+    st.rows.forEach(r => { if ($('stAll').checked) st.sel.add(r.key); else st.sel.delete(r.key); });
     renderStatement();
   };
   $('stTotal').onkeydown = e => { if (e.key === 'Enter') saveStatementTotal(); };
-  // deep link ?card=<id>
+  // deep links: ?card=<id> opens that card's statements · ?rows=nocard opens Transactions filtered to rows with no card
   const u = new URL(location.href); const pre = u.searchParams.get('card');
   if (pre && cardById(pre)) { $('stCard').value = pre; $('stCard').onchange(); }
+  if (u.searchParams.get('rows') === 'nocard') go('nocard');
 }
 // statement periods for a card: credit cards close on closing_day; everything else by calendar month
 function buildPeriods(){
@@ -501,14 +505,30 @@ function buildPeriods(){
     }
   }
   sel.innerHTML = st.periods.map((p, i) => '<option value="' + i + '">' + fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.open ? ' · in progress' : '') + '</option>').join('');
-  // default to the most recent CLOSED period
+  // default to the most recent period that actually has rows (decided in loadStatement on first load)
+  st.pickDefault = true;
   const idx = st.periods.findIndex(p => !p.open); sel.value = String(idx < 0 ? 0 : idx);
   st.period = st.periods[parseInt(sel.value)];
   if (c.kind === 'credit_card' && !c.closing_day) $('stHint').textContent = 'this credit card has no closing day yet — set it in the app (Settings → Payment cards); showing calendar months meanwhile';
   else $('stHint').textContent = 'tick what appears on the statement · untick to un-reconcile · close when the totals agree';
 }
 async function loadStatement(){
-  const c = st.card, p = st.period;
+  const c = st.card;
+  if (c && st.pickDefault && st.periods.length) {
+    // one cheap look at the card's row dates decides which period opens first
+    st.pickDefault = false;
+    const from = st.periods[st.periods.length - 1].start;
+    const [d, t] = await Promise.all([
+      sb.from('daily_expenses').select('date').eq('payment_method_id', c.id).gte('date', from).order('date', {ascending:false}).limit(1),
+      sb.from('travel_expenses').select('date').eq('payment_method_id', c.id).gte('date', from).order('date', {ascending:false}).limit(1),
+    ]);
+    const latest = [(d.data || [])[0], (t.data || [])[0]].filter(Boolean).map(x => x.date).sort().pop();
+    const i = latest ? st.periods.findIndex(pp => latest >= pp.start && latest <= pp.end) : -1;
+    const open = st.periods.findIndex(pp => pp.open);
+    const pick = i >= 0 ? i : (open >= 0 ? open : 0);
+    $('stPeriod').value = String(pick); st.period = st.periods[pick];
+  }
+  const p = st.period;
   st.rows = []; st.statement = null;
   if (!c || !p) { renderStatement(); return; }
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
@@ -570,12 +590,12 @@ function renderStatement(){
     const posTag = r.carry ? ' <span class="pos" title="earlier than this period — never reconciled">−</span>'
                  : !r.inPeriod ? (r.date > p.end ? ' <span class="pos" title="after the period (within the ± 5 days)">+</span>' : ' <span class="pos" title="before the period (within the ± 5 days)">−</span>') : '';
     return '<tr class="' + (locked ? 'recd' : '') + (checked ? ' sel' : '') + '" data-key="' + r.key + '">'
-      + '<td>' + (locked || closedSt ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + '>') + '</td>'
+      + '<td>' + (closedSt ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + (locked ? ' title="tick to un-reconcile with the others"' : '') + '>') + '</td>'
       + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
       + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
       + '<td class="ell">' + esc(r.category) + '</td>'
       + '<td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
-      + '<td style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
+      + '<td style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod && !r._foreign ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
       + '<td class="amt"' + (r.credit ? ' style="color:var(--good)"' : '') + '>' + (r.credit ? '+' : '−') + fmtMoney(r.amount, r.currency) + curTag + '</td>'
       + '<td>' + (locked ? (closedSt ? '<span class="lock muted" title="on a closed statement — reopen it to change anything">🔒</span>' : '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>') : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
       + '</tr>';
@@ -600,7 +620,8 @@ function updateStatementKpis(){
   const signed = r => Number(r.amount) * (r.credit ? -1 : 1);   // spend positive, money in negative
   const inP = st.rows.filter(r => r.inPeriod && r.currency === cur);
   const appTotal = inP.reduce((s, r) => s + signed(r), 0);
-  const ticked = st.rows.filter(r => r.reconciled_at && (!st.statement || !r.reconciled_statement_id || r.reconciled_statement_id === st.statement.id) && r.currency === cur);
+  const tickedAll = st.rows.filter(r => r.reconciled_at && (!st.statement || !r.reconciled_statement_id || r.reconciled_statement_id === st.statement.id));
+  const ticked = tickedAll.filter(r => r.currency === cur);
   const tickedTotal = ticked.reduce((s, r) => s + signed(r), 0);
   const otherCur = st.rows.filter(r => r.inPeriod && r.currency !== cur).length;
   $('kApp').textContent = c ? fmtMoney(appTotal, cur) : '—';
@@ -608,7 +629,7 @@ function updateStatementKpis(){
   const outT = inP.filter(r => !r.credit).reduce((s, r) => s + Number(r.amount), 0), inT = inP.filter(r => r.credit).reduce((s, r) => s + Number(r.amount), 0);
   $('kAppSub').textContent = c ? inP.length + ' rows' + (credits ? ' · out ' + fmtMoney(outT, cur) + ' · in ' + fmtMoney(inT, cur) + ' (net shown)' : '') + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
   $('kTicked').textContent = c ? fmtMoney(tickedTotal, cur) : '—';
-  $('kTickedSub').textContent = c ? ticked.length + ' of ' + st.rows.length + ' rows shown' : '';
+  $('kTickedSub').textContent = c ? tickedAll.length + ' of ' + st.rows.length + ' rows shown' + (tickedAll.length > ticked.length ? ' · ' + (tickedAll.length - ticked.length) + ' in another currency, not in the total' : '') : '';
   const stTotal = parseFloat($('stTotal').value);
   if (c && !isNaN(stTotal)) {
     const diff = Math.round((stTotal - tickedTotal) * 100) / 100;
@@ -620,16 +641,17 @@ function updateStatementKpis(){
   const selTotal = selRows.reduce((s, r) => s + signed(r), 0);
   $('stSelInfo').textContent = n ? n + ' selected · ' + fmtMoney(selTotal, cur) : 'nothing selected';
   const closed = st.statement && st.statement.closed_at;
-  $('stReconcile').disabled = !n || closed;
+  const nOpen = selRows.filter(r => !r.reconciled_at).length, nLocked = selRows.filter(r => r.reconciled_at).length;
+  $('stReconcile').disabled = !nOpen || closed; $('stReconcile').textContent = 'Reconcile selected' + (nOpen ? ' (' + nOpen + ')' : '');
   $('stEdit').disabled = !n;
-  $('stUnrec').disabled = !c || closed || !st.rows.some(r => r.reconciled_at && r.reconciled_by !== 'auto');
+  $('stUnrec').disabled = !nLocked || closed; $('stUnrec').textContent = 'Un-reconcile selected' + (nLocked ? ' (' + nLocked + ')' : '');
   $('stClose').disabled = !c;
   $('stImport').disabled = !c || closed; $('stAdd').disabled = !c;
   $('stMargin').style.opacity = closed ? '.4' : ''; $('stCarry').style.opacity = closed ? '.4' : '';
   $('stClose').textContent = closed ? 'Reopen statement' : 'Close statement';
   $('stClose').className = 'btn ' + (closed ? 'btn-soft' : 'btn-primary');
   $('stMeta').innerHTML = c ? (closed ? '<span class="tag good">closed ' + fmtD(st.statement.closed_at.slice(0, 10)) + ' · showing only the rows on it</span>' : (st.statement ? '<span class="tag blue">statement saved · open</span>' : '')) : '';
-  $('stAll').checked = n > 0 && st.rows.filter(r => !r.reconciled_at).every(r => st.sel.has(r.key));
+  $('stAll').checked = n > 0 && st.rows.every(r => st.sel.has(r.key));
 }
 async function ensureStatement(){
   if (st.statement) return st.statement;
@@ -664,10 +686,10 @@ async function reconcileSelected(){
   } catch (err) { toast('couldn’t reconcile: ' + (err.message || err)); $('stReconcile').disabled = false; }
 }
 async function unreconcileSelected(){
-  // un-ticks everything reconciled against THIS statement (or, before a statement exists, everything manual shown)
-  const rows = st.rows.filter(r => r.reconciled_at && r.reconciled_by !== 'auto' && (!st.statement || !r.reconciled_statement_id || r.reconciled_statement_id === st.statement.id));
-  if (!rows.length) { toast('nothing manual to un-reconcile here'); return; }
-  if (!await ask('Un-reconcile ' + rows.length + ' rows?', 'Everything ticked on this statement becomes editable again.', 'Un-reconcile')) return;
+  // acts on the ticked rows that are locked — tick the 🔒 rows you want back, then press
+  const rows = st.rows.filter(r => st.sel.has(r.key) && r.reconciled_at);
+  if (!rows.length) { toast('tick the locked rows you want to un-reconcile first (or click a 🔒 one at a time)'); return; }
+  if (!await ask('Un-reconcile ' + rows.length + (rows.length === 1 ? ' row?' : ' rows?'), 'They become editable again and leave this statement.', 'Un-reconcile')) return;
   try {
     for (const kind of ['daily', 'travel', 'fund']) {
       const ids = rows.filter(r => r.kind === kind).map(r => r.id);
@@ -675,7 +697,7 @@ async function unreconcileSelected(){
       const { error } = await sb.rpc('unreconcile_rows', { p_kind: kind, p_ids: ids });
       if (error) throw error;
     }
-    rows.forEach(r => { r.reconciled_at = null; r.reconciled_by = null; r.reconciled_statement_id = null; r._wasLocked = true; });
+    rows.forEach(r => { r.reconciled_at = null; r.reconciled_by = null; r.reconciled_statement_id = null; r._wasLocked = true; st.sel.delete(r.key); });
     toast(rows.length + ' un-reconciled 🔓'); renderStatement();
   } catch (err) { toast('couldn’t un-reconcile: ' + (err.message || err)); }
 }
@@ -757,6 +779,7 @@ async function runImport(){
   if (!lines.length) { toast('couldn’t find lines with a date and an amount — check the paste, or send the file to Claude to convert'); return; }
   // match: same |amount| (credits to credits), date within 3 days, nearest date wins, one-to-one
   const cands = st.rows.filter(r => !r.reconciled_at && r.currency === (st.card.currency || r.currency));
+  st.rows.forEach(r => { r._foreign = !r.reconciled_at && st.card.currency && r.currency !== st.card.currency; });
   const used = new Set(); st.rows.forEach(r => r._matched = false);
   const dayDiff = (a, b) => Math.abs((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 864e5);
   lines.forEach(L => {
@@ -776,9 +799,10 @@ function renderImportResult(){
   const I = st.imp; if (!I) { $('impResult').style.display = 'none'; return; }
   $('impResult').style.display = '';
   const missing = I.lines.filter(L => !L.match);
-  const unmatchedApp = st.rows.filter(r => r.inPeriod && !r.reconciled_at && !r._matched);
+  const unmatchedApp = st.rows.filter(r => r.inPeriod && !r.reconciled_at && !r._matched && !r._foreign);
+  const foreign = st.rows.filter(r => r.inPeriod && r._foreign);
   $('impTitle').textContent = I.total + ' statement lines · ' + I.matched + ' matched';
-  $('impSummary').innerHTML = (missing.length ? '<b>' + missing.length + ' on the statement but not in the app</b> — add them in the app (or they may be fees/interest). ' : 'every statement line found a row ✓ ') + (unmatchedApp.length ? '<b>' + unmatchedApp.length + ' app rows in this period had no statement line</b> (marked ?) — wrong card, wrong date, or still to post.' : '');
+  $('impSummary').innerHTML = (missing.length ? '<b>' + missing.length + ' on the statement but not in the app</b> — add them (＋ add transaction) or they may be fees/interest. ' : 'every statement line found a row ✓ ') + (unmatchedApp.length ? '<b>' + unmatchedApp.length + ' app rows in this period had no statement line</b> (marked ?) — wrong card, wrong date, or still to post. ' : '') + (foreign.length ? '<b>' + foreign.length + ' can’t be matched</b> — entered in another currency than the card (' + foreign.map(r => esc(r.description) + ' ' + fmtMoney(r.amount, r.currency)).slice(0, 4).join(', ') + (foreign.length > 4 ? '…' : '') + '); the statement shows them converted, so tick them by hand.' : '');
   $('impMissing').innerHTML = missing.length ? '<table><thead><tr><th style="width:110px">Date</th><th>Statement line</th><th class="amt" style="width:120px">Amount</th></tr></thead><tbody>'
     + missing.map(L => '<tr><td class="num">' + fmtD(L.date) + '</td><td class="ell">' + esc(L.desc || '(no description)') + '</td><td class="amt"' + (L.amount < 0 ? ' style="color:var(--good)"' : '') + '>' + (L.amount < 0 ? '+' : '−') + fmtMoney(Math.abs(L.amount), st.card.currency || 'AUD') + '</td></tr>').join('') + '</tbody></table>' : '';
 }
@@ -821,7 +845,7 @@ async function loadNoCard(reset){
     $('ncMonth').onchange = () => loadNoCard(true);
     let deb = null; $('ncSearch').oninput = () => { clearTimeout(deb); deb = setTimeout(() => loadNoCard(true), 350); };
     $('ncCardF').innerHTML = '<option value="">any card</option><option value="none">— no card —</option>' + cardOptions(null, false) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
-    const u = new URL(location.href); if (u.searchParams.get('rows') === 'nocard') $('ncCardF').value = 'none';
+    if (new URL(location.href).searchParams.get('rows') === 'nocard') $('ncCardF').value = 'none';
     $('ncCardF').onchange = () => loadNoCard(true);
     $('ncAll').onchange = () => { nc.rows.forEach(r => { if ($('ncAll').checked) nc.sel.add(r.key); else nc.sel.delete(r.key); }); renderNoCard(); };
   }
@@ -991,13 +1015,23 @@ function pickSwapRow(key){
   const same = CTX.funds.filter(f => f.currency === src);
   const dstCur = (other.find(f => f.currency === 'AUD') || other[0] || {}).currency || 'AUD';
   const aud = other.filter(f => f.currency === dstCur);
-  const lastCover = (() => { try { return localStorage.getItem('bh-swap-cover-' + r.kind); } catch (e) { return null; } })();
-  const coverDef = r.kind === 'travel' ? (fundByName('Travel Fund AU') || {}).id : (lastCover || (fundByName('Investment Fund AU (Aizat)') || {}).id);
+  // defaults come from the household's own funds — remembered choices first, then flags, then names that read right
+  const mem = k => { try { const v = localStorage.getItem('bh-swap-' + k); return v && CTX.funds.some(f => f.id === v) ? v : null; } catch (e) { return null; } };
+  // first regex that matches wins; within a match, a shared fund (no "(Name)") beats a personal one
+  const byName = (list, ...res) => { for (const re of res) { const hits = list.filter(f => re.test(f.name)); if (hits.length) return hits.find(f => !/\(.+\)/.test(f.name)) || hits[0]; } return null; };
+  const travelFund = CTX.funds.find(f => f.id === CTX.hh.travel_fund_id);
+  const coverDef = (r.kind === 'travel' && travelFund && travelFund.currency === dstCur ? travelFund.id : null)
+    || mem('cover-' + r.kind) || (r.kind === 'travel' && byName(aud, /travel/i, /holiday|trip/i) || {}).id
+    || (aud.find(f => f.is_leftover_target) || aud[0] || {}).id;
+  const landCands = aud.filter(f => f.id !== coverDef);
+  const landDef = mem('land') || (byName(landCands, /rainy/i, /buffer|reserve/i, /emergency/i) || landCands[0] || {}).id;
   $('swCover').innerHTML = fundSel(aud, coverDef);
-  $('swLand').innerHTML = fundSel(aud, (fundByName('BearHaus Rainy Day AU') || {}).id);
-  $('swFrom').innerHTML = fundSel(same.filter(f => !f.is_spend_pot), (fundByName('Future DreamHouse SG') || {}).id);
+  $('swLand').innerHTML = fundSel(aud, landDef);
+  const srcNonPot = same.filter(f => !f.is_spend_pot);
+  const fromDef = mem('from') || (byName(srcNonPot, /dream ?house/i, /house|home/i) || srcNonPot.find(f => f.is_leftover_target) || byName(srcNonPot, /saving/i) || srcNonPot[0] || {}).id;
+  $('swFrom').innerHTML = fundSel(srcNonPot, fromDef);
   const payer = who(r.payer_profile_id);
-  const bank = same.filter(f => f.is_spend_pot), bankDef = (bank.find(f => f.name.includes('(' + payer + ')')) || bank[0] || {}).id;
+  const bank = same.filter(f => f.is_spend_pot), bankDef = mem('to') || (bank.find(f => f.name.includes('(' + payer + ')')) || bank[0] || same[0] || {}).id;
   $('swTo').innerHTML = fundSel(same, bankDef);
   $('swRateLbl').textContent = dstCur + ' per 1 ' + src;
   $('swDate').value = fmtD(r.date);
@@ -1025,12 +1059,15 @@ function updateSwapPreview(){
   if (!r) { $('swDst').value = ''; $('swPreview').textContent = ''; $('swGo').disabled = true; return; }
   const dst = ($('swRateLbl').textContent.split(' ')[0]) || 'AUD';
   const fn = id => (CTX.funds.find(f => f.id === $(id).value) || {}).name || '?';
-  const ok = rate > 0 && $('swCover').value !== $('swLand').value && $('swFrom').value !== $('swTo').value;
+  const sameLand = $('swCover').value === $('swLand').value, sameBank = $('swFrom').value === $('swTo').value;
+  const ok = rate > 0 && !sameLand && !sameBank && $('swCover').value && $('swFrom').value;
   $('swDst').value = rate > 0 ? fmtMoney(r.amount * rate, dst) : '';
+  const why = !(rate > 0) ? 'enter or fetch the rate' : sameLand ? '“Covered by” and “Lands in” must be two different funds' : sameBank ? 'the money must move between two different funds on the purchase side' : (!$('swCover').value || !$('swFrom').value) ? 'this household has no funds to swap between in these currencies' : '';
   $('swPreview').innerHTML = rate > 0
     ? '<b>' + fmtMoney(r.amount * rate, dst) + '</b> ' + esc(fn('swCover')) + ' → ' + esc(fn('swLand')) + '<br><b>' + fmtMoney(r.amount, r.currency) + '</b> ' + esc(fn('swFrom')) + ' → ' + esc(fn('swTo'))
-      + (r.kind === 'travel' ? '<br><span class="cap">trip line marked “sent” so Send-to-Travel-Fund and settle-up skip it; the bank pot pays it.</span>' : '<br><span class="cap">the daily row keeps counting its category down in ' + esc(fn('swTo')) + ' — which the DreamHouse money tops up.</span>')
-    : 'enter or fetch the rate';
+      + (r.kind === 'travel' ? '<br><span class="cap">trip line marked “sent” so Send-to-Travel-Fund and settle-up skip it; ' + esc(fn('swTo')) + ' pays it.</span>' : '<br><span class="cap">the daily row keeps counting its category down in ' + esc(fn('swTo')) + ' — which the money from ' + esc(fn('swFrom')) + ' tops up.</span>')
+      + (why ? '<br><span class="tag warn">' + esc(why) + '</span>' : '')
+    : why;
   $('swGo').disabled = !ok;
 }
 async function recordSwap(){
@@ -1039,7 +1076,7 @@ async function recordSwap(){
   $('swGo').disabled = true;
   const { data, error } = await sb.rpc('record_pot_swap', { p_kind: r.kind, p_expense: r.id, p_rate: rate, p_cover: $('swCover').value, p_land: $('swLand').value, p_bank_from: $('swFrom').value, p_bank_to: $('swTo').value, p_rate_source: sw.rateSrc, p_note: $('swNote').value || null });
   if (error) { toast('couldn’t record: ' + error.message); $('swGo').disabled = false; return; }
-  try { localStorage.setItem('bh-swap-cover-' + r.kind, $('swCover').value); } catch (e) {}
+  try { localStorage.setItem('bh-swap-cover-' + r.kind, $('swCover').value); localStorage.setItem('bh-swap-land', $('swLand').value); localStorage.setItem('bh-swap-from', $('swFrom').value); localStorage.setItem('bh-swap-to', $('swTo').value); } catch (e) {}
   toast('swap recorded ⇄');
   sw.rows = sw.rows.filter(x => x.key !== r.key); sw.pick = null; renderSwapRows();
   $('swDate').value = ''; $('swSrc').value = ''; $('swRate').value = ''; $('swDst').value = ''; $('swPick').textContent = '← pick a purchase first'; $('swPreview').textContent = ''; $('swRateSrc').textContent = '';
