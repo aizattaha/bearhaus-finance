@@ -71,6 +71,7 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 td.num{white-space:nowrap}
 td .dsc{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:pointer}
+.pos{display:inline-flex;width:16px;height:16px;border-radius:999px;background:var(--accent-soft);color:var(--primary);font-size:11px;font-weight:600;align-items:center;justify-content:center;vertical-align:middle;margin-left:4px;line-height:1}
 .lock{display:inline-flex;width:26px;height:26px;border-radius:999px;align-items:center;justify-content:center;background:var(--field);cursor:pointer;font-size:13px;border:none}
 .lock.open{background:var(--accent-soft)}.lock.muted{cursor:default;opacity:.6}
 .tablewrap{max-height:62vh;overflow:auto;border-radius:12px;border:1px solid var(--muted)}
@@ -167,7 +168,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="stAll" title="select every unreconciled row shown"></th>
-              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:100px">Who</th><th style="width:96px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:50px"></th>
+              <th style="width:124px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:100px">Who</th><th style="width:96px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:50px"></th>
             </tr></thead>
             <tbody id="stRows"><tr><td colspan="8" class="empty">pick a card</td></tr></tbody>
           </table>
@@ -347,6 +348,16 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     </div>
   </div>
 </div>
+<div id="ask" class="overlay" style="z-index:60">
+  <div class="card bulkcard" style="max-width:440px">
+    <p class="h2" id="askTitle">Are you sure?</p>
+    <p class="cap" id="askText" style="margin-top:6px"></p>
+    <div class="row" style="justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-soft" id="askNo">Cancel</button>
+      <button class="btn btn-primary" id="askYes">Yes</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -357,7 +368,8 @@ const sb = typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL,
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CURSYM = { AUD:'A$', SGD:'S$', USD:'US$', GBP:'£', EUR:'€', JPY:'¥', CNY:'CN¥', MYR:'RM', THB:'฿', NZD:'NZ$', HKD:'HK$', TWD:'NT$', KRW:'₩', IDR:'Rp', VND:'₫', PHP:'₱', INR:'₹' };
-const fmtMoney = (v, cur) => (CURSYM[cur] || (cur ? cur + ' ' : 'A$')) + Number(v || 0).toLocaleString('en-AU', {minimumFractionDigits:2, maximumFractionDigits:2});
+const ZERO_DEC = { JPY:1, KRW:1, IDR:1, VND:1, HUF:1, CLP:1, ISK:1, UGX:1, TWD:1 };
+const fmtMoney = (v, cur) => { const n = Number(v) || 0, d = ZERO_DEC[cur] ? 0 : 2; return (n < 0 ? '−' : '') + (CURSYM[cur] || (cur ? cur + ' ' : 'A$')) + Math.abs(n).toLocaleString('en-AU', {minimumFractionDigits:d, maximumFractionDigits:d}); };
 const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const todayIso = () => isoDate(new Date());
 const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
@@ -369,6 +381,17 @@ const addMonths = (iso, n) => { const d = new Date(iso + 'T00:00:00'); return is
 const flagOf = cc => /^[A-Z]{2}$/.test(cc || '') ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
 const COUNTRY_NAME = { AU:'Australia', SG:'Singapore', MY:'Malaysia', TH:'Thailand', JP:'Japan', US:'United States', GB:'United Kingdom', NZ:'New Zealand', ID:'Indonesia', VN:'Vietnam', PH:'Philippines', KR:'South Korea', CN:'China', HK:'Hong Kong', TW:'Taiwan', IN:'India' };
 const countryTitle = cc => (flagOf(cc) ? flagOf(cc) + ' ' : '') + (COUNTRY_NAME[cc] || cc || 'Other');
+// the app's own confirm: a small card, not the browser's dialog
+function ask(title, text, yes){
+  return new Promise(res => {
+    $('askTitle').textContent = title; $('askText').textContent = text || ''; $('askYes').textContent = yes || 'Yes';
+    const box = $('ask'); box.classList.add('show');
+    const done = v => { box.classList.remove('show'); $('askYes').onclick = $('askNo').onclick = null; box.onclick = null; res(v); };
+    $('askYes').onclick = () => done(true); $('askNo').onclick = () => done(false);
+    box.onclick = ev => { if (ev.target === box) done(false); };
+    setTimeout(() => $('askYes').focus(), 30);
+  });
+}
 let toastT = null;
 function toast(m){ const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), /couldn|failed|refus|locked/i.test(m) ? 7000 : 3000); }
 function go(scr){
@@ -543,7 +566,9 @@ function renderStatement(){
     const other = locked && st.statement && r.reconciled_statement_id && r.reconciled_statement_id !== st.statement.id;
     const checked = st.sel.has(r.key);
     const curTag = cur && r.currency !== cur ? ' <span class="tag warn" title="a different currency from the card — the statement will show it converted">' + esc(r.currency) + '</span>' : '';
-    const posTag = r.carry ? ' <span class="tag">earlier</span>' : (!r.inPeriod ? ' <span class="tag">margin</span>' : '');
+    // outside the exact period: − before it (incl. carried-over earlier rows), + after it
+    const posTag = r.carry ? ' <span class="pos" title="earlier than this period — never reconciled">−</span>'
+                 : !r.inPeriod ? (r.date > p.end ? ' <span class="pos" title="after the period (within the ± 5 days)">+</span>' : ' <span class="pos" title="before the period (within the ± 5 days)">−</span>') : '';
     return '<tr class="' + (locked ? 'recd' : '') + (checked ? ' sel' : '') + '" data-key="' + r.key + '">'
       + '<td>' + (locked || closedSt ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + '>') + '</td>'
       + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
@@ -642,7 +667,7 @@ async function unreconcileSelected(){
   // un-ticks everything reconciled against THIS statement (or, before a statement exists, everything manual shown)
   const rows = st.rows.filter(r => r.reconciled_at && r.reconciled_by !== 'auto' && (!st.statement || !r.reconciled_statement_id || r.reconciled_statement_id === st.statement.id));
   if (!rows.length) { toast('nothing manual to un-reconcile here'); return; }
-  if (!confirm('Un-reconcile ' + rows.length + ' rows on this statement? They become editable again.')) return;
+  if (!await ask('Un-reconcile ' + rows.length + ' rows?', 'Everything ticked on this statement becomes editable again.', 'Un-reconcile')) return;
   try {
     for (const kind of ['daily', 'travel', 'fund']) {
       const ids = rows.filter(r => r.kind === kind).map(r => r.id);
@@ -774,7 +799,7 @@ async function toggleCloseStatement(){
     const closing = !s.closed_at;
     if (closing) {
       const open = st.rows.filter(r => r.inPeriod && !r.reconciled_at).length;
-      if (open && !confirm(open + ' rows in this period are still unticked — close anyway? (they stay unreconciled and carry over)')) return;
+      if (open && !await ask('Close with ' + open + ' unticked rows?', 'They stay unreconciled and carry over to the next statement.', 'Close anyway')) return;
     }
     const { error } = await sb.from('statements').update({ closed_at: closing ? new Date().toISOString() : null }).eq('id', s.id);
     if (error) throw error;
@@ -1046,7 +1071,7 @@ async function loadSwaps(){
   });
   $('swList').querySelectorAll('.swundo').forEach(b => b.onclick = async () => {
     const id = b.closest('tr').dataset.id;
-    if (!confirm('Undo this swap? The four transfer rows are removed and the purchase goes back to normal.')) return;
+    if (!await ask('Undo this swap?', 'Its transfer rows are removed and the purchase goes back to normal.', 'Undo')) return;
     const { error } = await sb.rpc('delete_pot_swap', { p_swap: id });
     if (error) { toast('couldn’t undo: ' + error.message); return; }
     toast('swap undone'); loadSwaps(); loadSwapRows();
