@@ -155,6 +155,24 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         </div>
       </div>
 
+      <div class="card" id="stPay" style="margin-top:14px;display:none">
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div><p class="cap">Card payment</p><p class="h2" id="payTitle">—</p></div>
+          <span id="payBadge"></span>
+        </div>
+        <div id="payList" style="margin-top:8px"></div>
+        <div id="payForm" style="margin-top:12px">
+          <p class="cap">Record the payment to this card. Each pot pays for its own charges by default, so every pot's <b>In the bank</b> stays right — change the split if you want one fund to pay the lot. Available never moves here: the charges already took it the day they happened.</p>
+          <div class="row" style="gap:14px;margin-top:10px;align-items:flex-start;flex-wrap:wrap">
+            <label class="bkf" style="min-width:170px"><span class="cap">Paid on</span><input class="descinput" id="payDate" type="date"></label>
+            <div style="flex:1;min-width:360px"><span class="cap">Paid from</span><div id="payLegs" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div></div>
+          </div>
+          <div class="row" style="justify-content:space-between;margin-top:10px;flex-wrap:wrap">
+            <span class="cap" id="payTotal"></span>
+            <div class="row" style="gap:8px"><button class="btn-tert" onclick="addPayLeg()">+ another fund</button><button class="btn btn-primary" id="payGo" onclick="recordPayment()">Record payment</button></div>
+          </div>
+        </div>
+      </div>
       <div class="card" id="impResult" style="margin-top:14px;display:none">
         <div class="row" style="justify-content:space-between">
           <p class="h2" id="impTitle">Statement lines</p>
@@ -272,8 +290,8 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <!-- POTS -->
     <section class="screen" id="scr-pots">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
-        <div><p class="cap">Spending pots</p><h1 class="h1">Spent vs Cleared</h1></div>
-        <p class="cap">Spent = every row entered · Cleared = only reconciled rows · Pending = spending no statement has confirmed yet</p>
+        <div><p class="cap">Spending pots &amp; cards</p><h1 class="h1">Pots</h1></div>
+        <p class="cap"><b>Available</b> = what's left to spend (every row the day it happens) · <b>Owed on cards</b> = charges not yet paid off · <b>In the bank</b> = Available + Owed · Cleared = reconciled rows only</p>
       </div>
       <div id="potCards" style="display:flex;flex-direction:column;gap:14px;margin-top:14px"><p class="cap">loading…</p></div>
     </section>
@@ -432,7 +450,7 @@ if (sb) {
 let CTX = { hh: null, profiles: [], cards: [], funds: [], cats: [] };
 async function loadContext(){
   const [hh, profiles, cards, funds, cats] = await Promise.all([
-    sb.from('households').select('id, name, joint_label, pot_start').single(),
+    sb.from('households').select('id, name, joint_label, pot_start, travel_fund_id').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('payment_methods').select('id, name, profile_id, kind, closing_day, currency, travel_only, is_archived, sort_order').order('sort_order'),
     sb.from('funds').select('id, name, country, currency, is_spend_pot, is_leftover_target, sort_order').eq('is_active', true).order('sort_order'),
@@ -533,7 +551,7 @@ async function loadStatement(){
   if (!c || !p) { renderStatement(); return; }
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
   const from = st.margin ? addDays(p.start, -5) : p.start, to = st.margin ? addDays(p.end, 5) : p.end;
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id';
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id';
   // the statement record first: a CLOSED statement shows exactly the rows ticked on it, whatever their date
   const s0 = await sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle();
   const closed = !!(s0.data && s0.data.closed_at);
@@ -543,33 +561,37 @@ async function loadStatement(){
     qq = qq.eq('payment_method_id', c.id);
     return st.carry ? qq.or('and(date.gte.' + from + ',date.lte.' + to + '),and(date.lt.' + from + ',reconciled_at.is.null)') : qq.gte('date', from).lte('date', to);
   };
-  // bank accounts also carry fund rows (salary in, premiums out…): rows already tied to this
-  // account, plus untied manual rows in its currency that aren't internal (plan writes, transfers)
-  const isBank = c.kind === 'bank';
+  // bank accounts also carry fund rows (salary in, premiums out, card payments…): rows already tied
+  // to this account, plus untied manual rows in its currency that aren't internal (plan writes, transfers).
+  // a credit card carries fund spends charged to it (account = the card) and the payments made to it (credits)
+  const isBank = c.kind === 'bank', isCC = c.kind === 'credit_card';
+  const fsel = 'id, date, remarks, type, tx_kind:kind, amount, income_source, origin, fund_id, account_payment_method_id, settles_payment_method_id, settles_statement_id, transfer_group_id, reconciled_at, reconciled_by, reconciled_statement_id, funds!inner(name, currency)';
   const qf = () => {
-    let qq = sb.from('fund_transactions').select('id, date, remarks, type, amount, income_source, origin, fund_id, account_payment_method_id, transfer_group_id, reconciled_at, reconciled_by, reconciled_statement_id, funds!inner(name, currency)')
-      .order('date', {ascending:false}).limit(1000);
+    let qq = sb.from('fund_transactions').select(fsel).order('date', {ascending:false}).limit(1000);
     if (closed) return qq.eq('reconciled_statement_id', s0.data.id);
     qq = qq.eq('funds.currency', c.currency || 'AUD').neq('origin', 'planned').not('remarks', 'ilike', 'Transfer %');
-    const acct = 'or(account_payment_method_id.eq.' + c.id + ',account_payment_method_id.is.null)';
+    const acct = isCC ? 'or(account_payment_method_id.eq.' + c.id + ',settles_payment_method_id.eq.' + c.id + ')'
+                      : 'or(account_payment_method_id.eq.' + c.id + ',account_payment_method_id.is.null)';
     return st.carry ? qq.or('and(' + acct + ',or(and(date.gte.' + from + ',date.lte.' + to + '),and(date.lt.' + from + ',reconciled_at.is.null)))')
                     : qq.or(acct).gte('date', from).lte('date', to);
   };
   const [d, t, f] = await Promise.all([
-    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name)'), (isBank || closed) ? qf() : { data: [] },
+    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name)'), (isBank || isCC || closed) ? qf() : { data: [] },
   ]);
   if (d.error || t.error || f.error) { toast('couldn’t load: ' + (d.error || t.error || f.error).message); return; }
   st.statement = s0.data || null;
   st.rows = (d.data || []).map(r => Object.assign({ kind: 'daily', key: 'd:' + r.id }, r))
     .concat((t.data || []).map(r => Object.assign({ kind: 'travel', key: 't:' + r.id }, r)))
-    .concat((f.data || []).filter(r => closed || r.reconciled_by !== 'auto' || r.account_payment_method_id === c.id).map(r => Object.assign({ kind: 'fund', key: 'f:' + r.id }, r, {
-      description: r.remarks || r.income_source || (r.type === 'income' ? 'money in' : 'money out'),
+    .concat((f.data || []).filter(r => closed || r.reconciled_by !== 'auto' || r.account_payment_method_id === c.id || r.settles_payment_method_id === c.id).map(r => Object.assign({ kind: 'fund', key: 'f:' + r.id }, r, {
+      description: (r.tx_kind === 'card_payment' ? '💳 ' : '') + (r.remarks || r.income_source || (r.type === 'income' ? 'money in' : 'money out')),
       category: r.funds ? r.funds.name : 'fund', currency: r.funds ? r.funds.currency : c.currency, payer_profile_id: null,
-      credit: r.type === 'income' })))
+      // on the CARD's statement a payment to it is a credit; on the bank account it is money out
+      credit: r.type === 'income' || (r.tx_kind === 'card_payment' && r.settles_payment_method_id === c.id) })))
     .sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
   // a card payment or refund is a credit on a card statement
   st.rows.forEach(r => { if (r.kind !== 'fund') r.credit = r.category === 'Payment'; });
   st.imp = null; $('impResult').style.display = 'none';
+  st.legs = null; await refreshPay();
   // rows ticked against THIS statement vs. others
   st.rows.forEach(r => { r.inPeriod = r.date >= p.start && r.date <= p.end; r.carry = r.date < from; });
   $('stTotal').value = st.statement && st.statement.statement_total != null ? Number(st.statement.statement_total).toFixed(2) : '';
@@ -652,6 +674,98 @@ function updateStatementKpis(){
   $('stClose').className = 'btn ' + (closed ? 'btn-soft' : 'btn-primary');
   $('stMeta').innerHTML = c ? (closed ? '<span class="tag good">closed ' + fmtD(st.statement.closed_at.slice(0, 10)) + ' · showing only the rows on it</span>' : (st.statement ? '<span class="tag blue">statement saved · open</span>' : '')) : '';
   $('stAll').checked = n > 0 && st.rows.every(r => st.sel.has(r.key));
+  renderPay();
+}
+// ── card payment (the cash event; the charges were the budget event) ──
+async function refreshPay(){
+  st.pay = null; st.payments = [];
+  if (!st.statement || !st.card || st.card.kind !== 'credit_card') return;
+  const [pb, pl] = await Promise.all([
+    sb.from('statement_balances').select('*').eq('statement_id', st.statement.id).maybeSingle(),
+    sb.from('fund_transactions').select('id, date, amount, remarks, fund_id, transfer_group_id, reconciled_at, reconciled_by, funds(name)').eq('settles_statement_id', st.statement.id).eq('kind', 'card_payment').order('date'),
+  ]);
+  st.pay = pb.data || null; st.payments = pl.data || [];
+}
+function payFunds(){
+  const cur = st.card && st.card.currency;
+  return CTX.funds.filter(f => !cur || f.currency === cur).slice().sort((a, b) => (b.is_spend_pot - a.is_spend_pot) || (a.sort_order - b.sort_order));
+}
+function defaultLegs(){
+  const cur = st.card.currency, s = st.statement, pay = st.pay || {};
+  const due = Number(pay.due || 0), paid = Number(pay.paid || 0), remaining = Math.round((due - paid) * 100) / 100;
+  const funds = payFunds(); if (!funds.length) return [];
+  const defPot = (funds.find(f => f.is_spend_pot) || funds[0]).id;
+  const travel = CTX.hh.travel_fund_id && funds.some(f => f.id === CTX.hh.travel_fund_id) ? CTX.hh.travel_fund_id : defPot;
+  const by = {};
+  if (paid <= 0) {
+    st.rows.filter(r => r.reconciled_statement_id === s.id && (!cur || r.currency === cur)).forEach(r => {
+      if (r.kind === 'fund' && r.tx_kind === 'card_payment') return;
+      const fid = r.kind === 'fund' ? (r.settles_payment_method_id ? null : r.fund_id) : r.kind === 'travel' ? travel : (r.pot_fund_id || defPot);
+      if (!fid || !funds.some(f => f.id === fid)) { by[defPot] = (by[defPot] || 0) + Number(r.amount) * (r.credit ? -1 : 1); return; }
+      by[fid] = (by[fid] || 0) + Number(r.amount) * (r.credit ? -1 : 1);
+    });
+  }
+  let legs = Object.entries(by).map(([fund_id, amount]) => ({ fund_id, amount: Math.round(amount * 100) / 100 })).filter(l => l.amount > 0).sort((a, b) => b.amount - a.amount);
+  if (!legs.length) legs = [{ fund_id: defPot, amount: Math.max(remaining, 0) }];
+  const sum = legs.reduce((t, l) => t + l.amount, 0), diff = Math.round((remaining - sum) * 100) / 100;
+  if (Math.abs(diff) >= 0.005) legs[0].amount = Math.round((legs[0].amount + diff) * 100) / 100;   // statement total wins over the ticked split
+  return legs.filter(l => l.amount > 0);
+}
+function renderPay(){
+  const box = $('stPay'); const c = st.card, s = st.statement;
+  if (!c || c.kind !== 'credit_card' || !s || !st.pay) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const cur = c.currency || 'AUD', pay = st.pay;
+  const due = Number(pay.due || 0), paid = Number(pay.paid || 0), remaining = Math.round((due - paid) * 100) / 100;
+  $('payTitle').textContent = (pay.statement_total == null ? 'ticked so far ' : 'statement ') + fmtMoney(due, cur) + (paid > 0 ? ' · paid ' + fmtMoney(paid, cur) : '');
+  $('payBadge').innerHTML = pay.status === 'paid' ? '<span class="tag good">paid ✓' + (pay.last_paid ? ' · ' + fmtD(pay.last_paid) : '') + '</span>'
+    : pay.status === 'part' ? '<span class="tag warn">part paid · ' + fmtMoney(remaining, cur) + ' to go</span>'
+    : '<span class="tag">unpaid</span>';
+  $('payList').innerHTML = st.payments.length ? '<table><tbody>' + st.payments.map(p => '<tr><td class="num" style="width:124px">' + fmtD(p.date) + '</td><td>from <b>' + esc(p.funds ? p.funds.name : 'fund') + '</b>' + (p.reconciled_at && p.reconciled_by === 'manual' ? ' <span class="tag" title="ticked on a bank statement">🔒 bank</span>' : '') + '</td><td class="amt">' + fmtMoney(p.amount, cur) + '</td><td style="width:70px;text-align:right">' + (p.reconciled_by === 'manual' ? '' : '<button class="btn-tert" onclick="undoPayment(\'' + p.transfer_group_id + '\')">undo</button>') + '</td></tr>').join('') + '</tbody></table>' : '';
+  const form = $('payForm');
+  if (pay.status === 'paid' || remaining <= 0) { form.style.display = 'none'; return; }
+  form.style.display = '';
+  if (!st.legs) { st.legs = defaultLegs(); $('payDate').value = isoDate(new Date()); }
+  renderPayLegs();
+}
+function renderPayLegs(){
+  const funds = payFunds(), cur = st.card.currency || 'AUD';
+  $('payLegs').innerHTML = st.legs.map((l, i) => '<div class="row" style="gap:8px;flex-wrap:nowrap">'
+    + '<select class="descinput" data-i="' + i + '" style="flex:1;min-width:0">' + funds.map(f => '<option value="' + f.id + '"' + (f.id === l.fund_id ? ' selected' : '') + '>' + (f.is_spend_pot ? '🌊 ' : '') + esc(f.name) + '</option>').join('') + '</select>'
+    + '<input class="descinput num" type="number" step="0.01" inputmode="decimal" data-i="' + i + '" value="' + (l.amount ? l.amount.toFixed(2) : '') + '" style="width:130px">'
+    + (st.legs.length > 1 ? '<button class="btn-tert" data-i="' + i + '" title="remove">✕</button>' : '') + '</div>').join('');
+  $('payLegs').querySelectorAll('select').forEach(el => el.onchange = () => { st.legs[+el.dataset.i].fund_id = el.value; });
+  $('payLegs').querySelectorAll('input').forEach(el => el.oninput = () => { st.legs[+el.dataset.i].amount = parseFloat(el.value) || 0; updatePayTotal(); });
+  $('payLegs').querySelectorAll('button').forEach(el => el.onclick = () => { st.legs.splice(+el.dataset.i, 1); renderPayLegs(); });
+  updatePayTotal();
+}
+function updatePayTotal(){
+  const cur = st.card.currency || 'AUD', pay = st.pay;
+  const remaining = Math.round((Number(pay.due || 0) - Number(pay.paid || 0)) * 100) / 100;
+  const sum = Math.round(st.legs.reduce((t, l) => t + (l.amount || 0), 0) * 100) / 100;
+  const diff = Math.round((remaining - sum) * 100) / 100;
+  $('payTotal').innerHTML = 'paying <b>' + fmtMoney(sum, cur) + '</b>' + (Math.abs(diff) < 0.005 ? ' · the full ' + (Number(pay.paid) > 0 ? 'remainder' : 'statement') + ' ✓'
+    : diff > 0 ? ' · <span class="tag warn">' + fmtMoney(diff, cur) + ' short of the statement — a part payment</span>'
+    : ' · <span class="tag bad">' + fmtMoney(-diff, cur) + ' more than the statement</span>');
+  $('payGo').disabled = !(sum > 0) || st.legs.some(l => !l.fund_id);
+}
+function addPayLeg(){ const funds = payFunds(); const used = new Set(st.legs.map(l => l.fund_id)); const f = funds.find(x => !used.has(x.id)) || funds[0]; st.legs.push({ fund_id: f.id, amount: 0 }); renderPayLegs(); }
+async function recordPayment(){
+  const legs = st.legs.filter(l => l.amount > 0).map(l => ({ fund_id: l.fund_id, amount: Math.round(l.amount * 100) / 100 }));
+  if (!legs.length) return;
+  const cur = st.card.currency || 'AUD', sum = legs.reduce((t, l) => t + l.amount, 0);
+  const ok = await ask('Record ' + fmtMoney(sum, cur) + ' paid to ' + st.card.name + '?', 'On ' + fmtD($('payDate').value) + ' from ' + legs.map(l => (CTX.funds.find(f => f.id === l.fund_id) || {}).name + ' ' + fmtMoney(l.amount, cur)).join(' + ') + '. Available doesn’t change — only In the bank and what the card is owed.', 'Record');
+  if (!ok) return;
+  $('payGo').disabled = true;
+  const { error } = await sb.rpc('record_card_payment', { p_card: st.card.id, p_date: $('payDate').value, p_legs: legs, p_statement: st.statement.id });
+  if (error) { toast('couldn’t record: ' + error.message); $('payGo').disabled = false; return; }
+  toast('payment recorded 💳'); st.legs = null; loadStatement();
+}
+async function undoPayment(group){
+  if (!await ask('Undo this payment?', 'The card goes back to owing it and the money returns to the fund(s) it came from.', 'Undo')) return;
+  const { error } = await sb.rpc('delete_card_payment', { p_group: group });
+  if (error) { toast('couldn’t undo: ' + error.message); return; }
+  toast('payment removed'); st.legs = null; loadStatement();
 }
 async function ensureStatement(){
   if (st.statement) return st.statement;
@@ -673,7 +787,7 @@ async function reconcileSelected(){
       const ids = rows.filter(r => r.kind === kind).map(r => r.id);
       if (!ids.length) continue;
       if (kind === 'fund') {  // remember which account these rows live in
-        const untied = rows.filter(r => r.kind === 'fund' && r.account_payment_method_id !== st.card.id).map(r => r.id);
+        const untied = rows.filter(r => r.kind === 'fund' && r.account_payment_method_id !== st.card.id && r.settles_payment_method_id !== st.card.id).map(r => r.id);
         if (untied.length) { const { error } = await sb.from('fund_transactions').update({ account_payment_method_id: st.card.id }).in('id', untied); if (error) throw error; rows.forEach(r => { if (untied.includes(r.id)) r.account_payment_method_id = st.card.id; }); }
       }
       const { error } = await sb.rpc('reconcile_rows', { p_kind: kind, p_ids: ids, p_statement: s.id });
@@ -682,6 +796,7 @@ async function reconcileSelected(){
     rows.forEach(r => { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'manual'; r.reconciled_statement_id = s.id; r._wasLocked = false; });
     st.sel.clear();
     toast(rows.length + ' reconciled 🔒');
+    st.legs = null; await refreshPay();
     renderStatement();
   } catch (err) { toast('couldn’t reconcile: ' + (err.message || err)); $('stReconcile').disabled = false; }
 }
@@ -698,7 +813,7 @@ async function unreconcileSelected(){
       if (error) throw error;
     }
     rows.forEach(r => { r.reconciled_at = null; r.reconciled_by = null; r.reconciled_statement_id = null; r._wasLocked = true; st.sel.delete(r.key); });
-    toast(rows.length + ' un-reconciled 🔓'); renderStatement();
+    toast(rows.length + ' un-reconciled 🔓'); st.legs = null; await refreshPay(); renderStatement();
   } catch (err) { toast('couldn’t un-reconcile: ' + (err.message || err)); }
 }
 // ── statement import: CSV or pasted text → lines → match → tick ─────────
@@ -866,7 +981,7 @@ async function saveStatementTotal(){
     const s = await ensureStatement();
     const { error } = await sb.from('statements').update({ statement_total: v }).eq('id', s.id);
     if (error) throw error;
-    st.statement.statement_total = v; toast('statement total saved'); updateStatementKpis();
+    st.statement.statement_total = v; toast('statement total saved'); st.legs = null; await refreshPay(); updateStatementKpis();
   } catch (err) { toast('couldn’t save: ' + (err.message || err)); }
 }
 async function toggleCloseStatement(){
@@ -881,7 +996,8 @@ async function toggleCloseStatement(){
     const { error } = await sb.from('statements').update({ closed_at: closing ? new Date().toISOString() : null }).eq('id', s.id);
     if (error) throw error;
     st.statement.closed_at = closing ? new Date().toISOString() : null;
-    toast(closing ? 'statement closed ✓ — only its rows are shown now' : 'statement reopened'); st.sel.clear(); loadStatement();
+    toast(closing ? 'statement closed ✓ — only its rows are shown now' : 'statement reopened'); st.sel.clear(); await loadStatement();
+    if (closing && st.card.kind === 'credit_card' && st.pay && st.pay.status !== 'paid') { $('stPay').scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('closed ✓ — now record the payment below'); }
   } catch (err) { toast('couldn’t update: ' + (err.message || err)); }
 }
 
@@ -1229,26 +1345,41 @@ async function saveAddTx(){
 // ── pots ────────────────────────────────────────────────────
 async function loadPots(){
   const box = $('potCards'); box.innerHTML = '<p class="cap"><span class="spin"></span></p>';
-  const [b, c] = await Promise.all([
+  const [b, c, k, cb] = await Promise.all([
     sb.from('fund_balances').select('fund_id, name, country, currency, balance, is_spend_pot, sort_order').eq('is_active', true).order('sort_order'),
     sb.from('fund_balances_cleared').select('fund_id, cleared_balance, pending_spend'),
+    sb.from('fund_cash').select('fund_id, cash_balance, owed_on_cards'),
+    sb.from('card_balances').select('payment_method_id, name, currency, charges, credits, fund_charges, payments, owed, last_paid').eq('is_archived', false),
   ]);
   if (b.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(b.error.message) + '</p>'; return; }
   const cl = {}; (c.error ? [] : c.data || []).forEach(r => cl[r.fund_id] = r);
+  const ca = {}; (k.error ? [] : k.data || []).forEach(r => ca[r.fund_id] = r);
   const pots = (b.data || []).filter(f => f.is_spend_pot);
   if (!pots.length) { box.innerHTML = '<p class="cap">no spending pots marked — Settings → Funds in the app</p>'; return; }
   const countries = [...new Set(pots.map(p => p.country))];
+  const cards = (cb.error ? [] : cb.data || []).filter(x => Number(x.charges) || Number(x.payments) || Number(x.owed));
   box.innerHTML = countries.map(cc => '<div class="card"><p class="h2" style="margin-bottom:10px">' + esc(countryTitle(cc)) + '</p>'
-    + '<table><thead><tr><th>Pot</th><th class="amt">Spent · all rows</th><th class="amt">Cleared · reconciled only</th><th class="amt">Pending spend</th></tr></thead><tbody>'
-    + pots.filter(p => p.country === cc).map(p => { const x = cl[p.fund_id] || {}; return '<tr>'
+    + '<table><thead><tr><th>Pot</th><th class="amt">Available</th><th class="amt">Owed on cards</th><th class="amt">In the bank</th><th class="amt">Cleared</th><th class="amt">Pending</th></tr></thead><tbody>'
+    + pots.filter(p => p.country === cc).map(p => { const x = cl[p.fund_id] || {}, y = ca[p.fund_id] || {}; const owed = y.owed_on_cards != null ? Number(y.owed_on_cards) : null; return '<tr>'
       + '<td><span class="dsc">🌊 ' + esc(p.name) + '</span></td>'
       + '<td class="amt lbl">' + fmtMoney(p.balance, p.currency) + '</td>'
-      + '<td class="amt lbl" style="color:var(--primary)">' + (x.cleared_balance != null ? fmtMoney(x.cleared_balance, p.currency) : '—') + '</td>'
+      + '<td class="amt" style="color:' + (owed > 0 ? 'var(--warn)' : owed < 0 ? 'var(--primary)' : 'var(--ink-soft)') + '"' + (owed < 0 ? ' title="this pot paid a card on behalf of other pots — move the money back with a transfer in the app"' : '') + '>' + (owed != null ? fmtMoney(owed, p.currency) : '—') + (owed < 0 ? ' <span class="tag blue">paid for others</span>' : '') + '</td>'
+      + '<td class="amt lbl">' + (y.cash_balance != null ? fmtMoney(y.cash_balance, p.currency) : '—') + '</td>'
+      + '<td class="amt" style="color:var(--primary)">' + (x.cleared_balance != null ? fmtMoney(x.cleared_balance, p.currency) : '—') + '</td>'
       + '<td class="amt" style="color:' + (Number(x.pending_spend) > 0 ? 'var(--warn)' : 'var(--ink-soft)') + '">' + (x.pending_spend != null ? fmtMoney(x.pending_spend, p.currency) : '—') + '</td>'
       + '</tr>'; }).join('')
     + '</tbody></table></div>').join('')
-    + (c.error ? '<p class="cap">cleared balances need the latest database update (' + esc(c.error.message) + ')</p>' : '')
-    + '<p class="cap">Cleared only counts rows that have been reconciled, so it starts low and catches up as statements are closed. Pending is what to expect on the next statements.</p>';
+    + (cards.length ? '<div class="card"><p class="h2" style="margin-bottom:4px">Credit cards</p><p class="cap" style="margin-bottom:10px">charges since ' + (CTX.hh.pot_start ? fmtD(CTX.hh.pot_start) : 'the start') + ' minus the payments recorded · record payments on the Statements page when you close a statement</p>'
+      + '<table><thead><tr><th>Card</th><th class="amt">Charged</th><th class="amt">Paid</th><th class="amt">Owed</th><th style="width:140px">Last payment</th><th style="width:120px"></th></tr></thead><tbody>'
+      + cards.map(x => '<tr><td><span class="dsc">💳 ' + esc(x.name) + '</span></td>'
+        + '<td class="amt">' + fmtMoney(Number(x.charges) - Number(x.credits) + Number(x.fund_charges), x.currency || 'AUD') + '</td>'
+        + '<td class="amt" style="color:var(--good)">' + fmtMoney(x.payments, x.currency || 'AUD') + '</td>'
+        + '<td class="amt lbl" style="color:' + (Number(x.owed) > 0 ? 'var(--warn)' : 'var(--ink-soft)') + '">' + fmtMoney(x.owed, x.currency || 'AUD') + '</td>'
+        + '<td class="cap">' + (x.last_paid ? fmtD(x.last_paid) : '—') + '</td>'
+        + '<td style="text-align:right"><button class="btn-tert" onclick="go(\'statements\');$(\'stCard\').value=\'' + x.payment_method_id + '\';$(\'stCard\').onchange()">statements ›</button></td></tr>').join('')
+      + '</tbody></table></div>' : '')
+    + (c.error || k.error ? '<p class="cap">some columns need the latest database update (' + esc((c.error || k.error).message) + ')</p>' : '')
+    + '<p class="cap">Paying a card never changes Available — the charges already took it the day they happened. It lowers Owed on cards and In the bank by the same amount. Cleared only counts reconciled rows, so it catches up as statements are closed.</p>';
 }
 </script>
 </body>
