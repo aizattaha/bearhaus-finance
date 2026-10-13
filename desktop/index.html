@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../app/common.js?v=20261014"></script>
 <style>
 :root{
   --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
@@ -152,7 +153,13 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
             <input class="descinput num" id="stTotal" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="width:150px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
             <button class="btn btn-soft" style="height:36px;padding:0 14px" onclick="saveStatementTotal()">Save</button>
           </div>
+          <div class="row" style="gap:6px;margin-top:6px;flex-wrap:nowrap;align-items:center">
+            <span class="cap" style="white-space:nowrap">opening</span><input class="descinput num" id="stOpen" type="number" step="0.01" placeholder="—" title="opening balance on the statement" style="width:92px;height:30px;padding:0 8px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
+            <span class="cap" style="white-space:nowrap">closing</span><input class="descinput num" id="stClosing" type="number" step="0.01" placeholder="—" title="closing balance on the statement" style="width:92px;height:30px;padding:0 8px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
+            <span class="cap" style="white-space:nowrap">due</span><input class="descinput" id="stDue" type="date" title="payment due date" style="width:132px;height:30px;padding:0 8px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
+          </div>
           <p class="cap" id="kDiff" style="margin-top:6px"></p>
+          <p class="cap" id="kChain" style="margin-top:2px"></p>
         </div>
       </div>
 
@@ -385,6 +392,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
       <label class="bkf"><span class="cap">Who paid</span><select class="descinput" id="axWho"></select><span class="cap" id="axWhoNote"></span></label>
       <label class="bkf"><span class="cap">Comments</span><input class="descinput" id="axComments" placeholder="optional"></label>
     </div>
+    <div class="row" style="margin-top:10px;gap:8px"><button type="button" class="chip" id="axRefund" onclick="this.classList.toggle('sel')">↩ refund / credit</button><span class="cap">a credit on the statement — counts against the category as a minus</span></div>
     <p class="cap" id="axErr" style="margin-top:10px;color:var(--bad)"></p>
     <div class="row" style="justify-content:flex-end;margin-top:12px">
       <button class="btn btn-soft" onclick="closeAddTx()">Cancel</button>
@@ -405,26 +413,8 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
 <div class="toast" id="toast"></div>
 
 <script>
-// ── config (identical to the app) ───────────────────────────
-const SUPABASE_URL = 'https://diqaezhdxloqhglndqrq.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_K-fUtwnuZAJLTNquqDN87Q_yBkEEGhZ';
-const sb = typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const CURSYM = { AUD:'A$', SGD:'S$', USD:'US$', GBP:'£', EUR:'€', JPY:'¥', CNY:'CN¥', MYR:'RM', THB:'฿', NZD:'NZ$', HKD:'HK$', TWD:'NT$', KRW:'₩', IDR:'Rp', VND:'₫', PHP:'₱', INR:'₹' };
-const ZERO_DEC = { JPY:1, KRW:1, IDR:1, VND:1, HUF:1, CLP:1, ISK:1, UGX:1, TWD:1 };
-const fmtMoney = (v, cur) => { const n = Number(v) || 0, d = ZERO_DEC[cur] ? 0 : 2; return (n < 0 ? '−' : '') + (CURSYM[cur] || (cur ? cur + ' ' : 'A$')) + Math.abs(n).toLocaleString('en-AU', {minimumFractionDigits:d, maximumFractionDigits:d}); };
-const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-const todayIso = () => isoDate(new Date());
-const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
-const fmtD = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'});
-const fmtDs = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
+// connection, $, esc, money, country and date helpers live in ../app/common.js (shared with the phone app)
 const monthName = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', {month:'long', year:'numeric'});
-const curMonthIso = () => { const n = new Date(); return isoDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
-const addMonths = (iso, n) => { const d = new Date(iso + 'T00:00:00'); return isoDate(new Date(d.getFullYear(), d.getMonth() + n, 1)); };
-const flagOf = cc => /^[A-Z]{2}$/.test(cc || '') ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
-const COUNTRY_NAME = { AU:'Australia', SG:'Singapore', MY:'Malaysia', TH:'Thailand', JP:'Japan', US:'United States', GB:'United Kingdom', NZ:'New Zealand', ID:'Indonesia', VN:'Vietnam', PH:'Philippines', KR:'South Korea', CN:'China', HK:'Hong Kong', TW:'Taiwan', IN:'India' };
-const countryTitle = cc => (flagOf(cc) ? flagOf(cc) + ' ' : '') + (COUNTRY_NAME[cc] || cc || 'Other');
 // the app's own confirm: a small card, not the browser's dialog
 function ask(title, text, yes){
   return new Promise(res => {
@@ -520,6 +510,7 @@ function initStatements(){
     renderStatement();
   };
   $('stTotal').onkeydown = e => { if (e.key === 'Enter') saveStatementTotal(); };
+  ['stOpen', 'stClosing', 'stDue'].forEach(id => { $(id).onkeydown = e => { if (e.key === 'Enter') saveStatementTotal(); }; $(id).onchange = () => saveStatementTotal(); });
   // deep links: ?card=<id> opens that card's statements · ?rows=nocard opens Transactions filtered to rows with no card
   const u = new URL(location.href); const pre = u.searchParams.get('card');
   if (pre && cardById(pre)) { $('stCard').value = pre; $('stCard').onchange(); }
@@ -578,7 +569,7 @@ async function loadStatement(){
   if (!c || !p) { renderStatement(); return; }
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
   const from = st.margin ? addDays(p.start, -5) : p.start, to = st.margin ? addDays(p.end, 5) : p.end;
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id';
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, is_refund';
   // the statement record first: a CLOSED statement shows exactly the rows ticked on it, whatever their date
   const s0 = await sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle();
   const closed = !!(s0.data && s0.data.closed_at);
@@ -616,12 +607,22 @@ async function loadStatement(){
       credit: r.type === 'income' || (r.tx_kind === 'card_payment' && r.settles_payment_method_id === c.id) })))
     .sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
   // a card payment or refund is a credit on a card statement
-  st.rows.forEach(r => { if (r.kind !== 'fund') r.credit = r.category === 'Payment'; });
+  st.rows.forEach(r => { if (r.kind !== 'fund') r.credit = r.category === 'Payment' || !!r.is_refund; });
   st.imp = null; $('impResult').style.display = 'none';
   st.legs = null; await refreshPay();
   // rows ticked against THIS statement vs. others
   st.rows.forEach(r => { r.inPeriod = r.date >= p.start && r.date <= p.end; r.carry = r.date < from; });
   $('stTotal').value = st.statement && st.statement.statement_total != null ? Number(st.statement.statement_total).toFixed(2) : '';
+  $('stOpen').value = st.statement && st.statement.opening_balance != null ? Number(st.statement.opening_balance).toFixed(2) : '';
+  $('stClosing').value = st.statement && st.statement.closing_balance != null ? Number(st.statement.closing_balance).toFixed(2) : '';
+  $('stDue').value = st.statement && st.statement.payment_due ? st.statement.payment_due : '';
+  // the previous statement's closing balance is this one's opening — offer it
+  st.prevClose = null;
+  if (c && c.kind === 'credit_card') {
+    const pv = await sb.from('statements').select('closing_balance, period_end').eq('payment_method_id', c.id).lt('period_end', p.start).not('closing_balance', 'is', null).order('period_end', { ascending: false }).limit(1);
+    if (!pv.error && pv.data && pv.data[0]) st.prevClose = pv.data[0];
+    if (st.prevClose && !$('stOpen').value) $('stOpen').placeholder = Number(st.prevClose.closing_balance).toFixed(2);
+  }
   renderStatement();
 }
 function renderStatement(){
@@ -686,6 +687,15 @@ function updateStatementKpis(){
       ? '<span class="tag good">matches the ticked total ✓</span>'
       : '<span class="tag ' + (diff > 0 ? 'warn' : 'bad') + '">' + (diff > 0 ? 'statement is ' + fmtMoney(diff, cur) + ' MORE than ticked — something is missing in the app' : 'ticked is ' + fmtMoney(-diff, cur) + ' more than the statement — something is ticked that isn’t on it') + '</span>';
   } else $('kDiff').textContent = c ? 'type the closing balance / total new spend from the statement' : '';
+  // opening + ticked spend − credits = closing? (credits are already negative in tickedTotal)
+  const op = parseFloat($('stOpen').value), cl = parseFloat($('stClosing').value);
+  if (c && !isNaN(op) && !isNaN(cl)) {
+    const expect = Math.round((op + tickedTotal) * 100) / 100, d2 = Math.round((cl - expect) * 100) / 100;
+    $('kChain').innerHTML = Math.abs(d2) < 0.005 ? '<span class="tag good">opening + ticked = closing ✓</span>'
+      : '<span class="tag warn">opening ' + fmtMoney(op, cur) + ' + ticked ' + fmtMoney(tickedTotal, cur) + ' = ' + fmtMoney(expect, cur) + ' — the statement closes at ' + fmtMoney(cl, cur) + ' (' + (d2 > 0 ? '+' : '−') + fmtMoney(Math.abs(d2), cur) + ' unexplained)</span>';
+  } else if (c && st.prevClose && isNaN(op)) {
+    $('kChain').innerHTML = '<span class="cap">previous statement closed at ' + fmtMoney(st.prevClose.closing_balance, cur) + ' — <a href="#" onclick="$(\'stOpen\').value=' + Number(st.prevClose.closing_balance).toFixed(2) + ';saveStatementTotal();return false" style="color:#fff">use as opening</a></span>';
+  } else $('kChain').textContent = '';
   const n = st.sel.size, selRows = st.rows.filter(r => st.sel.has(r.key));
   const selTotal = selRows.reduce((s, r) => s + signed(r), 0);
   $('stSelInfo').textContent = n ? n + ' selected · ' + fmtMoney(selTotal, cur) : 'nothing selected';
@@ -1001,14 +1011,20 @@ function renderImportResult(){
   $('impMissing').innerHTML = missing.length ? '<table><thead><tr><th style="width:110px">Date</th><th>Statement line</th><th class="amt" style="width:120px">Amount</th></tr></thead><tbody>'
     + missing.map(L => { const h = nearOf(L); return '<tr><td class="num">' + fmtD(L.date) + '</td><td class="ell">' + esc(L.desc || '(no description)') + (h ? '<br><span class="cap">≈ ' + esc(h.r.description) + ' ' + fmtMoney(h.r.amount, h.r.currency) + ' on ' + fmtDs(h.r.date) + ' in the app — ' + esc(h.why) + '</span>' : '') + '</td><td class="amt"' + (L.amount < 0 ? ' style="color:var(--good)"' : '') + '>' + (L.amount < 0 ? '+' : '−') + fmtMoney(Math.abs(L.amount), st.card.currency || 'AUD') + '</td></tr>'; }).join('') + '</tbody></table>' : '';
 }
-async function saveStatementTotal(){
+let stSaveQ = Promise.resolve();
+function saveStatementTotal(){ stSaveQ = stSaveQ.then(() => saveStatementTotalNow()).catch(() => {}); return stSaveQ; }   // one save at a time (several fields blur together)
+async function saveStatementTotalNow(){
   if (!st.card || !st.period) return;
-  const v = $('stTotal').value === '' ? null : parseFloat($('stTotal').value);
+  const num = id => $(id).value === '' ? null : parseFloat($(id).value);
+  const v = num('stTotal');
+  const upd = { statement_total: v, opening_balance: num('stOpen'), closing_balance: num('stClosing'), payment_due: $('stDue').value || null };
+  if (st.statement && st.statement.statement_total === v && st.statement.opening_balance == upd.opening_balance && st.statement.closing_balance == upd.closing_balance && (st.statement.payment_due || null) === upd.payment_due) return;
   try {
     const s = await ensureStatement();
-    const { error } = await sb.from('statements').update({ statement_total: v }).eq('id', s.id);
+    let { error } = await sb.from('statements').update(upd).eq('id', s.id);
+    if (error && /opening_balance|closing_balance|payment_due/.test(error.message || '')) ({ error } = await sb.from('statements').update({ statement_total: v }).eq('id', s.id));
     if (error) throw error;
-    st.statement.statement_total = v; toast('statement total saved'); st.legs = null; await refreshPay(); updateStatementKpis();
+    Object.assign(st.statement, upd); toast('statement saved'); st.legs = null; await refreshPay(); updateStatementKpis();
   } catch (err) { toast('couldn’t save: ' + (err.message || err)); }
 }
 async function toggleCloseStatement(){
@@ -1047,7 +1063,7 @@ async function loadNoCard(reset){
   }
   const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch), cf = $('ncCardF').value;
   const cashCard = CTX.cards.find(c => c.kind === 'cash');
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by';
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, is_refund';
   const mk = (t, off, extra) => {
     let qq = sb.from(t).select(sel + (extra || '')).neq('category', 'Payment')
       .order('date', {ascending:false}).range(off, off + NC_PAGE - 1);
@@ -1074,7 +1090,7 @@ function renderNoCard(){
     + '<td class="ell">' + esc(r.category) + '</td><td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
     + '<td class="ell" title="' + esc(c ? c.name : '') + '">' + (c ? esc(c.name) : '<span class="tag warn">no card</span>') + (r.reconciled_at ? ' <span title="reconciled">🔒</span>' : '') + '</td>'
     + '<td><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
-    + '<td class="amt">−' + fmtMoney(r.amount, r.currency) + '</td></tr>'; }).join('');
+    + '<td class="amt"' + (r.is_refund || r.category === 'Payment' ? ' style="color:var(--good)"' : '') + '>' + (r.is_refund || r.category === 'Payment' ? '+' : '−') + fmtMoney(r.amount, r.currency) + '</td></tr>'; }).join('');
   body.querySelectorAll('.rowck').forEach(ck => ck.onchange = ev => {
     const key = ev.target.closest('tr').dataset.key;
     if (ev.target.checked) nc.sel.add(key); else nc.sel.delete(key);
@@ -1358,13 +1374,12 @@ async function saveAddTx(){
   if (ax.kind === 'travel') row.trip_id = $('axTrip').value;
   $('axSave').disabled = true;
   const t = ax.kind === 'daily' ? 'daily_expenses' : 'travel_expenses';
+  if ($('axRefund').classList.contains('sel')) row.is_refund = true;
+  // the split rows (payer +, joint −) are derived by the database
   const ins = await sb.from(t).insert(row).select('id').single();
-  if (ins.error) { $('axSave').disabled = false; return err('couldn’t save: ' + ins.error.message); }
-  // the same split rows the app writes: the payer is owed the amount, the joint pot owes it
-  const splits = (pid ? [{ profile_id: pid, amount }] : []).concat([{ profile_id: null, amount: -amount }]).map(x => Object.assign({ household_id: CTX.hh.id, expense_id: ins.data.id }, x));
-  const sp = await sb.from(ax.kind === 'daily' ? 'daily_expense_splits' : 'travel_expense_splits').insert(splits);
   $('axSave').disabled = false;
-  if (sp.error) toast('saved, but the split rows failed: ' + sp.error.message); else toast('saved — ' + desc + ' · ' + fmtMoney(amount, row.currency));
+  if (ins.error) return err('couldn’t save: ' + ins.error.message);
+  toast('saved — ' + desc + ' · ' + (row.is_refund ? '+' : '') + fmtMoney(amount, row.currency));
   closeAddTx();
   if (ax.src === 'st') loadStatement(); else loadNoCard(true);
 }

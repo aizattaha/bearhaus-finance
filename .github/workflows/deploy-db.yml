@@ -1,7 +1,9 @@
 # BearHaus — database deploy
 # Any migration that lands on main under supabase/migrations/ is pushed to the
-# production Supabase project automatically. The Supabase CLI only applies versions
-# the remote has not seen, so re-runs are safe.
+# production Supabase project automatically — but only after the whole migration
+# chain has been applied from nothing to a scratch Postgres and the SQL tests in
+# tools/sql-tests/ pass. The Supabase CLI only applies versions the remote has
+# not seen, so re-runs are safe.
 #
 # One-time setup (GitHub → Settings → Secrets and variables → Actions):
 #   SUPABASE_ACCESS_TOKEN  — personal access token from supabase.com/dashboard/account/tokens
@@ -11,10 +13,32 @@ name: Deploy database migrations
 on:
   push:
     branches: [main]
-    paths: ['supabase/migrations/**']
+    paths: ['supabase/migrations/**', 'tools/sql-tests/**']
+  pull_request:
+    paths: ['supabase/migrations/**', 'tools/sql-tests/**']
   workflow_dispatch:
 jobs:
+  test:
+    name: Migrations from scratch + SQL tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply every migration to an empty database, then test
+        run: tools/sql-tests/run.sh "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
   push-migrations:
+    needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

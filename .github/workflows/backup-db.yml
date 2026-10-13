@@ -1,0 +1,58 @@
+# BearHaus — database backup
+# Every Monday 18:00 UTC (Tuesday 05:00 Melbourne) and on demand: a full dump of the production
+# database (schema + data), encrypted with a passphrase, kept as a workflow artifact for 90 days.
+# The repository is PUBLIC, so the dump is never stored in it and never uploaded in the clear:
+# the job refuses to run without the passphrase.
+#
+# One-time setup (GitHub → Settings → Secrets and variables → Actions):
+#   BACKUP_PASSPHRASE      — a long passphrase of your choosing; keep a copy in your password manager
+#   (plus the three deploy secrets: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD)
+#
+# To restore or inspect: download the artifact from the run, then
+#   gpg --batch --passphrase "<passphrase>" -d bearhaus-YYYY-MM-DD.sql.gpg > bearhaus.sql
+#   psql "<database url>" -f bearhaus.sql        (schema first, data second — one file, in order)
+name: Backup database
+on:
+  schedule:
+    - cron: '0 18 * * 1'
+  workflow_dispatch:
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse to run without the passphrase
+        run: |
+          if [ -z "${{ secrets.BACKUP_PASSPHRASE }}" ]; then
+            echo "::error title=BACKUP_PASSPHRASE missing::Add the secret BACKUP_PASSPHRASE (GitHub → Settings → Secrets → Actions). The dump is never stored unencrypted."
+            exit 1
+          fi
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      - name: Dump schema + data
+        run: |
+          set -o pipefail
+          DAY="$(date -u +%F)"
+          supabase db dump --linked -f schema.sql
+          supabase db dump --linked --data-only -f data.sql
+          cat schema.sql data.sql > "bearhaus-$DAY.sql"
+          gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$BACKUP_PASSPHRASE" -o "bearhaus-$DAY.sql.gpg" "bearhaus-$DAY.sql"
+          shred -u schema.sql data.sql "bearhaus-$DAY.sql"
+          ls -la *.gpg
+          echo "DAY=$DAY" >> "$GITHUB_ENV"
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bearhaus-db-${{ env.DAY }}
+          path: bearhaus-${{ env.DAY }}.sql.gpg
+          retention-days: 90
+          if-no-files-found: error

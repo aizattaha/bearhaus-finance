@@ -26,7 +26,7 @@ async function loadMeta(){
       join information_schema.key_column_usage kcu on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
       where tc.constraint_type = 'PRIMARY KEY' and tc.table_schema = 'public'`);
     const fns = await c.query(`select p.proname, p.proretset, t.typname, t.typtype, p.proargnames from pg_proc p join pg_namespace n on n.oid = p.pronamespace join pg_type t on t.oid = p.prorettype where n.nspname = 'public'`);
-    META = { fks: fks.rows, pk: Object.assign(Object.fromEntries(pks.rows.map(r => [r.t, r.col])), { daily_expenses: 'id', travel_expenses: 'id', daily_expense_splits: 'id', travel_expense_splits: 'id' }), fns: Object.fromEntries(fns.rows.map(r => [r.proname, r])) };
+    META = { fks: fks.rows, pk: Object.assign(Object.fromEntries(pks.rows.map(r => [r.t, r.col])), { daily_expenses: 'id', travel_expenses: 'id', daily_expense_splits: 'id', travel_expense_splits: 'id', fund_transactions: 'id' }), fns: Object.fromEntries(fns.rows.map(r => [r.proname, r])) };
   } finally { c.release(); }
 }
 
@@ -61,7 +61,7 @@ function parseSelect(sel){
 }
 // relationship between base table t and embed name r
 // views over one table inherit that table's relationships (as PostgREST does)
-const VIEW_BASE = { daily_expenses: 'expenses', travel_expenses: 'expenses', daily_expense_splits: 'expense_splits', travel_expense_splits: 'expense_splits' };
+const VIEW_BASE = { daily_expenses: 'expenses', travel_expenses: 'expenses', daily_expense_splits: 'expense_splits', travel_expense_splits: 'expense_splits', fund_transactions: 'fund_transactions_all' };
 function relation(t, r, hint){
   const bt = VIEW_BASE[t] || t, br = VIEW_BASE[r] || r;
   let f = META.fks.find(x => x.t === bt && x.ft === br && (!hint || x.col === hint || x.name === hint));
@@ -322,6 +322,7 @@ function handleStatic(req, res, url){
   if (p === '/' ) { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<p style="font-family:sans-serif">bh-local · <a href="/app/">app</a> · <a href="/desktop/">desk</a> · <a href="/__log">log</a></p>'); }
   if (p === '/app/' || p === '/app/index.html') { res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' }); return res.end(patched('app/index.html')); }
   if (p === '/desktop/' || p === '/desktop/index.html') { res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' }); return res.end(patched('desktop/index.html')); }
+  if (p === '/app/common.js' || p.startsWith('/app/common.js?')) { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' }); return res.end(patched('app/common.js')); }   // the shared helpers carry the Supabase URL
   if (p === '/vendor/supabase.js') { res.writeHead(200, { 'Content-Type': MIME['.js'] }); return res.end(fs.readFileSync(path.join(HERE, 'node_modules/@supabase/supabase-js/dist/umd/supabase.js'))); }
   if (p === '/__log') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(LOG.slice(-300), null, 1)); }
   if (p === '/__reset-log') { LOG.length = 0; return send(res, 200, { ok: true }); }

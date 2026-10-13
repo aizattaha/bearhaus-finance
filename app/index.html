@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="common.js?v=20261014"></script>
 <style>
 :root{
   --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
@@ -599,6 +600,7 @@ input[type="date"].descinput{min-width:0}
       <div class="f-sec" id="rowDetails" style="display:none">
         <div id="cardWrap"><button type="button" class="arow" id="cardRow" onclick="openCardPicker()"></button><select id="cardSel" style="display:none"></select></div>
         <div style="margin-top:8px"><input class="descinput" id="commentsInput" placeholder="note (optional)" style="width:100%"></div>
+        <div id="refundWrap" style="margin-top:8px;display:flex;gap:8px;align-items:center"><button type="button" class="chip" id="refundChip" onclick="toggleRefund()">↩ refund / credit</button><span class="cap" id="refundCap">money coming back — counts against the category as a minus</span></div>
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button></div>
       <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px;flex:0 0 auto" onclick="deleteExpense()">Delete</button>
@@ -646,13 +648,7 @@ input[type="date"].descinput{min-width:0}
 <div class="toast" id="toastEl"></div>
 
 <script>
-// ── connection ───────────────────────────────
-const SUPABASE_URL = 'https://diqaezhdxloqhglndqrq.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_K-fUtwnuZAJLTNquqDN87Q_yBkEEGhZ';
-const sb = typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-
-// ── tiny helpers ─────────────────────────────
-const $ = id => document.getElementById(id);
+// connection, $, esc, money, country and date helpers live in common.js (shared with the Desk)
 let toastTimer = null;
 function toast(msg){
   const t = $('toastEl');
@@ -681,31 +677,7 @@ function go(id){
   if (id === 'scr-travel' && !travelInit) initTravel();
   if (id === 'scr-settings') renderSettings();
 }
-const CURSYM = { AUD:'A$', SGD:'S$', IDR:'Rp', JPY:'¥', CNY:'CN¥', KRW:'₩', THB:'฿', MYR:'RM',
-                 VND:'₫', EUR:'€', GBP:'£', USD:'US$', NZD:'NZ$', TWD:'NT$', HKD:'HK$', INR:'₹',
-                 PHP:'₱', CHF:'CHF ', CAD:'C$', AED:'AED ', BND:'B$', LKR:'Rs ', SEK:'kr ',
-                 NOK:'kr ', DKK:'kr ', TRY:'₺', ZAR:'R ', BRL:'R$', MXN:'MX$' };
-// country → its everyday currency; feeds signup, Settings' "+ new country" and trips (Phase 6)
-const COUNTRY_CUR = { AU:'AUD', SG:'SGD', MY:'MYR', ID:'IDR', TH:'THB', VN:'VND', PH:'PHP', JP:'JPY',
-  KR:'KRW', CN:'CNY', TW:'TWD', HK:'HKD', IN:'INR', LK:'LKR', BN:'BND', NZ:'NZD', US:'USD', CA:'CAD',
-  GB:'GBP', IE:'EUR', FR:'EUR', DE:'EUR', ES:'EUR', IT:'EUR', NL:'EUR', PT:'EUR', CH:'CHF',
-  SE:'SEK', NO:'NOK', DK:'DKK', AE:'AED', TR:'TRY', ZA:'ZAR', BR:'BRL', MX:'MXN' };
-const ZERO_DEC = { JPY:1, KRW:1, IDR:1, VND:1, HUF:1, CLP:1, ISK:1, UGX:1, TWD:1 };
-function fmtMoney(v, cur){
-  const sym = CURSYM[cur] || (cur ? String(cur).replace(/[^A-Za-z]/g, '').slice(0, 5) + ' ' : 'A$');
-  const n = Number(v) || 0, d = ZERO_DEC[cur] ? 0 : 2;
-  return (n < 0 ? '−' : '') + sym + Math.abs(n).toLocaleString('en-AU', {minimumFractionDigits:d, maximumFractionDigits:d});
-}
-// 'SG' -> 🇸🇬 (country code to flag emoji)
-const flagOf = cc => /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
-// country code → full name; every list that splits by country uses countryTitle() for its headings
-const COUNTRY_NAME = { AU:'Australia', SG:'Singapore', MY:'Malaysia', ID:'Indonesia', TH:'Thailand', VN:'Vietnam',
-  PH:'Philippines', JP:'Japan', KR:'South Korea', CN:'China', TW:'Taiwan', HK:'Hong Kong', IN:'India', LK:'Sri Lanka',
-  BN:'Brunei', NZ:'New Zealand', US:'United States', CA:'Canada', GB:'United Kingdom', IE:'Ireland', FR:'France',
-  DE:'Germany', ES:'Spain', IT:'Italy', NL:'Netherlands', PT:'Portugal', CH:'Switzerland', SE:'Sweden', NO:'Norway',
-  DK:'Denmark', AE:'UAE', TR:'Türkiye', ZA:'South Africa', BR:'Brazil', MX:'Mexico' };
-const countryTitle = cc => (flagOf(cc) ? flagOf(cc) + ' ' : '') + (COUNTRY_NAME[cc] || cc || 'Other');
-const todayIso = () => isoDate(new Date());
+// CURSYM, COUNTRY_CUR, ZERO_DEC, fmtMoney, flagOf, COUNTRY_NAME, countryTitle, todayIso → common.js
 
 // the currencies THIS household uses — derived from its funds, so every screen
 // only ever offers what the household actually has (an AU-only home sees no S$)
@@ -714,7 +686,6 @@ function homeCurrencies(){
   return l.length ? l : ['AUD'];
 }
 function primaryCur(){ return homeCurrencies()[0]; }
-const curLabel = c => CURSYM[c] || String(c || '').replace(/[^A-Za-z]/g, '').slice(0, 5);
 
 // ── auth flow ────────────────────────────────
 let authMode = 'signin', recoverMode = false;
@@ -944,10 +915,8 @@ const CAT_ICON = {
   'Gifts':'🎁','Medical Expenses':'💊','Health':'💊','Liquor':'🍺','Movies':'🎬','Games':'🎮',
   'Electronics':'🔌','Hotel':'🏨','Payment':'🔁',
 };
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // local calendar date, NOT toISOString() — that detours through UTC and,
 // being 10h behind Sydney, drags the previous day into every range
-const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
 // ── app boot ─────────────────────────────────
 async function enterApp(){
@@ -1010,13 +979,13 @@ async function loadHome(){
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const [week, recent, month, inc, pinc, applied] = await Promise.all([
-      sb.from('daily_expenses').select('date, amount, currency, category')
+      sb.from('daily_expenses').select('date, amount, currency, category' + rf())
         .gte('date', isoDate(weekStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
       sb.from('daily_expenses')
-        .select('id, date, description, category, amount, currency, profiles(display_name)')
+        .select('id, date, description, category, amount, currency, profiles(display_name)' + rf())
         .lte('date', isoDate(now))
         .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(5),
-      sb.from('daily_expenses').select('category, amount, currency')
+      sb.from('daily_expenses').select('category, amount, currency' + rf())
         .gte('date', isoDate(monthStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
       sb.from('fund_transactions').select('amount, income_source, funds(currency)')
         .not('income_source', 'is', null)
@@ -1072,7 +1041,7 @@ function renderHome(state){
   const PC = primaryCur();
   let weekMain = 0; const weekOther = {};
   (state.week || []).forEach(r => {
-    const amt = Number(r.amount);
+    const amt = sa(r);
     if (r.currency !== PC) { weekOther[r.currency] = (weekOther[r.currency] || 0) + amt; return; }
     weekMain += amt;
     const day = days.find(d => d.iso === r.date);
@@ -1098,7 +1067,7 @@ function renderHome(state){
     return `<div class="row"><div class="rowicon">${icon}</div>
       <div style="min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.description)}</div>
       <div class="cap">${esc(r.category)} · ${esc(who)} · ${when}</div></div>
-      <div class="amt num"${r.category === 'Payment' ? ' style="color:var(--ink-soft)"' : ''}>${r.category === 'Payment' ? '+' : '−'}${fmtMoney(r.amount, r.currency)}</div></div>`;
+      <div class="amt num"${r.category === 'Payment' || r.is_refund ? ' style="color:var(--ink-soft)"' : ''}>${r.category === 'Payment' || r.is_refund ? '+' : '−'}${fmtMoney(r.amount, r.currency)}</div></div>`;
   }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet — tap + to add your first 🐻</p>';
   // tap a recent line to fix it — fetches the full row, then opens the edit sheet
   [...$('recentList').children].forEach((el, i) => {
@@ -1140,10 +1109,10 @@ function renderHome(state){
   let monthAU = 0; const expOther = {};
   (state.month || []).forEach(r => {
     if (r.category === 'Payment') return;
-    if (r.currency !== PC) { expOther[r.currency] = (expOther[r.currency] || 0) + Number(r.amount); return; }
+    if (r.currency !== PC) { expOther[r.currency] = (expOther[r.currency] || 0) + sa(r); return; }
     const g = GROUP_OF[r.category] || 'Other';
-    byGroup[g] = (byGroup[g] || 0) + Number(r.amount);
-    monthAU += Number(r.amount);
+    byGroup[g] = (byGroup[g] || 0) + sa(r);
+    monthAU += sa(r);
   });
   const sorted = Object.entries(byGroup).sort((a, b) => b[1] - a[1]);
   const top = sorted.slice(0, 4);
@@ -1280,11 +1249,6 @@ function renderBudgetLens(){
   });
 }
 
-const curMonthIso = () => { const n = new Date(); return isoDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
-function addMonths(iso, n){
-  const d = new Date(iso + 'T00:00:00');
-  return isoDate(new Date(d.getFullYear(), d.getMonth() + n, 1));
-}
 function monthName(iso, long){
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', long ? {month:'long', year:'numeric'} : {month:'short', year:'numeric'});
 }
@@ -1321,7 +1285,7 @@ async function selectBudgetMonth(m){
     const LC = budgetLensCur();
     renderBudgetLens();
     const [exp, bud, pots] = await Promise.all([
-      sb.from('daily_expenses').select('id, date, description, category, amount, currency')
+      sb.from('daily_expenses').select('id, date, description, category, amount, currency' + rf())
         .gte('date', chartStart).lt('date', next).neq('category', 'Payment'),
       sb.from('category_budgets').select('month, category_group, amount')
         .gte('month', chartStart).lte('month', m).eq('currency', LC),
@@ -1349,9 +1313,9 @@ function renderBudget(st){
     if (r.currency !== PC) return;
     const m = r.date.slice(0, 7) + '-01';
     if (!sums[m]) return;
-    if (r.date > todayS) { schedTot[m] += Number(r.amount); return; }   // Scheduled: counts on its day, not before
+    if (r.date > todayS) { schedTot[m] += sa(r); return; }   // Scheduled: counts on its day, not before
     const g = GROUP_OF[r.category] || 'Other';
-    sums[m][g] = (sums[m][g] || 0) + Number(r.amount);
+    sums[m][g] = (sums[m][g] || 0) + sa(r);
   });
   (st.bud || []).forEach(r => {
     if (budTot[r.month] === undefined) return;
@@ -1442,7 +1406,7 @@ function renderBudget(st){
     const monthExp = (st.exp || []).filter(r =>
       r.currency === PC && r.date <= todayS && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group);
     const catSums = {};
-    monthExp.forEach(r => catSums[r.category] = (catSums[r.category] || 0) + Number(r.amount));
+    monthExp.forEach(r => catSums[r.category] = (catSums[r.category] || 0) + sa(r));
     const card = document.createElement('div');
     card.className = 'card pacecard';
     card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
@@ -2332,7 +2296,11 @@ let reconOK = true;   // false until the reconciliation migration has landed (pr
 let swapOK = true;    // false until the pot-swap migration has landed
 let updOK = true;     // false until expenses carry updated_at (batch 4)
 let kindOK = true;    // false until fund rows carry kind (card payments, Oct 2026)
-const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '') + (!fund && updOK ? ', updated_at' : '') + (fund && kindOK ? ', kind, settles_payment_method_id' : '');
+let refundOK = true;  // false until expenses carry is_refund (hygiene, Oct 2026)
+const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '') + (!fund && updOK ? ', updated_at' : '') + (fund && kindOK ? ', kind, settles_payment_method_id' : '') + (!fund && refundOK ? ', is_refund' : '');
+// a refund / card credit keeps a positive amount in the database and counts negative everywhere
+const sa = r => (r && r.is_refund ? -1 : 1) * Number(r.amount);
+const rf = () => refundOK ? ', is_refund' : '';
 let atx = null, atxSeq = 0;
 // 🔒 reconciled (locked) · 🔓 un-reconciled just now (tap to lock again) · nothing = never reconciled.
 // Internal fund rows (plan writes, transfers) are reconciled automatically and stay that way.
@@ -2609,7 +2577,7 @@ function renderAllTx(type){
     sched.forEach(x => {
       const cur = x.kind === 'f' || x.kind === 'x' ? (x.r.funds ? x.r.funds.currency : 'AUD') : x.r.currency;
       const sgn = x.kind === 'f' ? (x.r.type === 'income' ? 1 : -1) : x.kind === 'x' ? 0 : -1;
-      tot[cur] = (tot[cur] || 0) + sgn * Number(x.r.amount);
+      tot[cur] = (tot[cur] || 0) + sgn * (x.kind === 'f' ? Number(x.r.amount) : sa(x.r));
     });
     const next = sched[sched.length - 1].r.date;   // soonest due
     const outT = {}, inT = {};
@@ -2617,7 +2585,7 @@ function renderAllTx(type){
       const cur = x.kind === 'f' || x.kind === 'x' ? (x.r.funds ? x.r.funds.currency : 'AUD') : x.r.currency;
       if (x.kind === 'x') return;
       const isIn = x.kind === 'f' && x.r.type === 'income';
-      (isIn ? inT : outT)[cur] = ((isIn ? inT : outT)[cur] || 0) + Number(x.r.amount);
+      (isIn ? inT : outT)[cur] = ((isIn ? inT : outT)[cur] || 0) + (x.kind === 'f' ? Number(x.r.amount) : sa(x.r));
     });
     const hb = document.createElement('button');
     hb.type = 'button'; hb.className = 'fundrow';
@@ -2702,8 +2670,8 @@ function renderAllTx(type){
         ? esc(((trip && trip.countries) || []).map(flagOf).join('') || '✈️') + ' ' + esc(trip ? trip.name : 'trip') + ' · ' : '';
       b.innerHTML = '<div class="rowicon">' + (CAT_ICON[r.category] || (kind === 't' ? '✈️' : '🛍️')) + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.description) + '</div>'
-        + '<div class="cap">' + tripTag + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + (r.pot_swap_id ? ' · <span title="paid with Singapore money — pot swap recorded on the Desk">⇄ swapped</span>' : '') + '</div></div>'
-        + '<div class="amt num" style="color:' + (r.category === 'Payment' ? 'var(--ink-soft)' : 'var(--bad)') + '">' + (r.category === 'Payment' ? '+' : '−') + fmtMoney(r.amount, r.currency) + '</div>';
+        + '<div class="cap">' + tripTag + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + (r.is_refund ? ' · <span style="color:var(--good)">↩ refund</span>' : '') + (r.pot_swap_id ? ' · <span title="paid with Singapore money — pot swap recorded on the Desk">⇄ swapped</span>' : '') + '</div></div>'
+        + '<div class="amt num" style="color:' + (r.category === 'Payment' || r.is_refund ? 'var(--ink-soft)' : 'var(--bad)') + '">' + (r.category === 'Payment' || r.is_refund ? '+' : '−') + fmtMoney(r.amount, r.currency) + '</div>';
       b.onclick = () => kind === 't' ? openEditExpense(r) : openEditDaily(r);
     } else {
       const inc = r.type === 'income';
@@ -2776,6 +2744,7 @@ function renderSettings(){
     { icon:'🏷️', label:'Categories', cap: 'add · rename · archive', render: renderSetCategories },
     { icon:'💵', label:'Income', cap: 'part of the monthly plan', render: renderSetIncome },
     { icon:'⬇️', label:'Export data', cap: 'full backup & CSV exports', render: renderSetExport },
+    { icon:'🗑️', label:'Recently deleted', cap: 'deleted rows stay here 30 days — restore with a tap', render: renderSetBin },
   ];
   sections.forEach(s => {
     const row = document.createElement('button');
@@ -2801,6 +2770,30 @@ function renderSettings(){
   box.appendChild(tut);
 }
 
+// the bin: anything deleted in the last 30 days, restorable (older databases have no bin)
+async function renderSetBin(box){
+  const r = await sb.from('recently_deleted').select('kind, id, deleted_at, date, label, amount, currency, detail, is_credit').order('deleted_at', { ascending: false }).limit(200);
+  if (r.error) { box.innerHTML = '<p class="cap">' + (/recently_deleted/.test(r.error.message) ? 'the bin arrives with the next database update' : 'couldn’t load: ' + esc(r.error.message)) + '</p>'; return; }
+  box.innerHTML = '';
+  const rows = r.data || [];
+  if (!rows.length) { box.appendChild(capEl('nothing in the bin — deleted expenses and fund rows wait here for 30 days, then go for good')); return; }
+  rows.forEach(x => {
+    const d = document.createElement('div'); d.className = 'srow';
+    const days = Math.max(0, 30 - Math.floor((Date.now() - new Date(x.deleted_at)) / 864e5));
+    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + (x.kind === 'fund' ? '💰' : '🛍️') + '</div>'
+      + '<div style="flex:1;min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(x.label || '') + '</div>'
+      + '<div class="cap">' + esc(x.detail || '') + ' · ' + fmtDayMonYr(x.date) + ' · ' + (x.kind === 'fund' ? (Number(x.amount) >= 0 ? '+' : '−') : (x.is_credit ? '+' : '−')) + fmtMoney(Math.abs(Number(x.amount)), x.currency || 'AUD') + ' · ' + days + (days === 1 ? ' day left' : ' days left') + '</div></div>';
+    const b = document.createElement('button'); b.className = 'btn-mini'; b.textContent = 'Restore';
+    b.onclick = async () => {
+      const u = await sb.rpc('restore_rows', { p_kind: x.kind === 'fund' ? 'fund' : 'expense', p_ids: [x.id] });
+      if (u.error) { toast('couldn’t restore: ' + u.error.message); return; }
+      toast('restored 🐻'); renderSetBin(box); loadHome(); if (fundsInit) loadFunds(); if (budgetInit) selectBudgetMonth(budgetMonth); if (atx) loadAllTx(true); if (travelInit) loadTravel(true);
+    };
+    d.appendChild(b);
+    box.appendChild(d);
+  });
+  box.appendChild(capEl('a transfer or a card payment comes back whole · rows ticked on a statement can’t be deleted in the first place'));
+}
 async function renderSetPeople(box){
   box.innerHTML = '';
   // who has a login (household_members) and which invites are still open
@@ -3451,9 +3444,9 @@ function tripAgg(exps){
   let allSent = exps.length > 0;
   exps.forEach(e => {
     const c = byCur[e.currency] = byCur[e.currency] || { total:0, paid:{} };
-    c.total += Number(e.amount);
+    c.total += sa(e);
     (e.travel_expense_splits || []).forEach(s => {
-      if (s.profile_id && Number(s.amount) > 0)
+      if (s.profile_id)   // a refund's split is negative: it reduces what that person fronted
         c.paid[s.profile_id] = (c.paid[s.profile_id] || 0) + Number(s.amount);
     });
     if (!e.sent_to_fund) allSent = false;
@@ -3464,7 +3457,7 @@ function tripAgg(exps){
 function owedByPerson(exps){
   const map = {};
   exps.filter(e => !e.sent_to_fund).forEach(e => (e.travel_expense_splits || []).forEach(s => {
-    if (s.profile_id && Number(s.amount) > 0) {
+    if (s.profile_id) {
       const m = map[s.profile_id] = map[s.profile_id] || {};
       m[e.currency] = (m[e.currency] || 0) + Number(s.amount);
     }
@@ -3484,7 +3477,7 @@ async function initTravel(){
 async function loadTravel(keepDetail){
   try {
     const { data, error } = await sb.from('travel_expenses')
-      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, travel_expense_splits(profile_id, amount)')
+      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rf() + ', travel_expense_splits(profile_id, amount)')
       .order('date', {ascending: false});
     if (error) throw error;
     travelState = { exps: data || [] };
@@ -3557,7 +3550,7 @@ function renderTripDetail(){
   Object.keys(TRAVEL_GROUPED).concat('🗂️ Other').filter((g, i, a) => a.indexOf(g) === i).forEach(g => {
     const list = groups[g]; if (!list || !list.length) return;
     const tot = {};
-    list.forEach(e => tot[e.currency] = (tot[e.currency] || 0) + Number(e.amount));
+    list.forEach(e => tot[e.currency] = (tot[e.currency] || 0) + sa(e));
     const d = document.createElement('details'); d.className = 'grp';
     d.innerHTML = '<summary><span class="arr">›</span> ' + esc(g)
       + ' <span class="gamt">' + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join('<br>') + '</span></summary>';
@@ -3582,7 +3575,7 @@ function renderTripDetail(){
   // settle card — the joint pot (ultimately the household's travel fund) pays back whoever fronted money
   const tf = travelFund();
   const unsentInFund = tf ? exps.filter(e => !e.sent_to_fund && e.currency === tf.currency) : [];
-  const unsentTotal = unsentInFund.reduce((s, e) => s + Number(e.amount), 0);
+  const unsentTotal = unsentInFund.reduce((s, e) => s + sa(e), 0);
   const solo = payerNames().length < 2;   // one person: fund accounting, no settling
   const owed = solo ? [] : owedByPerson(exps);
   let html = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
@@ -3609,7 +3602,7 @@ function renderTripDetail(){
   const foreignUnsent = tf ? exps.filter(e => !e.sent_to_fund && e.currency !== tf.currency) : [];
   if (exps.length && !allSent && foreignUnsent.length) {
     const t2 = {};
-    foreignUnsent.forEach(e => t2[e.currency] = (t2[e.currency] || 0) + Number(e.amount));
+    foreignUnsent.forEach(e => t2[e.currency] = (t2[e.currency] || 0) + sa(e));
     const t2str = Object.entries(t2).map(([c, v]) => fmtMoney(v, c)).join(' + ');
     html += '<div style="display:flex;gap:8px;margin-top:10px;align-items:center">'
       + '<input class="descinput" id="convIn" type="number" step="0.01" inputmode="decimal" placeholder="' + t2str + ' as ' + curLabel(tf.currency) + '…" style="flex:1;min-width:0">'
@@ -3667,7 +3660,7 @@ async function sendToTravelFund(){
   const tf = travelFund();
   if (!tf) { toast('no travel fund set — choose one in Settings'); return; }
   const exps = travelState.exps.filter(e => e.trip_id === curTripId && !e.sent_to_fund && e.currency === tf.currency);
-  const total = exps.reduce((s, e) => s + Number(e.amount), 0);
+  const total = exps.reduce((s, e) => s + sa(e), 0);
   if (!exps.length) { toast('nothing unsent in ' + (CURSYM[tf.currency] || tf.currency)); return; }
   const btn = $('sendFundBtn');
   if (!sendArm) {
@@ -3819,6 +3812,9 @@ async function loadContext(){
     updOK = !probe3.error;
     const probe4 = await sb.from('fund_transactions').select('kind').limit(1);
     kindOK = !probe4.error;
+    const probe5 = await sb.from('daily_expenses').select('is_refund').limit(1);
+    refundOK = !probe5.error;
+    if (refundOK) sb.rpc('purge_deleted').then(() => {});   // the bin empties itself after 30 days
     const chip = $('atxOpenOnly'); if (chip) chip.style.display = reconOK ? '' : 'none';
   }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
@@ -4349,7 +4345,8 @@ function refreshTripCurrencies(){
 function openForm(m){
   mode = m; amt = ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; armSaveKey();
   editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none'; $('lockNote').style.display = 'none';
-  $('descInput').value = ''; $('commentsInput').value = '';
+  $('descInput').value = ''; $('commentsInput').value = ''; setRefund(false);
+  $('refundWrap').style.display = (m === 'daily' || m === 'trip') && refundOK ? 'flex' : 'none';
   $('dateInput').value = isoDate(new Date()); updateDateVal();
   $('rowDetails').style.display = 'none';
   hideTake();
@@ -4447,6 +4444,9 @@ function openForm(m){
   $('sh-chooser').style.display = 'none';
   $('sh-form').style.display = 'flex';
 }
+let isRefund = false;
+function setRefund(v){ isRefund = !!v; const c = $('refundChip'); if (c) c.classList.toggle('sel', isRefund); const a = $('amtDisp'); if (a && mode !== 'income') a.style.color = isRefund ? 'var(--good)' : 'var(--primary)'; }
+function toggleRefund(){ setRefund(!isRefund); if (isRefund) toast('a refund: the amount counts as money back into the category and the pot'); }
 function toggleDetails(){
   const r = $('rowDetails');
   r.style.display = r.style.display === 'none' ? 'block' : 'none';
@@ -4697,12 +4697,12 @@ async function saveEntry(){
     bigOk = false;
     if (mode === 'edit') {
       // one server-side transaction: row + splits can never diverge (QA-5)
-      const { error } = await sb.rpc('save_expense', {
+      const { error } = await sb.rpc('save_expense', Object.assign({
         p_kind: 'travel', p_id: editingExp.id, p_date: date, p_description: desc,
         p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
         p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
         p_seen_updated_at: editingExp.updated_at || null,
-      });
+      }, refundOK ? { p_is_refund: isRefund } : {}));
       if (error) throw error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
       if (travelInit) loadTravel(true);
@@ -4712,12 +4712,12 @@ async function saveEntry(){
     }
     if (mode === 'editDaily') {
       // one server-side transaction: row + splits can never diverge (QA-5)
-      const { error } = await sb.rpc('save_expense', {
+      const { error } = await sb.rpc('save_expense', Object.assign({
         p_kind: 'daily', p_id: editingExp.id, p_date: date, p_description: desc,
         p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
         p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
         p_seen_updated_at: editingExp.updated_at || null,
-      });
+      }, refundOK ? { p_is_refund: isRefund } : {}));
       if (error) throw error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
       if (atx) loadAllTx(true);
@@ -4734,11 +4734,10 @@ async function saveEntry(){
       if (!selectedTripId) { done(false, 'pick a trip first'); return; }
       base.trip_id = selectedTripId;
     }
-    const { data: row, error } = await sb.from(table).insert(base).select('id').single();
+    if (refundOK) base.is_refund = isRefund;
+    // the split rows (payer +, joint −) are derived by the database from payer + amount
+    const { error } = await sb.from(table).insert(base).select('id').single();
     if (error) throw error;
-    const splits = buildSplits(payer, cost).map(s => ({ household_id: CTX.hh.id, expense_id: row.id, ...s }));
-    const { error: e2 } = await sb.from(mode === 'trip' ? 'travel_expense_splits' : 'daily_expense_splits').insert(splits);
-    if (e2) throw e2;
     localStorage.setItem('bh-payer', payer);
     localStorage.setItem('bh-cur', segSel('segCurrency'));
     if (mode === 'trip' && travelInit) loadTravel(true);
@@ -4751,7 +4750,7 @@ async function saveEntry(){
 
 // ── edit / delete a travel expense ───────────
 function payerFromSplits(exp){
-  const pos = (exp.travel_expense_splits || []).find(s => s.profile_id && Number(s.amount) > 0);
+  const pos = exp.payer_profile_id ? { profile_id: exp.payer_profile_id } : (exp.travel_expense_splits || []).find(s => s.profile_id);
   if (!pos) return jointLabel() || 'Joint';
   const p = CTX.profiles.find(x => x.id === pos.profile_id);
   return p ? p.display_name : (jointLabel() || 'Joint');
@@ -4761,6 +4760,7 @@ function openEditExpense(exp){
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
+  $('refundWrap').style.display = refundOK ? 'flex' : 'none'; setRefund(!!exp.is_refund);
   $('formTitle').textContent = 'Edit expense';
   $('rowMode').style.display = 'none';
   $('rowScope').style.display = 'none';
@@ -4815,6 +4815,7 @@ function openEditDaily(exp){
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
+  $('refundWrap').style.display = refundOK ? 'flex' : 'none'; setRefund(!!exp.is_refund);
   $('formTitle').textContent = 'Edit expense';
   $('rowMode').style.display = 'none';
   $('rowScope').style.display = 'none';
@@ -4840,7 +4841,7 @@ function openEditDaily(exp){
   selectedCat = exp.category;
   renderCatRow();
   hideTake();
-  const pos = (exp.daily_expense_splits || []).find(s => s.profile_id && Number(s.amount) > 0);
+  const pos = exp.payer_profile_id ? { profile_id: exp.payer_profile_id } : (exp.daily_expense_splits || []).find(s => s.profile_id);
   const payer = pos
     ? ((CTX.profiles.find(p => p.id === pos.profile_id) || {}).display_name || (jointLabel() || 'Joint'))
     : (jointLabel() || 'Joint');
@@ -4869,6 +4870,7 @@ function openEditFund(tx){
   const n = Number(tx.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
+  $('refundWrap').style.display = 'none'; setRefund(false);
   $('formTitle').textContent = 'Edit fund transaction';
   $('rowMode').style.display = 'none';
   $('rowScope').style.display = 'none';
@@ -4917,9 +4919,9 @@ function applyLockState(exp){
   const locked = !!(exp && exp.reconciled_at);
   $('lockNote').style.display = locked ? 'block' : 'none';
   if (locked) {
-    $('deleteBtn').style.display = 'none';
+    $('deleteBtn').style.display = (refundOK && exp.reconciled_by === 'auto' && !exp.reconciled_statement_id) ? 'block' : 'none';
     $('lockNoteText').textContent = exp.reconciled_by === 'auto' && !exp.reconciled_statement_id
-      ? '🔒 cash rows check themselves off, so this one is locked. Description, category and comments can still change — unlock it to change the amount, date, card or payer, or to delete it.'
+      ? '🔒 cash rows check themselves off, so this one is locked. Description, category and comments can still change — unlock it to change the amount, date, card or payer.'
       : '🔒 this row is locked — it’s been checked off against a statement. Description, category and comments can still change.';
   }
 }
@@ -4949,9 +4951,11 @@ async function deleteExpense(){
   const table = mode === 'editFund' ? 'fund_transactions'
               : mode === 'editDaily' ? 'daily_expenses'
               : 'travel_expenses';
-  const { error } = await sb.from(table).delete().eq('id', editingExp.id);
+  // soft delete: the row sits in Settings → Recently deleted for 30 days (falls back to a hard delete on an older database)
+  let { error } = refundOK ? await sb.rpc('soft_delete_rows', { p_kind: mode === 'editFund' ? 'fund' : mode === 'editDaily' ? 'daily' : 'travel', p_ids: [editingExp.id] })
+                           : await sb.from(table).delete().eq('id', editingExp.id);
   if (error) { saving = false; toast('couldn’t delete: ' + error.message); return; }
-  closeSheet(); toast('deleted 🐻');
+  closeSheet(); toast(refundOK ? 'deleted — it’s in Settings → Recently deleted for 30 days' : 'deleted 🐻');
   if (mode === 'edit') { loadTravel(true); if (atx) loadAllTx(true); return; }
   loadHome();
   if (atx) loadAllTx(true);
