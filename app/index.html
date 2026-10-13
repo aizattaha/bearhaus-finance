@@ -348,8 +348,16 @@ input[type="date"].descinput{min-width:0}
     </div>
     <div>
       <p class="cap" style="margin-bottom:4px">invite code</p>
-      <input class="field" id="obCode" placeholder="e.g. BEAR-SUNRISE-01" autocomplete="off">
+      <input class="field" id="obCode" placeholder="e.g. BEAR-SUNRISE-01 or JOIN-…" autocomplete="off" oninput="obCodeChanged()">
+      <p class="cap" id="obCodeNote" style="margin-top:4px;min-height:16px"></p>
     </div>
+    <div id="obJoinCard" style="display:none;background:var(--accent-soft);border-radius:16px;padding:14px 16px">
+      <p class="h2" id="obJoinTitle">Join a household</p>
+      <p class="cap" id="obJoinCap" style="margin-top:4px"></p>
+      <button class="btn btn-primary" id="obJoinGo" type="button" style="margin-top:12px;width:100%" onclick="joinHousehold()">Join</button>
+      <p id="obJoinErr" style="color:var(--bad);font-size:13px;line-height:18px;text-align:center;min-height:18px;margin-top:6px"></p>
+    </div>
+    <div id="obCreate" style="display:contents">
     <div>
       <p class="cap" style="margin-bottom:4px">household name</p>
       <input class="field" id="obName" placeholder="e.g. The Tan household" autocomplete="off">
@@ -371,6 +379,7 @@ input[type="date"].descinput{min-width:0}
     <button class="btn btn-primary" id="obGo" type="button" onclick="createHousehold()">Create my household</button>
     <p id="obError" style="color:var(--bad);font-size:13px;line-height:18px;text-align:center;min-height:18px"></p>
     <p class="cap" style="text-align:center">you’ll start with a few funds (Float, Savings, Emergency, Travel) and the everyday categories — rename or add more anytime in Settings</p>
+    </div>
     <button class="btn-tert" type="button" style="align-self:center" onclick="signOut()">sign out</button>
   </div>
 </div>
@@ -837,6 +846,45 @@ function showOnboard(){
   $('onboard').style.display = 'flex';
   $('obCode').value = localStorage.getItem('bh-invite') || '';
   obRenderCountries(false);
+  obCodeChanged();
+}
+// a JOIN-… code means "join an existing household as a named person"; a beta code sets up a new one
+let obCodeT = null, obJoinInfo = null;
+function obCodeChanged(){
+  clearTimeout(obCodeT);
+  const code = $('obCode').value.trim();
+  obJoinInfo = null; $('obJoinCard').style.display = 'none'; $('obCreate').style.display = 'contents'; $('obCodeNote').textContent = '';
+  if (!code) return;
+  obCodeT = setTimeout(async () => {
+    const r = await sb.rpc('invite_info', { p_code: code });
+    if (r.error || $('obCode').value.trim() !== code) return;
+    if (r.data && r.data.kind === 'member') {
+      obJoinInfo = r.data;
+      $('obJoinTitle').textContent = 'Join ' + r.data.household;
+      $('obJoinCap').textContent = (r.data.person ? 'as ' + r.data.person + ' · ' : '') + (r.data.role === 'viewer' ? 'you’ll be able to see everything, but not change it' : 'you’ll see and add everything in the household, same as the person who invited you');
+      $('obJoinGo').textContent = 'Join ' + r.data.household;
+      $('obJoinCard').style.display = 'block'; $('obCreate').style.display = 'none';
+      $('obCodeNote').textContent = 'this code joins an existing household';
+    } else if (r.data && r.data.kind === 'beta') {
+      $('obCodeNote').textContent = 'beta code ✓ — set up your household below';
+    } else {
+      $('obCodeNote').textContent = 'that code isn’t recognised (or it’s been used)';
+    }
+  }, 500);
+}
+let obJoining = false;
+async function joinHousehold(){
+  if (obJoining) return;
+  const code = $('obCode').value.trim(); $('obJoinErr').textContent = '';
+  obJoining = true; $('obJoinGo').innerHTML = '<span class="spin"></span>';
+  const { error } = await sb.rpc('join_household', { p_code: code });
+  obJoining = false; $('obJoinGo').textContent = 'Join';
+  if (error) { $('obJoinErr').textContent = error.message; return; }
+  localStorage.removeItem('bh-invite');
+  $('onboard').style.display = 'none';
+  toast('welcome to ' + ((obJoinInfo || {}).household || 'the household') + ' 🐻');
+  enterApp();
+  setTimeout(startTutorial, 700);
 }
 function obAddPerson(){
   const inp = document.createElement('input');
@@ -853,6 +901,7 @@ async function createHousehold(){
   const name = $('obName').value.trim();
   const people = [...document.querySelectorAll('#obPeople .field')].map(i => i.value.trim()).filter(Boolean);
   if (!code) { err('enter your invite code'); return; }
+  if (obJoinInfo) { joinHousehold(); return; }
   if (!name) { err('give your household a name'); return; }
   if (!people.length) { err('add at least one person'); return; }
   if (!obSel.countries.length) { err('pick at least one country'); return; }
@@ -2754,9 +2803,50 @@ function renderSettings(){
 
 async function renderSetPeople(box){
   box.innerHTML = '';
+  // who has a login (household_members) and which invites are still open
+  const me = (await sb.auth.getUser()).data.user; const myId = me && me.id;
+  const [mem, inv] = await Promise.all([
+    sb.from('household_members').select('user_id, profile_id, role'),
+    sb.from('member_invites').select('code, profile_id, role, expires_at').is('used_at', null).gt('expires_at', new Date().toISOString()),
+  ]);
+  const members = mem.error ? null : (mem.data || []);
+  const invites = inv.error ? [] : (inv.data || []);
+  const myRow = members && members.find(m => m.user_id === myId);
+  const iAmOwner = !!(myRow && myRow.role === 'owner');
+  const canInvite = !!(myRow && myRow.role !== 'viewer');
   (CTX.profiles || []).forEach(p => {
     const d = document.createElement('div'); d.className = 'srow';
-    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">👤</div><span class="lbl" style="flex:1;min-width:0">' + esc(p.display_name) + '</span><button class="edit" aria-label="Rename">✎</button>';
+    const m = members && members.find(x => x.profile_id === p.id);
+    const open = invites.find(x => x.profile_id === p.id);
+    const status = m ? '<span class="tag ' + (m.user_id === myId ? 'blue' : '') + '">' + (m.user_id === myId ? 'you' : m.role === 'viewer' ? 'can view' : 'has a login') + '</span>' : '';
+    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">👤</div><span class="lbl" style="flex:1;min-width:0">' + esc(p.display_name) + '</span>' + status + '<button class="edit" aria-label="Rename">✎</button>';
+    if (members) {
+      if (!m && myRow && !myRow.profile_id) {
+        const meBtn = document.createElement('button'); meBtn.className = 'btn-tert'; meBtn.style.cssText = 'font-size:11px;padding:2px 6px'; meBtn.textContent = 'that’s me';
+        meBtn.onclick = async () => { const r = await sb.rpc('link_my_profile', { p_profile: p.id }); if (r.error) { toast('couldn’t link: ' + r.error.message); return; } renderSetPeople(box); toast('linked — you are ' + p.display_name + ' 🐻'); };
+        d.appendChild(meBtn);
+      }
+      if (!m && canInvite) {
+        const ib = document.createElement('button'); ib.className = 'btn-tert'; ib.style.cssText = 'font-size:11px;padding:2px 6px';
+        ib.textContent = open ? 'show code' : 'invite to sign in';
+        ib.onclick = async () => {
+          let code = open && open.code;
+          if (!code) { const r = await sb.rpc('create_member_invite', { p_profile: p.id, p_role: 'member' }); if (r.error) { toast('couldn’t make an invite: ' + r.error.message); return; } code = r.data; }
+          showInviteCode(p.display_name, code, box);
+        };
+        d.appendChild(ib);
+      }
+      if (m && iAmOwner && m.user_id !== myId) {
+        const rb = document.createElement('button'); rb.className = 'btn-tert'; rb.style.cssText = 'font-size:11px;padding:2px 6px;color:var(--bad)'; rb.textContent = 'remove login';
+        let armed = false;
+        rb.onclick = async () => {
+          if (!armed) { armed = true; rb.textContent = 'tap again to remove'; setTimeout(() => { armed = false; rb.textContent = 'remove login'; }, 8000); return; }
+          const r = await sb.rpc('remove_member', { p_user: m.user_id }); if (r.error) { toast('couldn’t remove: ' + r.error.message); return; }
+          renderSetPeople(box); toast(p.display_name + ' can no longer sign in — the person stays on every expense');
+        };
+        d.appendChild(rb);
+      }
+    }
     d.querySelector('.edit').onclick = () => editInline(d, p.display_name, async v => {
       const r = await sb.from('profiles').update({ display_name: v }).eq('id', p.id);
       if (r.error) { toast('couldn’t rename: ' + r.error.message); return; }
@@ -2795,7 +2885,34 @@ async function renderSetPeople(box){
     if (r.error) { toast('couldn’t add: ' + r.error.message); return; }
     await loadContext(); renderSetPeople(box); toast(v + ' added 🐻');
   }));
-  box.appendChild(capEl('people are labels for splitting — renaming keeps every past expense linked. the joint pot is optional: shared money some households don’t use'));
+  if (members && canInvite) {
+    const vrow = document.createElement('div'); vrow.className = 'srow';
+    const openView = invites.find(x => !x.profile_id);
+    vrow.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">👀</div><span class="lbl" style="flex:1;min-width:0">view-only login</span><span class="cap">an accountant, a parent — sees everything, changes nothing</span>';
+    const vb = document.createElement('button'); vb.className = 'btn-tert'; vb.style.cssText = 'font-size:11px;padding:2px 6px'; vb.textContent = openView ? 'show code' : 'invite';
+    vb.onclick = async () => {
+      let code = openView && openView.code;
+      if (!code) { const r = await sb.rpc('create_member_invite', { p_profile: null, p_role: 'viewer' }); if (r.error) { toast('couldn’t make an invite: ' + r.error.message); return; } code = r.data; }
+      showInviteCode('a view-only login', code, box);
+    };
+    vrow.appendChild(vb);
+    box.appendChild(vrow);
+  }
+  box.appendChild(capEl('people are labels for splitting — renaming keeps every past expense linked. a person can also have their own login: invite them and they sign up with the code. the joint pot is optional: shared money some households don’t use'));
+}
+// the join code, ready to share — the invitee signs up with it on the login screen
+function showInviteCode(who, code, box){
+  const d = document.createElement('div');
+  d.style.cssText = 'background:var(--accent-soft);border-radius:14px;padding:12px 14px;margin:8px 0';
+  const msg = 'Join ' + (CTX.hh ? CTX.hh.name : 'our household') + ' on BearHaus: open ' + location.origin + location.pathname + ' , tap "create your account" and enter the code ' + code;
+  d.innerHTML = '<p class="cap" style="color:var(--primary)">invite for ' + esc(who) + ' · valid 14 days</p>'
+    + '<p class="disp num" style="font-size:22px;letter-spacing:.06em;margin:4px 0;color:var(--primary)">' + esc(code) + '</p>'
+    + '<p class="cap">they sign up on the login screen with this code — no household setup, they land straight in yours</p>'
+    + '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn-mini" type="button" id="invShare">share</button><button class="btn-mini" type="button" id="invCopy">copy code</button><button class="btn-tert" type="button" id="invRevoke" style="color:var(--bad)">cancel invite</button></div>';
+  box.insertBefore(d, box.firstChild);
+  d.querySelector('#invShare').onclick = async () => { if (navigator.share) { try { await navigator.share({ text: msg }); } catch (e) {} } else { try { await navigator.clipboard.writeText(msg); toast('invite message copied'); } catch (e) { toast('copy this: ' + code); } } };
+  d.querySelector('#invCopy').onclick = async () => { try { await navigator.clipboard.writeText(code); toast('code copied'); } catch (e) { toast('copy this: ' + code); } };
+  d.querySelector('#invRevoke').onclick = async () => { const r = await sb.rpc('revoke_member_invite', { p_code: code }); if (r.error) { toast('couldn’t cancel: ' + r.error.message); return; } renderSetPeople(box); toast('invite cancelled'); };
 }
 
 async function renderSetFunds(box){
@@ -3063,9 +3180,14 @@ async function renderSetCards(box){
 }
 
 async function renderSetCategories(box){
-  const r = await sb.from('categories').select('id, kind, name, group_name, icon, is_active, sort_order').order('sort_order');
+  let r = await sb.from('categories').select('id, kind, name, group_name, group_id, icon, is_active, sort_order').order('sort_order');
+  if (r.error && /group_id/.test(r.error.message || '')) r = await sb.from('categories').select('id, kind, name, group_name, icon, is_active, sort_order').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const cats = r.data || [];
+  // groups are rows of their own (Oct 2026): a budget line with no category behind it is still a group
+  const gq = await sb.from('category_groups').select('id, kind, name, sort_order').order('sort_order');
+  const allGroups = gq.error ? [] : (gq.data || []);
+  const gidOf = (kind, name) => { const g = allGroups.find(x => x.kind === kind && x.name === name); return g ? g.id : (cats.find(c => c.kind === kind && c.group_name === name) || {}).group_id; };
   box.innerHTML = '';
   if (!cats.length) {
     box.innerHTML = '<p class="cap" style="padding:8px 0">your categories arrive with the next database update 🐻</p>';
@@ -3077,6 +3199,7 @@ async function renderSetCategories(box){
     const list = cats.filter(c => c.kind === kind);
     const groups = {};
     list.forEach(c => (groups[c.group_name] = groups[c.group_name] || []).push(c));
+    allGroups.filter(g => g.kind === kind && !groups[g.name]).forEach(g => groups[g.name] = []);   // empty groups (budget-line only)
     const kindGroups = Object.keys(groups);
     kindGroups.forEach((g, gi) => {
       const gh = document.createElement('div');
@@ -3114,12 +3237,13 @@ async function renderSetCategories(box){
         ok.onclick = async () => {
           const v = input.value.trim();
           if (!v || v === g) { renderSetCategories(box); return; }
-          const u = await sb.from('categories').update({ group_name: v }).eq('kind', kind).eq('group_name', g);
-          if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
-          if (kind === 'daily') {
-            // budgets are stored by group name — they must follow the rename
-            const b2 = await sb.from('category_budgets').update({ category_group: v }).eq('category_group', g);
-            if (b2.error) toast('group renamed, but budgets didn’t follow: ' + b2.error.message);
+          // groups are rows now: rename the row and the categories + budget lines follow (triggers)
+          const gid = gidOf(kind, g);
+          let u = gid ? await sb.from('category_groups').update({ name: v }).eq('id', gid) : { error: { message: 'no group id' } };
+          if (u.error) {   // older database: rename by text (budgets follow by hand)
+            u = await sb.from('categories').update({ group_name: v }).eq('kind', kind).eq('group_name', g);
+            if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+            if (kind === 'daily') { const b2 = await sb.from('category_budgets').update({ category_group: v }).eq('category_group', g); if (b2.error) toast('group renamed, but budgets didn’t follow: ' + b2.error.message); }
           }
           await loadContext();
           if (budgetInit) selectBudgetMonth(budgetMonth);
@@ -3128,6 +3252,7 @@ async function renderSetCategories(box){
         };
       };
       box.appendChild(gh);
+      if (!groups[g].length) { const e = document.createElement('p'); e.className = 'cap'; e.style.padding = '4px 0 0 8px'; e.textContent = 'a budget line with no categories yet — add one below to have spending count against it'; box.appendChild(e); }
       groups[g].forEach(c => {
         const d = document.createElement('div'); d.className = 'srow';
         if (!c.is_active) d.style.opacity = '.45';
@@ -3140,8 +3265,8 @@ async function renderSetCategories(box){
           d.querySelector('.edit').onclick = () => editInline(d, c.name, async v => {
             const u = await sb.from('categories').update({ name: v }).eq('id', c.id);
             if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
-            await loadContext(); renderSetCategories(box);
-            toast('renamed 🐻 — past expenses keep the old name');
+            await loadContext(); if (budgetInit) selectBudgetMonth(budgetMonth); renderSetCategories(box);
+            toast('renamed 🐻 — past expenses follow the new name');
           });
           const mv = document.createElement('button');
           mv.className = 'btn-tert'; mv.style.cssText = 'font-size:11px;padding:2px 6px';
@@ -3184,7 +3309,7 @@ async function renderSetCategories(box){
   box.appendChild(af);
   const refreshGroups = () => {
     const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
-    const gs = [...new Set(cats.filter(c => c.kind === kind).map(c => c.group_name))];
+    const gs = [...new Set(cats.filter(c => c.kind === kind).map(c => c.group_name).concat(allGroups.filter(g => g.kind === kind).map(g => g.name)))];
     $('acatGroup').innerHTML = gs.map(g => '<option>' + esc(g) + '</option>').join('') + '<option value="__new__">+ new group…</option>';
     const last = localStorage.getItem('bh-acat-group-' + kind); if (last && gs.includes(last)) $('acatGroup').value = last;
     $('acatNewGroup').style.display = 'none';
@@ -3209,7 +3334,7 @@ async function renderSetCategories(box){
     if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
     await loadContext(); renderSetCategories(box); toast(name + ' added 🐻');
   };
-  box.appendChild(capEl('archiving hides a category from the picker without touching history · renames create a fresh label — past expenses keep the old one'));
+  box.appendChild(capEl('archiving hides a category from the picker without touching history · renaming a category or a group carries every past expense and budget line with it'));
 }
 
 async function renderSetIncome(box){

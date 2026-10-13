@@ -118,6 +118,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <button class="nv" data-scr="nocard" onclick="go('nocard')">🗂️ Transactions</button>
     <button class="nv" data-scr="swap" onclick="go('swap')">⇄ Pot swap</button>
     <button class="nv" data-scr="pots" onclick="go('pots')">🌊 Pots</button>
+    <button class="nv" data-scr="activity" onclick="go('activity')">🕓 Activity</button>
     <div class="foot">
       <a class="btn-tert" href="../app/" style="text-decoration:none">← mobile app</a>
       <button class="btn-tert" onclick="signOut()">sign out</button>
@@ -295,6 +296,31 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
       </div>
       <div id="potCards" style="display:flex;flex-direction:column;gap:14px;margin-top:14px"><p class="cap">loading…</p></div>
     </section>
+
+    <!-- ACTIVITY -->
+    <section class="screen" id="scr-activity">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><p class="cap">Who changed what</p><h1 class="h1">Activity</h1></div>
+        <p class="cap">every add, edit and delete on the ledger and the settings, newest first · “why is Float different today?” lives here</p>
+      </div>
+      <div class="toolbar">
+        <select class="descinput" id="acTable" style="min-width:200px" onchange="loadActivity(true)">
+          <option value="">everything</option><option value="expenses">expenses</option><option value="fund_transactions">fund rows</option><option value="statements">statements</option>
+          <option value="funds">funds</option><option value="payment_methods">cards</option><option value="categories,category_groups">categories</option>
+          <option value="category_budgets,fund_budgets,income_budgets">plan</option><option value="profiles,households,household_members">people &amp; household</option>
+        </select>
+        <select class="descinput" id="acWho" style="min-width:180px" onchange="loadActivity(true)"><option value="">anyone</option></select>
+        <input class="descinput" id="acSearch" placeholder="search descriptions" style="min-width:240px" oninput="acSearchT=clearTimeout(acSearchT)||setTimeout(()=>loadActivity(true),400)">
+        <span class="cap" id="acMeta"></span>
+      </div>
+      <div class="card" style="margin-top:14px;padding:0">
+        <div class="tablewrap"><table>
+          <thead><tr><th style="width:150px">When</th><th style="width:110px">Who</th><th style="width:120px">What</th><th>Row</th><th>Change</th></tr></thead>
+          <tbody id="acRows"><tr><td colspan="5" class="empty"><span class="spin"></span></td></tr></tbody>
+        </table></div>
+        <div class="sticky-bar"><span class="lbl" id="acInfo"></span><span style="flex:1"></span><button class="btn btn-soft" id="acMore" onclick="loadActivity(false)">Load more</button></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -417,6 +443,7 @@ function go(scr){
   document.querySelectorAll('nav .nv').forEach(b => b.classList.toggle('active', b.dataset.scr === scr));
   if (scr === 'nocard' && !nc.init) { nc.init = true; loadNoCard(true); }
   if (scr === 'pots') loadPots();
+  if (scr === 'activity' && !ac.init) { ac.init = true; loadActivity(true); }
   if (scr === 'swap' && !sw.init) { sw.init = true; initSwap(); }
   if (scr === 'swap' && [...new Set(CTX.funds.map(f => f.currency))].length < 2) $('swIntro').innerHTML = '<span class="tag warn">one currency</span> this household has funds in one currency only, so there is nothing to swap between — add a second country\'s funds in the app (Settings → Funds) first.';
 }
@@ -1380,6 +1407,79 @@ async function loadPots(){
       + '</tbody></table></div>' : '')
     + (c.error || k.error ? '<p class="cap">some columns need the latest database update (' + esc((c.error || k.error).message) + ')</p>' : '')
     + '<p class="cap">Paying a card never changes Available — the charges already took it the day they happened. It lowers Owed on cards and In the bank by the same amount. Cleared only counts reconciled rows, so it catches up as statements are closed.</p>';
+}
+// ── activity (audit_log) ────────────────────────────────────
+const ac = { init: false, rows: [], off: 0, done: false, members: null };
+let acSearchT = null;
+const AC_PAGE = 100;
+const AC_LABEL = { expenses: 'expense', fund_transactions: 'fund row', statements: 'statement', pot_swaps: 'pot swap', funds: 'fund', payment_methods: 'card',
+  categories: 'category', category_groups: 'category group', category_budgets: 'budget line', fund_budgets: 'fund contribution', income_budgets: 'income line',
+  trips: 'trip', profiles: 'person', households: 'household', household_members: 'login', expense_splits: 'split' };
+const AC_HIDE = new Set(['id', 'household_id', 'created_by', 'legacy_sync_id', 'expense_id', 'profile_id', 'transfer_group_id', 'pot_swap_id', 'category_id', 'group_id', 'category_group_id', 'pot_fund_id', 'user_id', 'auth_user_id', 'used_at', 'used_by', 'reconciled_by']);
+function acName(table, col, v){
+  if (v == null || v === '') return '—';
+  if (col === 'fund_id' || col === 'pot_fund_id' || col === 'travel_fund_id' || col === 'cover_fund_id' || col === 'land_fund_id') { const f = CTX.funds.find(x => x.id === v); return f ? f.name : String(v).slice(0, 8); }
+  if (col === 'payment_method_id' || col === 'account_payment_method_id' || col === 'settles_payment_method_id') { const c = cardById(v); return c ? c.name : String(v).slice(0, 8); }
+  if (col === 'payer_profile_id') return who(v);
+  if (col === 'amount' || col === 'statement_total' || col === 'src_amount' || col === 'dst_amount') return Number(v).toFixed(2);
+  if (/_at$/.test(col) && typeof v === 'string' && v.length > 10) return fmtD(v.slice(0, 10));
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+function acRowLabel(r){
+  const a = r.after || r.before || {};
+  if (r.op === 'update' || !Object.keys(a).length) return esc(r.label || '') + (r.table_name === 'expenses' && a.amount != null ? ' · ' + fmtMoney(a.amount, a.currency || 'AUD') : '');
+  switch (r.table_name) {
+    case 'expenses': return esc(a.description || '') + (a.amount != null ? ' · ' + fmtMoney(a.amount, a.currency || 'AUD') : '') + (a.category ? ' <span class="tag">' + esc(a.category) + '</span>' : '');
+    case 'fund_transactions': return esc(a.remarks || a.income_source || (a.type === 'income' ? 'money in' : 'money out')) + (a.amount != null ? ' · ' + (a.type === 'income' ? '+' : '−') + Number(a.amount).toFixed(2) : '') + ' <span class="tag">' + esc(acName('', 'fund_id', a.fund_id)) + '</span>';
+    case 'statements': return esc(a.label || (acName('', 'payment_method_id', a.payment_method_id) + ' · ' + fmtDs(a.period_start) + ' – ' + fmtD(a.period_end)));
+    case 'funds': case 'payment_methods': case 'categories': case 'category_groups': case 'trips': case 'households': return esc(a.name || '');
+    case 'profiles': return esc(a.display_name || '');
+    case 'category_budgets': return esc(a.category_group || '') + (a.amount != null ? ' · ' + fmtMoney(a.amount, a.currency || 'AUD') : '') + (a.month ? ' · ' + fmtD(a.month).slice(2) : '');
+    case 'fund_budgets': return esc(acName('', 'fund_id', a.fund_id)) + (a.amount != null ? ' · ' + Number(a.amount).toFixed(2) : '') + (a.month ? ' · ' + fmtD(a.month).slice(2) : '');
+    case 'income_budgets': return esc(a.source_name || '') + (a.amount != null ? ' · ' + fmtMoney(a.amount, a.currency || 'AUD') : '');
+    case 'household_members': return (a.role || '') + ' login' + (a.profile_id ? ' · ' + esc(who(a.profile_id)) : '');
+    case 'pot_swaps': return 'swap · ' + (a.src_amount != null ? a.src_currency + ' ' + Number(a.src_amount).toFixed(2) : '');
+    default: return r.row_id ? String(r.row_id).slice(0, 8) : '';
+  }
+}
+function acChange(r){
+  if (r.op !== 'update') return r.op === 'insert' ? '<span class="tag good">added</span>' : '<span class="tag bad">deleted</span>';
+  const keys = (r.changed || []).filter(k => !AC_HIDE.has(k) || k === 'pot_fund_id');
+  if (!keys.length) return '';
+  return keys.slice(0, 5).map(k => '<span class="cap" style="white-space:nowrap"><b>' + esc(k.replace(/_/g, ' ')) + '</b> ' + esc(acName(r.table_name, k, r.before[k])) + ' → ' + esc(acName(r.table_name, k, r.after[k])) + '</span>').join(' · ') + (keys.length > 5 ? ' · +' + (keys.length - 5) + ' more' : '');
+}
+async function loadActivity(reset){
+  if (reset) { ac.rows = []; ac.off = 0; ac.done = false; $('acRows').innerHTML = '<tr><td colspan="5" class="empty"><span class="spin"></span></td></tr>'; }
+  if (!ac.members) {
+    const m = await sb.from('household_members').select('user_id, profile_id, role');
+    ac.members = m.error ? [] : (m.data || []);
+    $('acWho').innerHTML = '<option value="">anyone</option>' + ac.members.map(x => '<option value="' + x.user_id + '">' + esc(x.profile_id ? who(x.profile_id) : (x.role === 'owner' ? 'owner' : x.role + ' login')) + '</option>').join('');
+  }
+  let q = sb.from('audit_log').select('id, table_name, row_id, op, at, by_user, label, changed, before, after').order('id', { ascending: false }).range(ac.off, ac.off + AC_PAGE - 1);
+  const t = $('acTable').value; if (t) q = q.in('table_name', t.split(','));
+  const w = $('acWho').value; if (w) q = q.eq('by_user', w);
+  const { data, error } = await q;
+  if (error) { $('acRows').innerHTML = '<tr><td colspan="5" class="empty">' + (/audit_log/.test(error.message) ? 'the activity log arrives with the next database update' : 'couldn’t load: ' + esc(error.message)) + '</td></tr>'; return; }
+  ac.rows = ac.rows.concat(data || []); ac.off += (data || []).length; ac.done = (data || []).length < AC_PAGE;
+  renderActivity();
+}
+function renderActivity(){
+  const s = ($('acSearch').value || '').trim().toLowerCase();
+  const rows = ac.rows.filter(r => acChange(r) !== '')   // updates that only touched internal fields aren't worth a line
+    .filter(r => !s || (r.label || '').toLowerCase().includes(s) || JSON.stringify(r.after || {}).toLowerCase().includes(s) || JSON.stringify(r.before || {}).toLowerCase().includes(s));
+  const whoOf = u => { const m = ac.members.find(x => x.user_id === u); return !u ? 'system' : m ? (m.profile_id ? who(m.profile_id) : (m.role === 'owner' ? 'owner' : m.role)) : 'former login'; };
+  $('acRows').innerHTML = rows.length ? rows.map(r => '<tr>'
+    + '<td class="num cap">' + new Date(r.at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</td>'
+    + '<td class="ell">' + esc(whoOf(r.by_user)) + '</td>'
+    + '<td><span class="tag">' + esc(AC_LABEL[r.table_name] || r.table_name) + '</span></td>'
+    + '<td class="ell"><span class="dsc">' + acRowLabel(r) + '</span></td>'
+    + '<td>' + acChange(r) + '</td>'
+    + '</tr>').join('') : '<tr><td colspan="5" class="empty">nothing logged yet — the log starts from the database update that created it</td></tr>';
+  $('acInfo').textContent = rows.length + (ac.done ? ' entries' : ' entries · more below');
+  $('acMore').style.display = ac.done ? 'none' : '';
+  $('acMeta').textContent = '';
 }
 </script>
 </body>

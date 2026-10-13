@@ -11,6 +11,8 @@ $$;
 create or replace function auth.role() returns text language sql stable as $$
   select nullif(current_setting('request.jwt.claim.role', true), '')
 $$;
+grant usage on schema auth to anon, authenticated;   -- Supabase grants this too (auth.uid() from triggers)
+grant execute on function auth.uid(), auth.role() to anon, authenticated;
 grant usage on schema public to anon, authenticated;
 grant all on all tables in schema public to anon, authenticated;
 grant all on all sequences in schema public to anon, authenticated;
