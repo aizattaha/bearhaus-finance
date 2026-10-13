@@ -28,7 +28,11 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       - name: Push migrations
-        run: supabase db push
+        # the full log is only readable in the browser; surface the tail of any failure as an
+        # annotation too, so it can be read through the API
+        run: |
+          set -o pipefail
+          supabase db push 2>&1 | tee push.log || { echo "::error title=supabase db push failed::$(tail -c 2500 push.log | tr '\n' ' ' | tr '\r' ' ')"; exit 1; }
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
