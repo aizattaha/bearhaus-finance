@@ -26,7 +26,7 @@ async function loadMeta(){
       join information_schema.key_column_usage kcu on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
       where tc.constraint_type = 'PRIMARY KEY' and tc.table_schema = 'public'`);
     const fns = await c.query(`select p.proname, p.proretset, t.typname, t.typtype, p.proargnames from pg_proc p join pg_namespace n on n.oid = p.pronamespace join pg_type t on t.oid = p.prorettype where n.nspname = 'public'`);
-    META = { fks: fks.rows, pk: Object.fromEntries(pks.rows.map(r => [r.t, r.col])), fns: Object.fromEntries(fns.rows.map(r => [r.proname, r])) };
+    META = { fks: fks.rows, pk: Object.assign(Object.fromEntries(pks.rows.map(r => [r.t, r.col])), { daily_expenses: 'id', travel_expenses: 'id', daily_expense_splits: 'id', travel_expense_splits: 'id' }), fns: Object.fromEntries(fns.rows.map(r => [r.proname, r])) };
   } finally { c.release(); }
 }
 
@@ -60,10 +60,13 @@ function parseSelect(sel){
   return node;
 }
 // relationship between base table t and embed name r
+// views over one table inherit that table's relationships (as PostgREST does)
+const VIEW_BASE = { daily_expenses: 'expenses', travel_expenses: 'expenses', daily_expense_splits: 'expense_splits', travel_expense_splits: 'expense_splits' };
 function relation(t, r, hint){
-  let f = META.fks.find(x => x.t === t && x.ft === r && (!hint || x.col === hint || x.name === hint));
+  const bt = VIEW_BASE[t] || t, br = VIEW_BASE[r] || r;
+  let f = META.fks.find(x => x.t === bt && x.ft === br && (!hint || x.col === hint || x.name === hint));
   if (f) return { kind: 'one', local: f.col, foreign: f.fcol, table: r };
-  f = META.fks.find(x => x.t === r && x.ft === t && (!hint || x.col === hint || x.name === hint));
+  f = META.fks.find(x => x.t === br && x.ft === bt && (!hint || x.col === hint || x.name === hint));
   if (f) return { kind: 'many', local: f.fcol, foreign: f.col, table: r };
   return null;
 }
