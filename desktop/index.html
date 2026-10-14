@@ -123,6 +123,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <button class="nv" data-scr="swap" onclick="go('swap')">⇄ Pot swap</button>
     <button class="nv" data-scr="pots" onclick="go('pots')">🌊 Pots</button>
     <button class="nv" data-scr="activity" onclick="go('activity')">🕓 Activity</button>
+    <button class="nv" data-scr="sort" id="nvSort" onclick="go('sort')" style="display:none">🧹 Sort fund spending <span class="tag warn" id="nvSortN"></span></button>
     <div class="foot">
       <a class="btn-tert" href="../app/" style="text-decoration:none">← mobile app</a>
       <button class="btn-tert" onclick="signOut()">sign out</button>
@@ -307,6 +308,38 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
       <div id="potCards" style="display:flex;flex-direction:column;gap:14px;margin-top:14px"><p class="cap">loading…</p></div>
     </section>
 
+    <!-- SORT FUND SPENDING (temporary: disappears when the list is empty) -->
+    <section class="screen" id="scr-sort">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><p class="cap">One-off clean-up</p><h1 class="h1">Sort fund spending</h1></div>
+        <p class="cap" style="max-width:640px">Money that left a fund used to be one shape. Now a <b>purchase</b> (something bought — it had a card, a merchant, a category) lives with the other purchases and shows on the card's statement; a <b>movement</b> (an investment, a reimbursement, a transfer to someone) stays here. Each row has a suggestion — tick the ones you agree with, pick a category and the card, press Move. Nothing changes until you do.</p>
+      </div>
+      <div class="toolbar">
+        <button class="chip sel" id="sfPurch" onclick="sfFilter('purchase')">suggested: purchase</button>
+        <button class="chip" id="sfMove" onclick="sfFilter('movement')">suggested: movement</button>
+        <button class="chip" id="sfAll" onclick="sfFilter('')">all</button>
+        <select class="descinput" id="sfFund" style="min-width:220px" onchange="renderSort()"><option value="">every fund</option></select>
+        <input class="descinput" id="sfSearch" placeholder="search" style="min-width:200px" oninput="renderSort()">
+        <span class="cap" id="sfMeta"></span>
+      </div>
+      <div class="card" style="margin-top:14px;padding:0">
+        <div class="tablewrap"><table>
+          <thead><tr><th style="width:34px"><input type="checkbox" id="sfAllCk"></th><th style="width:112px">Date</th><th>Remarks</th><th style="width:200px">Fund</th><th class="amt" style="width:112px">Amount</th><th style="width:110px">Suggestion</th><th style="width:40px"></th></tr></thead>
+          <tbody id="sfRows"><tr><td colspan="7" class="empty"><span class="spin"></span></td></tr></tbody>
+        </table></div>
+        <div class="sticky-bar" style="flex-wrap:wrap">
+          <span class="lbl" id="sfSelInfo">nothing selected</span>
+          <select class="descinput" id="sfCat" style="min-width:200px" title="the category every selected purchase gets — change it per row later"></select>
+          <select class="descinput" id="sfCard" style="min-width:200px" title="the card they were paid with"></select>
+          <button class="btn btn-primary" id="sfGo" onclick="sortMove()" disabled>Move as purchases</button>
+          <button class="btn btn-soft" id="sfKeep" onclick="sortKeep()" disabled>Keep as movements</button>
+          <span style="flex:1"></span>
+          <button class="btn-tert" id="sfUndo" onclick="sortUndo()" style="display:none">↩ undo last move</button>
+        </div>
+      </div>
+      <p class="cap" style="margin-top:10px">A moved row keeps its id, date, amount and any reconciliation tick; its fund's balance is proven identical before and after (the database refuses the move otherwise). Moved purchases can be sent back from here with undo, and later from the Transactions page.</p>
+    </section>
+
     <!-- ACTIVITY -->
     <section class="screen" id="scr-activity">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
@@ -437,6 +470,7 @@ function go(scr){
   if (scr === 'nocard' && !nc.init) { nc.init = true; loadNoCard(true); }
   if (scr === 'pots') loadPots();
   if (scr === 'activity' && !ac.init) { ac.init = true; loadActivity(true); }
+  if (scr === 'sort') loadSort();
   if (scr === 'swap' && !sw.init) { sw.init = true; initSwap(); }
   if (scr === 'swap' && [...new Set(CTX.funds.map(f => f.currency))].length < 2) $('swIntro').innerHTML = '<span class="tag warn">one currency</span> this household has funds in one currency only, so there is nothing to swap between — add a second country\'s funds in the app (Settings → Funds) first.';
 }
@@ -481,6 +515,7 @@ async function loadContext(){
   $('hhLabel').textContent = CTX.hh.name + ' household';
   const nSwapCur = [...new Set(CTX.funds.map(f => f.currency))].length;
   document.querySelector('nav .nv[data-scr="swap"]').style.display = nSwapCur < 2 ? 'none' : '';
+  sortBadge();
 }
 const who = pid => (pid && (CTX.profiles.find(p => p.id === pid) || {}).display_name) || (CTX.hh && CTX.hh.joint_label) || 'Joint';
 const cardById = id => CTX.cards.find(c => c.id === id);
@@ -1435,6 +1470,85 @@ async function loadPots(){
     + (c.error || k.error ? '<p class="cap">some columns need the latest database update (' + esc((c.error || k.error).message) + ')</p>' : '')
     + '<p class="cap">Paying a card never changes Available — the charges already took it the day they happened. It lowers Owed on cards and In the bank by the same amount. Cleared only counts reconciled rows, so it catches up as statements are closed.</p>';
 }
+// ── sort fund spending (temporary page) ─────────────────────
+const sf = { rows: [], sel: new Set(), filter: 'purchase', lastMove: null };
+async function sortBadge(){
+  const r = await sb.from('fund_spend_sort').select('id');
+  const n = r.error ? 0 : (r.data || []).length;
+  $('nvSort').style.display = n ? '' : 'none'; $('nvSortN').textContent = n ? String(n) : '';
+  if (!n && document.querySelector('#scr-sort.active')) go('statements');
+  return n;
+}
+function sfFilter(f){ sf.filter = f; ['sfPurch', 'sfMove', 'sfAll'].forEach(id => $(id).classList.remove('sel')); $(f === 'purchase' ? 'sfPurch' : f === 'movement' ? 'sfMove' : 'sfAll').classList.add('sel'); sf.sel.clear(); renderSort(); }
+async function loadSort(){
+  const r = await sb.from('fund_spend_sort').select('*').order('date', { ascending: false });
+  if (r.error) { $('sfRows').innerHTML = '<tr><td colspan="7" class="empty">couldn’t load: ' + esc(r.error.message) + '</td></tr>'; return; }
+  sf.rows = r.data || []; sf.sel.clear();
+  const funds = [...new Set(sf.rows.map(x => x.fund_name))].sort();
+  $('sfFund').innerHTML = '<option value="">every fund</option>' + funds.map(f => '<option>' + esc(f) + '</option>').join('');
+  // categories: daily ones, grouped; plus a ready-made "Fund spending" if you'd rather sort later
+  const cats = CTX.cats.filter(c => c.kind === 'daily' && c.name !== 'Payment');
+  const groups = {}; cats.forEach(c => (groups[c.group_name] = groups[c.group_name] || []).push(c));
+  $('sfCat').innerHTML = '<option value="">— category for the selected —</option><option value="Fund spending">Fund spending (sort into real categories later)</option>'
+    + Object.keys(groups).map(g => '<optgroup label="' + esc(g) + '">' + groups[g].map(c => '<option value="' + esc(c.name) + '">' + esc(c.icon) + ' ' + esc(c.name) + '</option>').join('') + '</optgroup>').join('');
+  const cash = CTX.cards.find(c => c.kind === 'cash' && !c.is_archived);
+  $('sfCard').innerHTML = '<option value="">no card / not sure</option>' + (cash ? '<option value="' + cash.id + '">💵 ' + esc(cash.name) + '</option>' : '') + cardOptions(null, false);
+  $('sfAllCk').onchange = () => { visibleSort().forEach(x => { if ($('sfAllCk').checked) sf.sel.add(x.id); else sf.sel.delete(x.id); }); renderSort(); };
+  ['sfCat', 'sfCard'].forEach(id => $(id).onchange = sortBar);
+  renderSort();
+}
+function visibleSort(){
+  const q = ($('sfSearch').value || '').toLowerCase(), f = $('sfFund').value;
+  return sf.rows.filter(x => (!sf.filter || x.suggestion === sf.filter) && (!f || x.fund_name === f) && (!q || (x.remarks || '').toLowerCase().includes(q)));
+}
+function renderSort(){
+  const rows = visibleSort();
+  $('sfRows').innerHTML = rows.length ? rows.map(x => '<tr class="' + (sf.sel.has(x.id) ? 'sel' : '') + '" data-id="' + x.id + '">'
+    + '<td><input type="checkbox" class="rowck"' + (sf.sel.has(x.id) ? ' checked' : '') + '></td>'
+    + '<td class="num">' + fmtD(x.date) + '</td>'
+    + '<td><span class="dsc">' + esc(x.remarks || '(no remarks)') + '</span></td>'
+    + '<td class="ell">' + esc(x.fund_name) + '</td>'
+    + '<td class="amt">−' + fmtMoney(x.amount, x.currency) + '</td>'
+    + '<td><span class="tag ' + (x.suggestion === 'purchase' ? 'blue' : '') + '">' + x.suggestion + '</span></td>'
+    + '<td>' + (x.reconciled_at ? '<span title="ticked on a bank statement — the tick travels with it">🔒</span>' : '') + '</td></tr>').join('')
+    : '<tr><td colspan="7" class="empty">' + (sf.rows.length ? 'nothing matches' : 'all sorted — this page will disappear 🧹') + '</td></tr>';
+  $('sfRows').querySelectorAll('.rowck').forEach(ck => ck.onchange = ev => { const id = ev.target.closest('tr').dataset.id; if (ev.target.checked) sf.sel.add(id); else sf.sel.delete(id); ev.target.closest('tr').classList.toggle('sel', ev.target.checked); sortBar(); });
+  $('sfMeta').textContent = rows.length + ' of ' + sf.rows.length + ' rows · ' + sf.rows.filter(x => x.suggestion === 'purchase').length + ' look like purchases';
+  $('sfAllCk').checked = rows.length > 0 && rows.every(x => sf.sel.has(x.id));
+  sortBar();
+}
+function sortBar(){
+  const n = sf.sel.size, rows = sf.rows.filter(x => sf.sel.has(x.id));
+  const byCur = {}; rows.forEach(x => byCur[x.currency] = (byCur[x.currency] || 0) + Number(x.amount));
+  $('sfSelInfo').textContent = n ? n + ' selected · ' + Object.entries(byCur).map(([c, v]) => fmtMoney(v, c)).join(' + ') : 'nothing selected';
+  $('sfGo').disabled = !n || !$('sfCat').value; $('sfKeep').disabled = !n;
+  $('sfGo').textContent = 'Move as purchases' + (n ? ' (' + n + ')' : '');
+  $('sfKeep').textContent = 'Keep as movements' + (n ? ' (' + n + ')' : '');
+  $('sfUndo').style.display = sf.lastMove ? '' : 'none';
+}
+async function sortMove(){
+  const ids = [...sf.sel]; const cat = $('sfCat').value, card = $('sfCard').value || null;
+  if (!ids.length || !cat) return;
+  const cardName = card ? (cardById(card) || {}).name : 'no card';
+  if (!await ask('Move ' + ids.length + (ids.length === 1 ? ' row' : ' rows') + ' to purchases?', 'Category "' + cat + '", card: ' + cardName + '. Each fund’s balance stays exactly the same; the rows then show on the card’s statements and in the app with their fund.', 'Move')) return;
+  $('sfGo').disabled = true;
+  const { data, error } = await sb.rpc('move_fund_spend_to_expenses', { p_ids: ids, p_category: cat, p_payment_method: card });
+  if (error) { toast('couldn’t move: ' + error.message); $('sfGo').disabled = false; return; }
+  sf.lastMove = ids; toast(data + ' moved ✓'); await sortBadge(); loadSort();
+}
+async function sortKeep(){
+  const ids = [...sf.sel]; if (!ids.length) return;
+  const { data, error } = await sb.rpc('keep_fund_spend', { p_ids: ids });
+  if (error) { toast('couldn’t save: ' + error.message); return; }
+  toast(data + ' kept as movements'); await sortBadge(); loadSort();
+}
+async function sortUndo(){
+  if (!sf.lastMove) return;
+  const { data, error } = await sb.rpc('move_expense_to_fund_spend', { p_ids: sf.lastMove });
+  if (error) { toast('couldn’t undo: ' + error.message); return; }
+  sf.lastMove = null; toast(data + ' sent back to movements'); await sortBadge(); loadSort();
+}
+
 // ── activity (audit_log) ────────────────────────────────────
 const ac = { init: false, rows: [], off: 0, done: false, members: null };
 let acSearchT = null;

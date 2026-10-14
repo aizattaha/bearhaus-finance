@@ -1041,6 +1041,7 @@ function renderHome(state){
   const PC = primaryCur();
   let weekMain = 0; const weekOther = {};
   (state.week || []).forEach(r => {
+    if (fromFund(r)) return;   // funded from a fund, not this week's spending money
     const amt = sa(r);
     if (r.currency !== PC) { weekOther[r.currency] = (weekOther[r.currency] || 0) + amt; return; }
     weekMain += amt;
@@ -1108,7 +1109,7 @@ function renderHome(state){
   const byGroup = {};
   let monthAU = 0; const expOther = {};
   (state.month || []).forEach(r => {
-    if (r.category === 'Payment') return;
+    if (r.category === 'Payment' || fromFund(r)) return;
     if (r.currency !== PC) { expOther[r.currency] = (expOther[r.currency] || 0) + sa(r); return; }
     const g = GROUP_OF[r.category] || 'Other';
     byGroup[g] = (byGroup[g] || 0) + sa(r);
@@ -1309,10 +1310,12 @@ function renderBudget(st){
   const sums = {}, budTot = {}, budByLabel = {}, schedTot = {};
   const todayS = todayIso();
   months.forEach(m => { sums[m] = {}; budTot[m] = 0; schedTot[m] = 0; });
+  const fundFunded = {};   // purchases paid from a fund: shown, never counted against the budget
   (st.exp || []).forEach(r => {
     if (r.currency !== PC) return;
     const m = r.date.slice(0, 7) + '-01';
     if (!sums[m]) return;
+    if (fromFund(r)) { fundFunded[m] = (fundFunded[m] || 0) + sa(r); return; }
     if (r.date > todayS) { schedTot[m] += sa(r); return; }   // Scheduled: counts on its day, not before
     const g = GROUP_OF[r.category] || 'Other';
     sums[m][g] = (sums[m][g] || 0) + sa(r);
@@ -1369,7 +1372,8 @@ function renderBudget(st){
   $('budTotalMain').innerHTML = fmtMoney(spent, PC)
     + (budget > 0 ? ' <span style="font-size:15px;font-weight:400;color:var(--accent)">of ' + fmtMoney(budget, PC) + '</span>' : '');
   const sub = $('budTotalSub');
-  const schedNote = schedTot[st.month] > 0 ? ' · ' + fmtMoney(schedTot[st.month], PC) + ' scheduled, not counted yet' : '';
+  const schedNote = (schedTot[st.month] > 0 ? ' · ' + fmtMoney(schedTot[st.month], PC) + ' scheduled, not counted yet' : '')
+    + (fundFunded[st.month] ? ' · ' + fmtMoney(fundFunded[st.month], PC) + ' paid from funds, not counted' : '');
   if (!budget) { sub.textContent = 'no budget set for this month' + schedNote; sub.style.color = ''; }
   else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, PC) + ' still available' + schedNote; sub.style.color = ''; }
   else { sub.textContent = fmtMoney(spent - budget, PC) + ' over budget' + schedNote; sub.style.color = '#F0A8A8'; }
@@ -1404,7 +1408,7 @@ function renderBudget(st){
     // drill level 1: this group's categories, biggest spend first;
     // level 2: a category's line items, revealed on tap
     const monthExp = (st.exp || []).filter(r =>
-      r.currency === PC && r.date <= todayS && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group);
+      r.currency === PC && r.date <= todayS && r.date.slice(0, 7) + '-01' === st.month && !fromFund(r) && (GROUP_OF[r.category] || 'Other') === row.group);
     const catSums = {};
     monthExp.forEach(r => catSums[r.category] = (catSums[r.category] || 0) + sa(r));
     const card = document.createElement('div');
@@ -1521,7 +1525,7 @@ async function loadFunds(){
       sb.from('category_budgets').select('currency, amount').eq('month', m),
       sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
       sb.from('fund_transactions').select('date').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
-      sb.from('fund_cash').select('fund_id, cash_balance, owed_on_cards').eq('is_spend_pot', true),   // pots: what's still on cards vs in the bank
+      sb.from('fund_cash').select('fund_id, cash_balance, owed_on_cards'),   // every fund: what's still on cards vs in the bank
     ]);
     for (const r of [bal, inc, cat, fb, applied]) if (r.error) throw r.error;
     const cashBy = {}; (cash.error ? [] : cash.data || []).forEach(r => cashBy[r.fund_id] = r);
@@ -1698,7 +1702,7 @@ function renderFundList(country, st){
       btn.type = 'button'; btn.className = 'fundrow';
       const earmark = (!editing && !st.appliedOn && b.is_leftover_target && st.leftover && st.leftover[b.currency] > 0.005) ? st.leftover[b.currency] : 0;
       // a spending pot shows its three numbers: Available (big) · owed on cards · in the bank
-      const cz = (!editing && b.is_spend_pot && st.cash) ? st.cash[b.fund_id] : null;
+      const cz = (!editing && st.cash) ? st.cash[b.fund_id] : null;
       const owed = cz ? Number(cz.owed_on_cards) : 0;
       const potCap = cz && (Math.abs(owed) >= 0.005 || Math.abs(Number(cz.cash_balance) - Number(b.balance)) >= 0.005)
         ? '<div class="cap">' + (owed > 0 ? 'on cards ' + fmtMoney(owed, b.currency) + ' · in the bank ' + fmtMoney(cz.cash_balance, b.currency)
@@ -1806,9 +1810,9 @@ async function toggleFundDrill(btn, fund){
       .select('id, date, type, amount, remarks, origin, income_source' + rc(true))
       .eq('fund_id', fund.fund_id)
       .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(isPot ? 12 : 8),
-    // a spending pot also shows ONE computed line per month: "October 2026 spending − A$x"
-    // (pot_month_spend uses the same category→pot mapping as the balance view — never written)
-    isPot ? sb.rpc('pot_month_spend', { p_fund: fund.fund_id }) : Promise.resolve({ data: [] }),
+    // every fund shows ONE computed line per month of purchases counted against it: "October 2026 spending − A$x"
+    // (a pot through its categories; any fund through purchases that name it — never written)
+    sb.rpc('pot_month_spend', { p_fund: fund.fund_id }),
   ]);
   if (error) { d.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
   d.innerHTML = '';
@@ -2297,10 +2301,13 @@ let swapOK = true;    // false until the pot-swap migration has landed
 let updOK = true;     // false until expenses carry updated_at (batch 4)
 let kindOK = true;    // false until fund rows carry kind (card payments, Oct 2026)
 let refundOK = true;  // false until expenses carry is_refund (hygiene, Oct 2026)
-const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '') + (!fund && updOK ? ', updated_at' : '') + (fund && kindOK ? ', kind, settles_payment_method_id' : '') + (!fund && refundOK ? ', is_refund' : '');
+const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '') + (!fund && updOK ? ', updated_at' : '') + (fund && kindOK ? ', kind, settles_payment_method_id' : '') + (!fund && refundOK ? ', is_refund' + (fundIdOK ? ', fund_id' : '') : '');
 // a refund / card credit keeps a positive amount in the database and counts negative everywhere
 const sa = r => (r && r.is_refund ? -1 : 1) * Number(r.amount);
-const rf = () => refundOK ? ', is_refund' : '';
+const rf = () => refundOK ? ', is_refund' + (fundIdOK ? ', fund_id' : '') : '';
+let fundIdOK = true;  // false until expenses carry fund_id (phase 1 of the ledger plan, Oct 2026)
+// a purchase funded from a fund (not the month's budget) — counts against that fund, never against the monthly budget
+const fromFund = r => !!(r && r.fund_id);
 let atx = null, atxSeq = 0;
 // 🔒 reconciled (locked) · 🔓 un-reconciled just now (tap to lock again) · nothing = never reconciled.
 // Internal fund rows (plan writes, transfers) are reconciled automatically and stay that way.
@@ -2670,7 +2677,7 @@ function renderAllTx(type){
         ? esc(((trip && trip.countries) || []).map(flagOf).join('') || '✈️') + ' ' + esc(trip ? trip.name : 'trip') + ' · ' : '';
       b.innerHTML = '<div class="rowicon">' + (CAT_ICON[r.category] || (kind === 't' ? '✈️' : '🛍️')) + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.description) + '</div>'
-        + '<div class="cap">' + tripTag + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + (r.is_refund ? ' · <span style="color:var(--good)">↩ refund</span>' : '') + (r.pot_swap_id ? ' · <span title="paid with Singapore money — pot swap recorded on the Desk">⇄ swapped</span>' : '') + '</div></div>'
+        + '<div class="cap">' + tripTag + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + (r.is_refund ? ' · <span style="color:var(--good)">↩ refund</span>' : '') + (fromFund(r) ? ' · <span style="color:var(--primary)">from ' + esc((fundById(r.fund_id) || {}).name || 'a fund') + '</span>' : '') + (r.pot_swap_id ? ' · <span title="paid with Singapore money — pot swap recorded on the Desk">⇄ swapped</span>' : '') + '</div></div>'
         + '<div class="amt num" style="color:' + (r.category === 'Payment' || r.is_refund ? 'var(--ink-soft)' : 'var(--bad)') + '">' + (r.category === 'Payment' || r.is_refund ? '+' : '−') + fmtMoney(r.amount, r.currency) + '</div>';
       b.onclick = () => kind === 't' ? openEditExpense(r) : openEditDaily(r);
     } else {
@@ -3814,6 +3821,8 @@ async function loadContext(){
     kindOK = !probe4.error;
     const probe5 = await sb.from('daily_expenses').select('is_refund').limit(1);
     refundOK = !probe5.error;
+    const probe6 = await sb.from('daily_expenses').select('fund_id').limit(1);
+    fundIdOK = !probe6.error;
     if (refundOK) sb.rpc('purge_deleted').then(() => {});   // the bin empties itself after 30 days
     const chip = $('atxOpenOnly'); if (chip) chip.style.display = reconOK ? '' : 'none';
   }
