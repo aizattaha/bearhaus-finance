@@ -71,6 +71,9 @@ tr:hover td{background:#F7F9FC}
 td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td.num{white-space:nowrap}
 td .dsc{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th.c-who,th.c-src,td.c-who,td.c-src{color:var(--ink-soft);font-size:12px}
+/* the description is what you reconcile by — when the window is narrow, Who and Source step aside */
+@media(max-width:1180px){th.c-who,td.c-who,th.c-src,td.c-src{display:none}}
 input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:pointer}
 .pos{display:inline-flex;width:16px;height:16px;border-radius:999px;background:var(--accent-soft);color:var(--primary);font-size:11px;font-weight:600;align-items:center;justify-content:center;vertical-align:middle;margin-left:4px;line-height:1}
 .lock{display:inline-flex;width:26px;height:26px;border-radius:999px;align-items:center;justify-content:center;background:var(--field);cursor:pointer;font-size:13px;border:none}
@@ -153,7 +156,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
             <input class="descinput num" id="stTotal" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="width:150px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
             <button class="btn btn-soft" style="height:36px;padding:0 14px" onclick="saveStatementTotal()">Save</button>
           </div>
-          <div class="row" style="gap:6px;margin-top:6px;flex-wrap:nowrap;align-items:center">
+          <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
             <span class="cap" style="white-space:nowrap">opening</span><input class="descinput num" id="stOpen" type="number" step="0.01" placeholder="—" title="opening balance on the statement" style="width:92px;height:30px;padding:0 8px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
             <span class="cap" style="white-space:nowrap">closing</span><input class="descinput num" id="stClosing" type="number" step="0.01" placeholder="—" title="closing balance on the statement" style="width:92px;height:30px;padding:0 8px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
             <span class="cap" style="white-space:nowrap">due</span><input class="descinput" id="stDue" type="date" title="payment due date" style="width:132px;height:30px;padding:0 8px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
@@ -194,7 +197,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="stAll" title="select every unreconciled row shown"></th>
-              <th style="width:124px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:100px">Who</th><th style="width:96px">Source</th><th class="amt" style="width:120px">Amount</th><th style="width:50px"></th>
+              <th style="width:112px">Date</th><th>Description</th><th style="width:124px">Category</th><th class="c-who" style="width:76px">Who</th><th class="c-src" style="width:64px">Source</th><th class="amt" style="width:112px">Amount</th><th style="width:40px"></th>
             </tr></thead>
             <tbody id="stRows"><tr><td colspan="8" class="empty">pick a card</td></tr></tbody>
           </table>
@@ -228,7 +231,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="ncAll"></th>
-              <th style="width:110px">Date</th><th>Description</th><th style="width:140px">Category</th><th style="width:100px">Who</th><th style="width:160px">Card</th><th style="width:70px">Source</th><th class="amt" style="width:110px">Amount</th>
+              <th style="width:104px">Date</th><th>Description</th><th style="width:124px">Category</th><th class="c-who" style="width:76px">Who</th><th style="width:140px">Card</th><th class="c-src" style="width:60px">Source</th><th class="amt" style="width:108px">Amount</th>
             </tr></thead>
             <tbody id="ncRows"><tr><td colspan="7" class="empty">loading…</td></tr></tbody>
           </table>
@@ -644,8 +647,8 @@ function renderStatement(){
       + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
       + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
       + '<td class="ell">' + esc(r.category) + '</td>'
-      + '<td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
-      + '<td style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod && !r._foreign ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
+      + '<td class="ell c-who">' + esc(who(r.payer_profile_id)) + '</td>'
+      + '<td class="c-src" style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod && !r._foreign ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
       + '<td class="amt"' + (r.credit ? ' style="color:var(--good)"' : '') + '>' + (r.credit ? '+' : '−') + fmtMoney(r.amount, r.currency) + curTag + '</td>'
       + '<td>' + (locked ? (closedSt ? '<span class="lock muted" title="on a closed statement — reopen it to change anything">🔒</span>' : '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>') : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
       + '</tr>';
@@ -1087,9 +1090,9 @@ function renderNoCard(){
     + '<td><input type="checkbox" class="rowck"' + (nc.sel.has(r.key) ? ' checked' : '') + '></td>'
     + '<td class="num">' + fmtD(r.date) + '</td>'
     + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
-    + '<td class="ell">' + esc(r.category) + '</td><td class="ell">' + esc(who(r.payer_profile_id)) + '</td>'
+    + '<td class="ell">' + esc(r.category) + '</td><td class="ell c-who">' + esc(who(r.payer_profile_id)) + '</td>'
     + '<td class="ell" title="' + esc(c ? c.name : '') + '">' + (c ? esc(c.name) : '<span class="tag warn">no card</span>') + (r.reconciled_at ? ' <span title="reconciled">🔒</span>' : '') + '</td>'
-    + '<td><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
+    + '<td class="c-src"><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
     + '<td class="amt"' + (r.is_refund || r.category === 'Payment' ? ' style="color:var(--good)"' : '') + '>' + (r.is_refund || r.category === 'Payment' ? '+' : '−') + fmtMoney(r.amount, r.currency) + '</td></tr>'; }).join('');
   body.querySelectorAll('.rowck').forEach(ck => ck.onchange = ev => {
     const key = ev.target.closest('tr').dataset.key;
