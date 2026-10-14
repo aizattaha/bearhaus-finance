@@ -344,12 +344,14 @@ input[type="date"].descinput{min-width:0}
   <div class="login-card">
     <div class="logo" style="align-self:center">🐻</div>
     <div style="text-align:center">
-      <h1 class="h1">Set up your household</h1>
-      <p class="cap" style="margin-top:4px">a minute of setup, then you’re in</p>
+      <h1 class="h1" id="obTitle">Set up your household</h1>
+      <p class="cap" style="margin-top:4px" id="obSub">a minute of setup, then you’re in</p>
     </div>
+    <div id="obLost" style="display:none;background:var(--accent-soft);color:var(--primary);border-radius:12px;padding:10px 12px"><p class="cap" style="color:var(--primary)" id="obLostText"></p></div>
     <div>
       <p class="cap" style="margin-bottom:4px">invite code</p>
-      <input class="field" id="obCode" placeholder="e.g. BEAR-SUNRISE-01 or JOIN-…" autocomplete="off" oninput="obCodeChanged()">
+      <input class="field" id="obCode" placeholder="beta code, or a JOIN-… code from your partner" autocomplete="off" oninput="obCodeChanged()">
+      <p class="cap" style="margin-top:4px">joining someone’s household? type the JOIN-… code they sent you · starting fresh? your beta code</p>
       <p class="cap" id="obCodeNote" style="margin-top:4px;min-height:16px"></p>
     </div>
     <div id="obJoinCard" style="display:none;background:var(--accent-soft);border-radius:16px;padding:14px 16px">
@@ -406,6 +408,7 @@ input[type="date"].descinput{min-width:0}
         <button class="btn btn-primary" style="height:40px;padding:0 20px;font-size:13px;margin-top:10px" onclick="retryLoad()">Try again</button>
       </div>
 
+      <div class="card" id="viewerNote" style="display:none;background:#fff7e6;box-shadow:none"><p class="lbl">👀 view-only login</p><p class="cap">you can see everything in this household, but not change it — ask the owner for a full login if you need to</p></div>
       <div class="card" id="planNudge" style="display:none;background:var(--accent-soft);box-shadow:none;cursor:pointer" onclick="openPlanSheet()">
         <p class="lbl" style="color:var(--primary)" id="planNudgeMsg"></p>
         <p class="cap" style="margin-top:2px">tap to open the plan — it takes two minutes</p>
@@ -650,8 +653,10 @@ input[type="date"].descinput{min-width:0}
 <script>
 // connection, $, esc, money, country and date helpers live in common.js (shared with the Desk)
 let toastTimer = null;
+const VIEW_ONLY_MSG = 'this login is view-only — you can see everything, change nothing';
 function toast(msg){
   const t = $('toastEl');
+  if (/row-level security|view-only|42501/i.test(String(msg))) msg = 'couldn’t save: ' + VIEW_ONLY_MSG;
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   // errors hang around until read (or tapped away); successes stay brisk (UX-8)
@@ -816,6 +821,10 @@ function showOnboard(){
   $('app').style.display = 'none';
   $('onboard').style.display = 'flex';
   $('obCode').value = localStorage.getItem('bh-invite') || '';
+  // a login whose household access was removed lands here — say so instead of a blank setup form (QA2 A-B3)
+  const lost = localStorage.getItem('bh-lost');
+  $('obLost').style.display = lost ? 'block' : 'none';
+  if (lost) { $('obLostText').textContent = 'your login no longer has access to ' + lost + ' — the owner removed it. Ask them for a new JOIN code, or set up a household of your own below.'; $('obTitle').textContent = 'No household attached'; $('obSub').textContent = 'join one with a code, or start your own'; }
   obRenderCountries(false);
   obCodeChanged();
 }
@@ -825,6 +834,7 @@ function obCodeChanged(){
   clearTimeout(obCodeT);
   const code = $('obCode').value.trim();
   obJoinInfo = null; $('obJoinCard').style.display = 'none'; $('obCreate').style.display = 'contents'; $('obCodeNote').textContent = '';
+  if (!localStorage.getItem('bh-lost')) { $('obTitle').textContent = 'Set up your household'; $('obSub').textContent = 'a minute of setup, then you’re in'; }
   if (!code) return;
   obCodeT = setTimeout(async () => {
     const r = await sb.rpc('invite_info', { p_code: code });
@@ -836,6 +846,7 @@ function obCodeChanged(){
       $('obJoinGo').textContent = 'Join ' + r.data.household;
       $('obJoinCard').style.display = 'block'; $('obCreate').style.display = 'none';
       $('obCodeNote').textContent = 'this code joins an existing household';
+      $('obTitle').textContent = 'Join a household'; $('obSub').textContent = 'no setup — you’ll be in as soon as you join';
     } else if (r.data && r.data.kind === 'beta') {
       $('obCodeNote').textContent = 'beta code ✓ — set up your household below';
     } else {
@@ -920,8 +931,9 @@ const CAT_ICON = {
 
 // ── app boot ─────────────────────────────────
 async function enterApp(){
-  $('login').style.display = 'none';
+  $('login').style.display = 'none'; $('onboard').style.display = 'none';
   $('app').style.display = 'flex';
+  localStorage.removeItem('bh-lost');
 
   const now = new Date();
   $('todayLabel').textContent = now.toLocaleDateString('en-AU', {weekday:'long', day:'numeric', month:'long'});
@@ -934,12 +946,38 @@ async function enterApp(){
   checkPlanNudge();
   loadContext().then(() => {
     if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
+    applyRole();
     // the first paint guessed the home currency — repaint with the real one
     const c = localStorage.getItem('bh-home');
     if (c) { try { renderHome(JSON.parse(c)); } catch(e){} }
   });
 }
 
+// two phones, one household: coming back to the app after a while refetches whatever is on screen (QA2 A)
+let lastAway = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { lastAway = Date.now(); return; }
+  if (!lastAway || Date.now() - lastAway < 60000 || $('app').style.display === 'none') return;
+  lastAway = 0;
+  try {
+    loadHome();
+    if (budgetInit && $('scr-budget').classList.contains('active')) selectBudgetMonth(budgetMonth);
+    if (fundsInit && $('scr-funds').classList.contains('active')) loadFunds();
+    if (atx && $('scr-alltx').classList.contains('active')) loadAllTx(true);
+  } catch (e) {}
+});
+// a view-only login: say so once on Home, hide the + button, and keep the plan card read-only (QA2 C-B3)
+async function applyRole(){
+  try {
+    const u = await sb.auth.getUser(); const uid = u.data && u.data.user && u.data.user.id; if (!uid) return;
+    const r = await sb.from('household_members').select('role').eq('user_id', uid).maybeSingle();
+    CTX.role = r.data ? r.data.role : 'member';
+  } catch (e) { CTX.role = 'member'; }
+  const viewer = CTX.role === 'viewer';
+  $('viewerNote').style.display = viewer ? 'block' : 'none';
+  document.querySelectorAll('.fab').forEach(b => b.style.display = viewer ? 'none' : '');
+  if (viewer) { const n = $('planNudge'); n.onclick = () => toast(VIEW_ONLY_MSG); }
+}
 // the ritual needs a cue: nudge until this month's plan is saved AND applied (WF-2)
 async function checkPlanNudge(){
   try {
@@ -1067,8 +1105,8 @@ function renderHome(state){
                : d.toLocaleDateString('en-AU', {day:'numeric', month:'short'});
     return `<div class="row"><div class="rowicon">${icon}</div>
       <div style="min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.description)}</div>
-      <div class="cap">${esc(r.category)} · ${esc(who)} · ${when}</div></div>
-      <div class="amt num"${r.category === 'Payment' || r.is_refund ? ' style="color:var(--ink-soft)"' : ''}>${r.category === 'Payment' || r.is_refund ? '+' : '−'}${fmtMoney(r.amount, r.currency)}</div></div>`;
+      <div class="cap">${esc(r.category)} · ${esc(who)} · ${when}${fromFund(r) ? ' · <span style="color:var(--primary)">💰 ' + esc((fundById(r.fund_id) || {}).name || 'from a fund') + '</span>' : ''}</div></div>
+      <div class="amt num"${r.category === 'Payment' || r.is_refund || fromFund(r) ? ' style="color:var(--ink-soft)"' : ''}>${r.category === 'Payment' || r.is_refund ? '+' : '−'}${fmtMoney(r.amount, r.currency)}</div></div>`;
   }).join('') || '<p class="cap" style="padding:12px 0">no expenses yet — tap + to add your first 🐻</p>';
   // tap a recent line to fix it — fetches the full row, then opens the edit sheet
   [...$('recentList').children].forEach((el, i) => {
@@ -1708,7 +1746,7 @@ function renderFundList(country, st){
       const owed = cz ? Number(cz.owed_on_cards) : 0;
       const potCap = cz && (Math.abs(owed) >= 0.005 || Math.abs(Number(cz.cash_balance) - Number(b.balance)) >= 0.005)
         ? '<div class="cap">' + (owed > 0 ? 'on cards ' + fmtMoney(owed, b.currency) + ' · in the bank ' + fmtMoney(cz.cash_balance, b.currency)
-                                          : 'paid ' + fmtMoney(-owed, b.currency) + ' for other pots · in the bank ' + fmtMoney(cz.cash_balance, b.currency)) + '</div>' : '';
+                                          : (b.is_spend_pot ? 'paid ' + fmtMoney(-owed, b.currency) + ' for other pots' : fmtMoney(-owed, b.currency) + ' credit on cards') + ' · in the bank ' + fmtMoney(cz.cash_balance, b.currency)) + '</div>' : '';
       btn.innerHTML = (editing ? '<span class="dhandle">≡</span>' : '')
         + '<div class="rowicon">' + fundIcon(b.name) + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
@@ -3136,7 +3174,11 @@ async function renderSetCards(box){
       kindSel.onchange = async () => { if (await save({ kind: kindSel.value, closing_day: kindSel.value === 'credit_card' ? (parseInt(dayIn.value) || null) : null })) { dayIn.style.display = kindSel.value === 'credit_card' ? '' : 'none'; toast(c.name + ' · ' + (KINDS.find(k => k[0] === kindSel.value) || [])[1] + ' 🐻'); } };
       dayIn.onchange = async () => { const v = parseInt(dayIn.value); if (dayIn.value && !(v >= 1 && v <= 31)) { toast('closing day is 1–31'); return; } if (await save({ closing_day: dayIn.value ? v : null })) toast(c.name + (dayIn.value ? ' closes on day ' + v : ' · closing day cleared') + ' 🐻'); };
       curSel.onchange = async () => { if (await save({ currency: curSel.value || null })) toast(c.name + ' · ' + (curSel.value ? curLabel(curSel.value) : 'multi-currency') + ' 🐻'); };
-      cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel);
+      // travel-only cards stay out of the everyday picker; flip it here when a card starts doing both (QA2 B-B3)
+      const trav = document.createElement('button'); trav.type = 'button'; trav.className = 'chip' + (c.travel_only ? ' sel' : ''); trav.style.cssText = 'font-size:11px;padding:4px 8px'; trav.textContent = '✈️ travel only';
+      trav.title = 'only offered on trip expenses';
+      trav.onclick = async () => { if (await save({ travel_only: !c.travel_only })) { trav.classList.toggle('sel', c.travel_only); toast(c.name + (c.travel_only ? ' · trips only' : ' · offered everywhere') + ' 🐻'); } };
+      cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel); cfg.appendChild(trav);
       d._cfg = cfg;
     }
     const ebtn = document.createElement('button');
@@ -3786,7 +3828,16 @@ async function loadContext(){
   if (hh.error && (hh.error.code === 'PGRST116' || hh.status === 401 || hh.status === 403 || hh.status === 406 || /JWT|token/i.test(hh.error.message || ''))) {
     // not a flaky network: this login can't read exactly one household (expired/garbled session, or
     // something wrong with the account) — never run on cached numbers as if nothing happened
+    const hadHh = CTX && CTX.hh && CTX.hh.name;
+    const removed = hh.error.code === 'PGRST116' && !/multiple/i.test(hh.error.details || '') && hadHh;
     localStorage.removeItem('bh-ctx');
+    if (removed) {
+      // the session is fine; the membership is gone (the owner removed this login) — straight to the join/create screen with the reason
+      localStorage.setItem('bh-lost', hadHh);
+      CTX = { profiles: [], funds: [], trips: [], cards: [] };
+      showOnboard();
+      throw new Error('access removed');
+    }
     await sb.auth.signOut().catch(() => {});
     $('app').style.display = 'none'; $('onboard').style.display = 'none'; $('login').style.display = 'flex';
     const el = $('loginError'); if (el) el.textContent = hh.error.code === 'PGRST116' && /multiple/i.test(hh.error.details || '') ? 'something’s wrong with this account — more than one household is attached. Tell Aizat.' : 'your session expired — sign in again';
@@ -3916,13 +3967,24 @@ Object.assign(CAT_ICON, {'Flights':'✈️','Airport Transfer':'🚐','Taxi/Grab
 
 // cards belong strictly to their payer — Joint is its own person with its own
 // wallet (Cash, Bank - Joint, …), never mixed into Aizat's or Paige's lists.
+// the currency the form is about to save in (a fund purchase follows its fund; a daily one its segment)
+function formCurrency(){
+  if (mode === 'fundexp' || mode === 'fund' || mode === 'transfer' || mode === 'paycard') { const f = fundById(fundFromId); return f ? f.currency : null; }
+  return SEG2CODE[segSel('segCurrency')] || null;
+}
 function cardOptions(payerName){
   const p = CTX.profiles.find(x => x.display_name === payerName);
-  const pid = p ? p.id : null;   // null = Joint's cards
-  // cash is a kind, not a person's card — anyone can pay cash (QA round 1)
+  const pid = p ? p.id : null;   // null = Joint
+  const cur = formCurrency();
+  // cash is a kind, not a person's card — anyone can pay cash (QA round 1);
+  // "who paid" and "which card" are different questions: Joint may sit on anyone's card, joint cards first (QA2 A-B4);
+  // cards in the purchase's currency come first, so an S$ fund purchase lands on the S$ card by default (QA2 B-B3)
   return (CTX.cards || [])
-    .filter(c => (c.profile_id === pid || c.kind === 'cash') && (!c.travel_only || mode === 'trip' || mode === 'edit'))
-    .sort((a, b) => (a.kind === 'cash') - (b.kind === 'cash') || a.sort_order - b.sort_order);
+    .filter(c => (c.profile_id === pid || c.kind === 'cash' || pid === null) && (!c.travel_only || mode === 'trip' || mode === 'edit'))
+    .sort((a, b) => (a.kind === 'cash') - (b.kind === 'cash')
+      || (cur ? ((b.currency === cur) - (a.currency === cur)) : 0)
+      || (pid === null ? ((a.profile_id !== null) - (b.profile_id !== null)) : 0)
+      || a.sort_order - b.sort_order);
 }
 function refreshCards(payerName){
   const opts = cardOptions(payerName);
@@ -4244,6 +4306,7 @@ function openFundPicker(which){
     items, it => {
       if (which === 'from') fundFromId = it.id; else fundToId = it.id;
       renderFundRow(which); afterFundChange();
+      if (mode === 'fundexp') refreshCards(segSel('segPayer') || payerNames()[0]);   // the fund's currency decides which card comes first
     });
 }
 // currency labels + cross-currency received box follow the picked funds
@@ -4367,10 +4430,18 @@ function refreshTripCurrencies(){
   buildSeg('segCurrency', labels, Math.max(labels.indexOf(last), 0));
 }
 
+// the two deliberate aborts in loadContext (access removed / session invalid) are handled on screen — keep them out of the console
+window.addEventListener('unhandledrejection', e => { if (e.reason && /^(access removed|session invalid)$/.test(e.reason.message || '')) e.preventDefault(); });
+let scopeSwitch = false;   // set by the scope segment just before it re-opens the form
 function openForm(m){
-  mode = m; amt = ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; armSaveKey();
+  // switching scope inside the same tab (Daily → From a fund → Trip) keeps what was already typed (QA2 B)
+  const tabOf0 = x => x === 'income' ? x : (x === 'transfer' || x === 'paycard' || x === 'fund') ? 'transfer' : /^edit/.test(x) ? 'edit' : 'expense';
+  const keep = (scopeSwitch && m !== mode && tabOf0(m) === tabOf0(mode) && tabOf0(m) !== 'edit')
+    ? { amt, desc: $('descInput').value, comments: $('commentsInput').value, date: $('dateInput').value, payer: segSel('segPayer'), refund: isRefund, cat: selectedCat } : null;
+  scopeSwitch = false;
+  mode = m; amt = keep ? keep.amt : ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; armSaveKey();
   editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none'; $('lockNote').style.display = 'none';
-  $('descInput').value = ''; $('commentsInput').value = ''; setRefund(false);
+  $('descInput').value = keep ? keep.desc : ''; $('commentsInput').value = keep ? keep.comments : ''; setRefund(!!(keep && keep.refund));
   $('refundWrap').style.display = (m === 'daily' || m === 'trip' || m === 'fundexp') && refundOK ? 'flex' : 'none';
   $('dateInput').value = isoDate(new Date()); updateDateVal();
   $('rowDetails').style.display = 'none';
@@ -4389,12 +4460,12 @@ function openForm(m){
     // a purchase is a purchase wherever the money comes from: the month's budget (Daily), a fund, or a trip
     const SCOPES = [['Daily', 'daily'], ['From a fund', 'fundexp'], ['Trip', 'trip']];
     buildSeg('segScope', SCOPES.map(x => x[0]), Math.max(SCOPES.findIndex(x => x[1] === m), 0),
-      lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) openForm(target); });
+      lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) { scopeSwitch = true; openForm(target); } });
   } else if (isXferTab) {
     // money moving, not spending: between funds · out of a fund to somewhere else · paying a card
     const SCOPES = [['Between funds', 'transfer'], ['Money out', 'fund']].concat(hasCC ? [['💳 Pay a card', 'paycard']] : []);
     buildSeg('segScope', SCOPES.map(x => x[0]), Math.max(SCOPES.findIndex(x => x[1] === m), 0),
-      lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) openForm(target); });
+      lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) { scopeSwitch = true; openForm(target); } });
   }
   const names = payerNames();
   const lastPayer = localStorage.getItem('bh-payer') || names[0];
@@ -4422,7 +4493,7 @@ function openForm(m){
     $('descInput').placeholder = 'description — e.g. Woolworths';
     SEG2CODE = {};
     const homeLabels = homeCurrencies().map(c => { let l = curLabel(c); if (SEG2CODE[l]) l = c; SEG2CODE[l] = c; return l; });
-    buildSeg('segCurrency', homeLabels, Math.max(homeLabels.indexOf(lastCur), 0));
+    buildSeg('segCurrency', homeLabels, Math.max(homeLabels.indexOf(lastCur), 0), () => refreshCards(segSel('segPayer') || payerNames()[0]));
     selectedCat = (CTX.topDaily || FALLBACK_DAILY)[0];
     renderCatRow();
   } else if (m === 'fundexp') {
@@ -4475,10 +4546,15 @@ function openForm(m){
     selectedCat = (CTX.topTravel || FALLBACK_TRAVEL)[0];
     renderCatRow();
   }
+  if (keep) {
+    if (keep.date) { $('dateInput').value = keep.date; updateDateVal(); }
+    if (keep.cat && (m === 'daily' || m === 'fundexp') && (mode !== 'trip')) { selectedCat = keep.cat; renderCatRow(); }
+  }
   if (!fundish) {
-    buildSeg('segPayer', names, Math.max(names.indexOf(lastPayer), 0),
+    const payer0 = keep && keep.payer && names.includes(keep.payer) ? keep.payer : lastPayer;
+    buildSeg('segPayer', names, Math.max(names.indexOf(payer0), 0),
       p => refreshCards(p));
-    refreshCards(lastPayer);
+    refreshCards(payer0);
   }
   dockShow('pad');
   $('sheet').classList.add('full');
@@ -4577,7 +4653,7 @@ async function saveEntry(){
   // stay locked after success — a tap during the close animation must not
   // write twice (QA-2); the form re-arms when it is next opened
   const done = (ok, msg) => {
-    if (ok) { closeSheet(); toast(msg); loadHome(); }
+    if (ok) { closeSheet(); toast(msg); loadHome(); if (budgetInit) selectBudgetMonth(budgetMonth); if (fundsInit) loadFunds(); if (atx) loadAllTx(true); }
     else { saving = false; armSaveKey(); toast('couldn’t save: ' + msg); } };
 
   const date = $('dateInput').value || isoDate(new Date());
@@ -4969,18 +5045,22 @@ function openEditFund(tx){
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
   if (tx.origin === 'planned') toast('written by Review & apply — edits change this record, not the plan');
   else if (tx.kind === 'card_payment') toast('a card payment — it never touches Available. Delete removes the whole payment (every fund it was split over)');
-  else if (/^Transfer [→←]/.test(tx.remarks || '')) toast('this is half of a transfer — its pair won’t change');
+  else if (/^Transfer [→←]/.test(tx.remarks || '')) {
+    $('lockNote').style.display = 'block'; $('lockUnlockBtn').style.display = 'none';
+    $('lockNoteText').textContent = '↔ one side of a transfer. The amount and date are shared with the other side, so they can’t be edited here — Delete removes BOTH sides (the other fund goes back up too). To change it, delete and redo the transfer.';
+    $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete both sides';
+  }
 }
 
 // a reconciled row: notice on top, no Delete (the database refuses anyway — this just says so first)
 function applyLockState(exp){
   const locked = !!(exp && exp.reconciled_at);
-  $('lockNote').style.display = locked ? 'block' : 'none';
+  $('lockNote').style.display = locked ? 'block' : 'none'; $('lockUnlockBtn').style.display = '';
   if (locked) {
     $('deleteBtn').style.display = (refundOK && exp.reconciled_by === 'auto' && !exp.reconciled_statement_id) ? 'block' : 'none';
     $('lockNoteText').textContent = exp.reconciled_by === 'auto' && !exp.reconciled_statement_id
-      ? '🔒 cash rows check themselves off, so this one is locked. Description, category and comments can still change — unlock it to change the amount, date, card or payer.'
-      : '🔒 this row is locked — it’s been checked off against a statement. Description, category and comments can still change.';
+      ? '🔒 cash rows check themselves off, so this one is locked. Description, category, comments' + (fundIdOK && mode === 'editDaily' ? ', counts-against' : '') + ' can still change — unlock it to change the amount, date, card or payer.'
+      : '🔒 this row is locked — it’s been checked off against a statement. Description, category, comments' + (fundIdOK && mode === 'editDaily' ? ' and counts-against' : '') + ' can still change.';
   }
 }
 // un-reconcile the row being edited, right here in the sheet (QA round 1, A-B2)
@@ -5013,7 +5093,8 @@ async function deleteExpense(){
   let { error } = refundOK ? await sb.rpc('soft_delete_rows', { p_kind: mode === 'editFund' ? 'fund' : mode === 'editDaily' ? 'daily' : 'travel', p_ids: [editingExp.id] })
                            : await sb.from(table).delete().eq('id', editingExp.id);
   if (error) { saving = false; toast('couldn’t delete: ' + error.message); return; }
-  closeSheet(); toast(refundOK ? 'deleted — it’s in Settings → Recently deleted for 30 days' : 'deleted 🐻');
+  const wasXfer = mode === 'editFund' && /^Transfer [→←]/.test((editingExp.remarks) || '');
+  closeSheet(); toast(refundOK ? (wasXfer ? 'both sides deleted — the transfer is in Settings → Recently deleted for 30 days' : 'deleted — it’s in Settings → Recently deleted for 30 days') : 'deleted 🐻');
   if (mode === 'edit') { loadTravel(true); if (atx) loadAllTx(true); return; }
   loadHome();
   if (atx) loadAllTx(true);

@@ -205,7 +205,15 @@ begin
     values (current_setting('ci.hh')::uuid, current_date, 'viewer adds', 'Supermarket', 3, 'AUD', 'Visa — Owen', current_setting('ci.visa')::uuid);
   exception when others then ok := true; end;
   assert ok, 'a viewer cannot write';
+  -- QA round 2 (C-B1, C-B2): a viewer sees no invite codes and cannot purge the bin
+  select count(*) into n from public.member_invites; assert n = 0, 'a viewer reads no invite codes, got ' || n;
+  ok := false;
+  begin perform public.purge_deleted(0); exception when others then ok := true; end;
+  assert ok, 'a viewer cannot purge';
 end $$;
+-- a writer still sees the household's invites (it can make them)
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000002', true);
+do $$ declare n int; begin select count(*) into n from public.member_invites; assert n >= 1, 'a member reads invites'; end $$;
 
 -- ── one household per login ──────────────────────────────────────────────
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000001', true);

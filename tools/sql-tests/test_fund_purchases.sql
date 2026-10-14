@@ -67,6 +67,13 @@ begin
   perform public.move_expense_to_fund_spend(array[current_setting('ci.sc')::uuid]);
   select count(*) into n from public.fund_transactions where id = current_setting('ci.sc')::uuid and remarks = 'Car parts' and account_payment_method_id = current_setting('ci.visa')::uuid;
   assert n = 1, 'back as a movement charged to the Visa';
+  -- QA round 2 (B-B2): the Sort page's undo hands back the original card — here "none"
+  perform public.move_fund_spend_to_expenses(array[current_setting('ci.sc')::uuid], 'Car', current_setting('ci.visa')::uuid);
+  perform public.move_expense_to_fund_spend(array[current_setting('ci.sc')::uuid], jsonb_build_object(current_setting('ci.sc'), null));
+  select count(*) into n from public.fund_transactions where id = current_setting('ci.sc')::uuid and account_payment_method_id is null;
+  assert n = 1, 'undo restored "no card"';
+  select owed_on_cards into v from public.fund_cash where fund_id = current_setting('ci.car')::uuid;
+  assert v = 0, 'nothing owed on cards after a clean undo, got ' || v;
   select balance into v from public.fund_balances where fund_id = current_setting('ci.car')::uuid;
   assert v = 880.00, 'balance still 880.00 after the round trip, got ' || v;
   perform public.keep_fund_spend(array[current_setting('ci.sc')::uuid]);

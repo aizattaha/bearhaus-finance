@@ -467,7 +467,9 @@ function ask(title, text, yes){
   });
 }
 let toastT = null;
-function toast(m){ const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), /couldn|failed|refus|locked/i.test(m) ? 7000 : 3000); }
+const VIEW_ONLY_MSG = 'this login is view-only — you can see everything, change nothing';
+function toast(m){
+  if (/row-level security|view-only|42501/i.test(String(m))) m = VIEW_ONLY_MSG; const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), /couldn|failed|refus|locked/i.test(m) ? 7000 : 3000); }
 function go(scr){
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 'scr-' + scr));
   document.querySelectorAll('nav .nv').forEach(b => b.classList.toggle('active', b.dataset.scr === scr));
@@ -475,6 +477,7 @@ function go(scr){
   if (scr === 'pots') loadPots();
   if (scr === 'activity' && !ac.init) { ac.init = true; loadActivity(true); }
   if (scr === 'sort') loadSort();
+  if (scr === 'statements') refreshCardList();   // a card added on the phone shows up without a reload
   if (scr === 'swap' && !sw.init) { sw.init = true; initSwap(); }
   if (scr === 'swap' && [...new Set(CTX.funds.map(f => f.currency))].length < 2) $('swIntro').innerHTML = '<span class="tag warn">one currency</span> this household has funds in one currency only, so there is nothing to swap between — add a second country\'s funds in the app (Settings → Funds) first.';
 }
@@ -517,6 +520,10 @@ async function loadContext(){
   if (hh.error) { toast('couldn’t load household: ' + hh.error.message); return; }
   CTX = { hh: hh.data, profiles: profiles.data || [], cards: cards.data || [], funds: funds.data || [], cats: cats.data || [] };
   $('hhLabel').textContent = CTX.hh.name + ' household';
+  // a view-only login sees everything and changes nothing — say so up front instead of failing per click
+  const me = await sb.from('household_members').select('role').eq('user_id', (await sb.auth.getUser()).data.user.id).maybeSingle();
+  CTX.role = me.data ? me.data.role : 'member';
+  if (CTX.role === 'viewer') { document.body.classList.add('viewer'); const bn = document.createElement('div'); bn.className = 'card'; bn.style.cssText = 'margin:0 0 12px;padding:10px 14px;background:#fff7e6;border-color:#f3d9a4'; bn.innerHTML = '<span class="tag warn">view-only login</span> you can see everything in this household, but not change it — ask the owner for a full login if you need to.'; document.querySelector('main').prepend(bn); }
   const nSwapCur = [...new Set(CTX.funds.map(f => f.currency))].length;
   document.querySelector('nav .nv[data-scr="swap"]').style.display = nSwapCur < 2 ? 'none' : '';
   sortBadge();
@@ -541,6 +548,15 @@ function cardOptions(sel, withNone){
 
 // ── statements ──────────────────────────────────────────────
 const st = { card: null, periods: [], period: null, rows: [], statement: null, margin: true, carry: false, sel: new Set() };
+async function refreshCardList(){
+  const r = await sb.from('payment_methods').select('id, name, profile_id, kind, closing_day, currency, travel_only, is_archived, sort_order').order('sort_order');
+  if (r.error || !r.data) return;
+  const before = CTX.cards.map(c => c.id + c.name + c.is_archived + c.closing_day + c.currency).join('|');
+  CTX.cards = r.data;
+  if (before === CTX.cards.map(c => c.id + c.name + c.is_archived + c.closing_day + c.currency).join('|')) return;
+  const keep = $('stCard').value; $('stCard').innerHTML = cardOptions(null, true); $('stCard').value = keep;
+  if (st.card) st.card = cardById(st.card.id) || st.card;
+}
 function initStatements(){
   $('stCard').innerHTML = cardOptions(null, true);
   $('stCard').onchange = () => { st.card = cardById($('stCard').value) || null; st.sel.clear(); buildPeriods(); loadStatement(); };
@@ -582,11 +598,17 @@ function buildPeriods(){
       st.periods.push({ start: ms, end: me, open: i === 0 });
     }
   }
-  sel.innerHTML = st.periods.map((p, i) => '<option value="' + i + '">' + fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.open ? ' · in progress' : '') + '</option>').join('');
+  sel.innerHTML = st.periods.map((p, i) => '<option value="' + i + '">' + fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.closed ? ' · closed' : p.open ? ' · in progress' : '') + '</option>').join('');
   // default to the most recent period that actually has rows (decided in loadStatement on first load)
   st.pickDefault = true;
   const idx = st.periods.findIndex(p => !p.open); sel.value = String(idx < 0 ? 0 : idx);
   st.period = st.periods[parseInt(sel.value)];
+  // closed statements get their label (one cheap query; the list is relabelled in place when it lands)
+  sb.from('statements').select('period_end, closed_at').eq('payment_method_id', c.id).then(r => {
+    if (r.error || st.card !== c) return;
+    const closedEnds = new Set((r.data || []).filter(x => x.closed_at).map(x => x.period_end));
+    st.periods.forEach((p, i) => { p.closed = closedEnds.has(p.end); const o = sel.options[i]; if (o) o.textContent = fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.closed ? ' · closed' : p.open ? ' · in progress' : ''); });
+  });
   if (c.kind === 'credit_card' && !c.closing_day) $('stHint').textContent = 'this credit card has no closing day yet — set it in the app (Settings → Payment cards); showing calendar months meanwhile';
   else $('stHint').textContent = 'tick what appears on the statement · untick to un-reconcile · close when the totals agree';
 }
@@ -695,7 +717,7 @@ function renderStatement(){
       + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
       + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + fundTag(r) + '</span></td>'
       + '<td class="ell">' + esc(r.category) + '</td>'
-      + '<td class="ell c-who">' + esc(who(r.payer_profile_id)) + '</td>'
+      + '<td class="ell c-who">' + (r.kind === 'fund' ? '<span class="cap">—</span>' : esc(who(r.payer_profile_id))) + '</td>'
       + '<td class="c-src" style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod && !r._foreign ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
       + '<td class="amt"' + (r.credit ? ' style="color:var(--good)"' : '') + '>' + (r.credit ? '+' : '−') + fmtMoney(r.amount, r.currency) + curTag + '</td>'
       + '<td>' + (locked ? (closedSt ? '<span class="lock muted" title="on a closed statement — reopen it to change anything">🔒</span>' : '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>') : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
@@ -725,10 +747,13 @@ function updateStatementKpis(){
   const ticked = tickedAll.filter(r => r.currency === cur);
   const tickedTotal = ticked.reduce((s, r) => s + signed(r), 0);
   const otherCur = st.rows.filter(r => r.inPeriod && r.currency !== cur).length;
-  $('kApp').textContent = c ? fmtMoney(appTotal, cur) : '—';
   const credits = inP.filter(r => r.credit).length;
   const outT = inP.filter(r => !r.credit).reduce((s, r) => s + Number(r.amount), 0), inT = inP.filter(r => r.credit).reduce((s, r) => s + Number(r.amount), 0);
-  $('kAppSub').textContent = c ? inP.length + ' rows' + (credits ? ' · out ' + fmtMoney(outT, cur) + ' · in ' + fmtMoney(inT, cur) + ' (net shown)' : '') + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
+  // a bank account reads in − out (money arriving is good); a card reads new spend, with payments shown beside it
+  const isBankK = c && c.kind === 'bank';
+  $('kApp').textContent = c ? (isBankK ? (inT - outT >= 0 ? '+' : '−') + fmtMoney(Math.abs(inT - outT), cur) : fmtMoney(outT, cur)) : '—';
+  $('kApp').style.color = isBankK && inT - outT >= 0 ? 'var(--good)' : '';
+  $('kAppSub').textContent = c ? inP.length + ' rows' + (isBankK ? ' · in ' + fmtMoney(inT, cur) + ' · out ' + fmtMoney(outT, cur) : (credits ? ' · spend ' + fmtMoney(outT, cur) + ' · payments & credits ' + fmtMoney(inT, cur) : '')) + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
   $('kTicked').textContent = c ? fmtMoney(tickedTotal, cur) : '—';
   $('kTickedSub').textContent = c ? tickedAll.length + ' of ' + st.rows.length + ' rows shown' + (tickedAll.length > ticked.length ? ' · ' + (tickedAll.length - ticked.length) + ' in another currency, not in the total' : '') + (st.hiddenOther ? ' · ' + st.hiddenOther + ' on other statements, hidden' : '') : '';
   const stTotal = parseFloat($('stTotal').value);
@@ -748,8 +773,8 @@ function updateStatementKpis(){
     $('kChain').innerHTML = '<span class="cap">previous statement closed at ' + fmtMoney(st.prevClose.closing_balance, cur) + ' — <a href="#" onclick="$(\'stOpen\').value=' + Number(st.prevClose.closing_balance).toFixed(2) + ';saveStatementTotal();return false" style="color:#fff">use as opening</a></span>';
   } else $('kChain').textContent = '';
   const n = st.sel.size, selRows = st.rows.filter(r => st.sel.has(r.key));
-  const selTotal = selRows.reduce((s, r) => s + signed(r), 0);
-  $('stSelInfo').textContent = n ? n + ' selected · ' + fmtMoney(selTotal, cur) : 'nothing selected';
+  const byCurSel = {}; selRows.forEach(r => byCurSel[r.currency] = (byCurSel[r.currency] || 0) + signed(r));
+  $('stSelInfo').textContent = n ? n + ' selected · ' + Object.entries(byCurSel).sort((a, b) => (a[0] === cur ? -1 : b[0] === cur ? 1 : 0)).map(([k, v]) => fmtMoney(v, k)).join(' + ') : 'nothing selected';
   const closed = st.statement && st.statement.closed_at;
   const nOpen = selRows.filter(r => !r.reconciled_at).length, nLocked = selRows.filter(r => r.reconciled_at).length;
   $('stReconcile').disabled = !nOpen || closed; $('stReconcile').textContent = 'Reconcile selected' + (nOpen ? ' (' + nOpen + ')' : '');
@@ -796,7 +821,15 @@ function defaultLegs(){
   let legs = Object.entries(by).map(([fund_id, amount]) => ({ fund_id, amount: Math.round(amount * 100) / 100 })).filter(l => l.amount > 0).sort((a, b) => b.amount - a.amount);
   if (!legs.length) legs = [{ fund_id: defPot, amount: Math.max(remaining, 0) }];
   const sum = legs.reduce((t, l) => t + l.amount, 0), diff = Math.round((remaining - sum) * 100) / 100;
-  if (Math.abs(diff) >= 0.005) legs[0].amount = Math.round((legs[0].amount + diff) * 100) / 100;   // statement total wins over the ticked split
+  if (Math.abs(diff) >= 0.005) {
+    // the statement total wins over the ticked split — but the unexplained part is the spending pot's to carry,
+    // never a named fund's (a Car Fund leg is its own purchases, nothing more)
+    let pot = legs.find(l => l.fund_id === defPot);
+    if (!pot) { pot = { fund_id: defPot, amount: 0 }; legs.push(pot); }
+    pot.amount = Math.round((pot.amount + diff) * 100) / 100;
+    if (pot.amount < 0) { const take = -pot.amount; pot.amount = 0; legs.sort((a, b) => b.amount - a.amount)[0].amount = Math.round((legs.sort((a, b) => b.amount - a.amount)[0].amount - take) * 100) / 100; }
+    legs.sort((a, b) => b.amount - a.amount);
+  }
   return legs.filter(l => l.amount > 0);
 }
 function renderPay(){
@@ -1085,11 +1118,12 @@ async function toggleCloseStatement(){
     const closing = !s.closed_at;
     if (closing) {
       const open = st.rows.filter(r => r.inPeriod && !r.reconciled_at).length;
-      if (open && !await ask('Close with ' + open + ' unticked rows?', 'They stay unreconciled and carry over to the next statement.', 'Close anyway')) return;
+      if (!await ask('Close this statement?', (open ? open + ' unticked rows stay unreconciled and carry over to the next statement. ' : '') + 'Its ticked rows are hidden from later periods; you can reopen it any time.', open ? 'Close anyway' : 'Close')) return;
     }
     const { error } = await sb.from('statements').update({ closed_at: closing ? new Date().toISOString() : null }).eq('id', s.id);
     if (error) throw error;
     st.statement.closed_at = closing ? new Date().toISOString() : null;
+    st.period.closed = closing; { const o = $('stPeriod').options[st.periods.indexOf(st.period)]; if (o) o.textContent = fmtDs(st.period.start) + ' – ' + fmtD(st.period.end) + (closing ? ' · closed' : st.period.open ? ' · in progress' : ''); }
     toast(closing ? 'statement closed ✓ — only its rows are shown now' : 'statement reopened'); st.sel.clear(); await loadStatement();
     if (closing && st.card.kind === 'credit_card' && st.pay && st.pay.status !== 'paid') { $('stPay').scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('closed ✓ — now record the payment below'); }
   } catch (err) { toast('couldn’t update: ' + (err.message || err)); }
@@ -1270,6 +1304,8 @@ async function applyBulk(){
       // rows that no longer match the filter leave the list
       if (cf === 'none' && cardV !== NOCHG && cardV !== 'none') nc.rows = nc.rows.filter(r => !nc.sel.has(r.key));
       else if (cf && cf !== 'none' && cardV !== NOCHG && cardV !== cf && !(cf === 'cash' && cardV === 'cash')) nc.rows = nc.rows.filter(r => !nc.sel.has(r.key));
+      const ff = $('ncFundF').value;
+      if (ff && fundV !== NOCHG) nc.rows = nc.rows.filter(r => !nc.sel.has(r.key) || (ff === 'any' ? !!r.fund_id : ff === 'budget' ? !r.fund_id : r.fund_id === ff));
       nc.sel.clear(); renderNoCard();
     }
   } catch (err) { toast('couldn’t update: ' + (err.message || err)); $('bkApply').disabled = false; }
@@ -1513,6 +1549,15 @@ async function loadPots(){
       + '<td class="amt" style="color:' + (Number(x.pending_spend) > 0 ? 'var(--warn)' : 'var(--ink-soft)') + '">' + (x.pending_spend != null ? fmtMoney(x.pending_spend, p.currency) : '—') + '</td>'
       + '</tr>'; }).join('')
     + '</tbody></table></div>').join('')
+    // any other fund with purchases on a card (a car service on the Visa against the Car Fund) gets the same three numbers
+    + (() => { const others = (b.data || []).filter(f => !f.is_spend_pot && ca[f.fund_id] && Math.abs(Number(ca[f.fund_id].owed_on_cards)) >= 0.005);
+        return others.length ? '<div class="card"><p class="h2" style="margin-bottom:4px">Other funds with money on cards</p><p class="cap" style="margin-bottom:10px">purchases entered as “from a fund” and not yet paid off — their legs are proposed when you record the card payment</p>'
+          + '<table><thead><tr><th>Fund</th><th class="amt">Available</th><th class="amt">Owed on cards</th><th class="amt">In the bank</th></tr></thead><tbody>'
+          + others.map(p => { const y = ca[p.fund_id]; const owed = Number(y.owed_on_cards); return '<tr><td><span class="dsc">💰 ' + esc(p.name) + '</span> <span class="cap">' + esc(countryTitle(p.country)) + '</span></td>'
+            + '<td class="amt lbl">' + fmtMoney(p.balance, p.currency) + '</td>'
+            + '<td class="amt" style="color:' + (owed > 0 ? 'var(--warn)' : 'var(--primary)') + '">' + (owed < 0 ? '−' + fmtMoney(-owed, p.currency) + ' <span class="tag blue" title="a refund or a payment larger than its purchases — a credit sitting on the card">credit</span>' : fmtMoney(owed, p.currency)) + '</td>'
+            + '<td class="amt lbl">' + fmtMoney(y.cash_balance, p.currency) + '</td></tr>'; }).join('')
+          + '</tbody></table></div>' : ''; })()
     + (cards.length ? '<div class="card"><p class="h2" style="margin-bottom:4px">Credit cards</p><p class="cap" style="margin-bottom:10px">charges since ' + (CTX.hh.pot_start ? fmtD(CTX.hh.pot_start) : 'the start') + ' minus the payments recorded · record payments on the Statements page when you close a statement</p>'
       + '<table><thead><tr><th>Card</th><th class="amt">Charged</th><th class="amt">Paid</th><th class="amt">Owed</th><th style="width:140px">Last payment</th><th style="width:120px"></th></tr></thead><tbody>'
       + cards.map(x => '<tr><td><span class="dsc">💳 ' + esc(x.name) + '</span></td>'
@@ -1589,6 +1634,8 @@ async function sortMove(){
   $('sfGo').disabled = true;
   const { data, error } = await sb.rpc('move_fund_spend_to_expenses', { p_ids: ids, p_category: cat, p_payment_method: card });
   if (error) { toast('couldn’t move: ' + error.message); $('sfGo').disabled = false; return; }
+  // remember what each row was charged to before the move, so undo puts it back exactly (usually: no card)
+  sf.lastCards = Object.fromEntries(ids.map(id => [id, (sf.rows.find(x => x.id === id) || {}).account_payment_method_id || null]));
   sf.lastMove = ids; toast(data + ' moved ✓'); await sortBadge(); loadSort();
 }
 async function sortKeep(){
@@ -1599,9 +1646,9 @@ async function sortKeep(){
 }
 async function sortUndo(){
   if (!sf.lastMove) return;
-  const { data, error } = await sb.rpc('move_expense_to_fund_spend', { p_ids: sf.lastMove });
+  const { data, error } = await sb.rpc('move_expense_to_fund_spend', { p_ids: sf.lastMove, p_cards: sf.lastCards || {} });
   if (error) { toast('couldn’t undo: ' + error.message); return; }
-  sf.lastMove = null; toast(data + ' sent back to movements'); await sortBadge(); loadSort();
+  sf.lastMove = null; sf.lastCards = null; toast(data + ' sent back to movements — exactly as they were'); await sortBadge(); loadSort();
 }
 
 // ── activity (audit_log) ────────────────────────────────────
