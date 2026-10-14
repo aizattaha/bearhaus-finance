@@ -568,7 +568,7 @@ input[type="date"].descinput{min-width:0}
   <div id="sh-chooser">
     <div class="sheet-head"><span class="h2">Add</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
     <button class="choice" onclick="openForm('daily')"><div class="rowicon">🛒</div><span class="lbl">Daily expense</span></button>
-    <button class="choice" onclick="openForm('fund')"><div class="rowicon">💰</div><span class="lbl">Fund transaction</span></button>
+    <button class="choice" onclick="openForm('fundexp')"><div class="rowicon">💰</div><span class="lbl">Expense from a fund</span></button>
     <button class="choice" onclick="openForm('trip')"><div class="rowicon">✈️</div><span class="lbl">Trip expense</span></button>
     <button class="choice" onclick="openForm('transfer')"><div class="rowicon">🔁</div><span class="lbl">Transfer between funds</span></button>
   </div>
@@ -586,7 +586,7 @@ input[type="date"].descinput{min-width:0}
       <div class="f-sec" id="rowCategory"><button type="button" class="arow" id="catRow" onclick="openCatPicker()"></button></div>
       <div class="f-sec" id="rowTrip" style="display:none"><button type="button" class="arow" id="tripRow" onclick="openTripPicker()"></button></div>
       <div class="f-sec" id="rowPayCard" style="display:none"><button type="button" class="arow" id="payCardRow" onclick="openPayCardPicker()"></button><p class="cap" id="payCardHint" style="margin:6px 2px 0"></p></div>
-      <div class="f-sec" id="rowFundFrom" style="display:none"><button type="button" class="arow" id="fundFromRow" onclick="openFundPicker('from')"></button></div>
+      <div class="f-sec" id="rowFundFrom" style="display:none"><button type="button" class="arow" id="fundFromRow" onclick="openFundPicker('from')"></button><p class="cap" id="fundHint" style="display:none;margin:6px 2px 0"></p></div>
       <div class="f-sec" id="rowFundTo" style="display:none"><button type="button" class="arow" id="fundToRow" onclick="openFundPicker('to')"></button><input class="descinput" id="recvInput" type="number" step="0.01" placeholder="amount received" style="display:none;margin-top:8px"></div>
       <div class="f-sec" id="rowDate"><button type="button" class="arow" onclick="openDatePick()"><span class="ric">📅</span><span class="rmid"><span class="rlab">date</span><span class="rval" id="dateVal">Today</span></span><span class="chev">›</span></button><input id="dateInput" type="hidden"></div>
       <div class="amount-line" onclick="focusAmount()" role="button" tabindex="0" aria-label="amount — opens the numpad" style="cursor:pointer">
@@ -1408,9 +1408,10 @@ function renderBudget(st){
     // drill level 1: this group's categories, biggest spend first;
     // level 2: a category's line items, revealed on tap
     const monthExp = (st.exp || []).filter(r =>
-      r.currency === PC && r.date <= todayS && r.date.slice(0, 7) + '-01' === st.month && !fromFund(r) && (GROUP_OF[r.category] || 'Other') === row.group);
+      r.currency === PC && r.date <= todayS && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group);
+    // fund-funded purchases are listed under their category (tagged) but never add to the month's number
     const catSums = {};
-    monthExp.forEach(r => catSums[r.category] = (catSums[r.category] || 0) + sa(r));
+    monthExp.forEach(r => catSums[r.category] = (catSums[r.category] || 0) + (fromFund(r) ? 0 : sa(r)));
     const card = document.createElement('div');
     card.className = 'card pacecard';
     card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
@@ -1434,7 +1435,7 @@ function renderBudget(st){
       crow.innerHTML = '<span style="flex-shrink:0">' + (CAT_ICON[cName] || '🛍️') + '</span>'
         + '<span class="dd" style="font-weight:500">' + esc(cName) + '</span>'
         + '<span class="cap">▾</span>'
-        + '<span class="amt">−' + fmtMoney(cSum, PC) + '</span>';
+        + (cSum > 0.005 || !monthExp.some(r => r.category === cName && fromFund(r)) ? '<span class="amt">−' + fmtMoney(cSum, PC) + '</span>' : '<span class="cap">from funds</span>');
       const sub = document.createElement('div');
       sub.style.cssText = 'display:none;padding-left:22px';
       monthExp.filter(r => r.category === cName)
@@ -1442,9 +1443,10 @@ function renderBudget(st){
         .forEach(r => {
           const lr = document.createElement('div');
           lr.className = 'drow';
-          lr.innerHTML = `<span class="dd">${esc(r.description)}</span>
+          const ff = fromFund(r);
+          lr.innerHTML = `<span class="dd">${esc(r.description)}${ff ? ' <span class="cap" style="color:var(--primary)">💰 ' + esc((fundById(r.fund_id) || {}).name || 'a fund') + '</span>' : ''}</span>
           <span class="cap">${new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})}</span>
-          <span class="amt">−${fmtMoney(r.amount, PC)}</span>`;
+          <span class="amt"${ff ? ' style="color:var(--ink-soft)"' : ''}>${r.is_refund ? '+' : '−'}${fmtMoney(r.amount, PC)}</span>`;
           if (r.id) {
             lr.style.cursor = 'pointer';
             lr.onclick = async ev => {
@@ -1837,7 +1839,7 @@ async function toggleFundDrill(btn, fund){
       row.innerHTML = '<span class="dd">' + monthName(t.month, true) + ' spending <span class="cap">· ' + t.n + ' items' + (t.month === curMonthIso() ? ' so far' : '') + '</span></span>'
         + '<span class="cap">' + new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'}) + '</span>'
         + '<span class="amt" style="color:var(--bad)">−' + fmtMoney(t.amount, fund.currency) + '</span>';
-      row.onclick = () => openAllTx({ type: 'Daily', month: t.month });
+      row.onclick = () => openAllTx(fundIdOK ? { type: 'Funds', what: fund.fund_id, month: t.month } : { type: 'Daily', month: t.month });
       d.appendChild(row);
       return;
     }
@@ -2351,7 +2353,10 @@ function openBudgetMonthTx(){
 const fmtDayMonYr = d => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'});
 // sources: d = daily expense · t = trip (travel) expense · f = fund transaction
 const ATX_TYPES = ['All', 'Daily', 'Trips', 'Income', 'Funds'];
-const atxSources = type => type === 'All' ? ['d', 't', 'f'] : type === 'Daily' ? ['d'] : type === 'Trips' ? ['t'] : ['f'];
+// one fund's history is its movements PLUS the purchases counted against it (pot or named fund)
+const atxWhatVal = () => $('atxWhat').style.display === 'none' ? '' : $('atxWhat').value;
+const atxSources = type => type === 'All' ? ['d', 't', 'f'] : type === 'Daily' ? ['d'] : type === 'Trips' ? ['t']
+  : (type === 'Funds' && atxWhatVal() && fundIdOK) ? ['d', 'f'] : ['f'];
 let atxAux = null;                 // {inc: income_budgets rows, applied: {month: date}} — the plan's story
 let atxOpenPlans = new Set();      // months whose plan group is expanded
 let atxOpenSwaps = new Set();      // pot swaps whose legs are expanded
@@ -2422,7 +2427,7 @@ async function loadAllTx(reset){
   const src = atxSources(type);
   const q = $('atxSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch);
   const m = $('atxMonth').value;
-  const what = $('atxWhat').style.display === 'none' ? '' : $('atxWhat').value;
+  const what = atxWhatVal();
   const openOnly = $('atxOpenOnly').classList.contains('sel');
   $('atxMore').style.display = 'none';
   if (!atx.rows.length) $('atxList').innerHTML = '<p class="cap" style="padding:12px 0">loading…</p>';
@@ -2447,6 +2452,7 @@ async function loadAllTx(reset){
       if (q) qd = qd.ilike('description', '%' + q + '%');
       if (m) qd = qd.gte('date', m).lt('date', addMonths(m, 1));
       if (type === 'Daily' && what) qd = qd.eq('category', what);
+      if (type === 'Funds' && what) qd = qd.eq('pot_fund_id', what);
       if (openOnly && reconOK) qd = qd.is('reconciled_at', null);
     }
     if (src.includes('t') && !atx.tDone) {
@@ -4217,17 +4223,25 @@ function fundPickerItems(selId){
 function renderFundRow(which){
   const isFrom = which === 'from';
   const f = fundById(isFrom ? fundFromId : fundToId);
-  const lab = mode === 'income' ? 'lands in' : (mode === 'transfer' ? (isFrom ? 'from' : 'to') : mode === 'paycard' ? 'paid from' : 'from fund');
+  const lab = mode === 'income' ? 'lands in' : (mode === 'transfer' ? (isFrom ? 'from' : 'to') : mode === 'paycard' ? 'paid from' : (mode === 'fundexp' || mode === 'editDaily') ? 'counts against' : 'from fund');
   const el = $(isFrom ? 'fundFromRow' : 'fundToRow');
-  el.innerHTML = '<span class="ric">' + (f ? fundIcon(f.name) : '💰') + '</span>'
+  el.innerHTML = '<span class="ric">' + (f ? fundIcon(f.name) : (mode === 'editDaily' ? '🗓️' : '💰')) + '</span>'
     + '<span class="rmid"><span class="rlab">' + lab + '</span><span class="rval">'
-    + (f ? esc(f.name) + ' · ' + curLabel(f.currency) : 'pick a fund') + '</span></span>'
+    + (f ? esc(f.name) + ' · ' + curLabel(f.currency) : (mode === 'editDaily' ? 'the month’s budget' : 'pick a fund')) + '</span></span>'
     + '<span class="chev">›</span>';
 }
 function openFundPicker(which){
   const selId = which === 'from' ? fundFromId : fundToId;
-  openPicker(mode === 'income' ? 'Lands in' : mode === 'paycard' ? 'Paid from' : (which === 'from' ? 'From fund' : 'To fund'),
-    fundPickerItems(selId), it => {
+  let items = fundPickerItems(selId);
+  if (mode === 'editDaily') {
+    // only funds holding the row's currency can take it; headers with nothing left under them go too
+    const cur = SEG2CODE[segSel('segCurrency')] || (editingExp || {}).currency;
+    items = items.filter(it => it.hdr || !cur || (fundById(it.id) || {}).currency === cur || it.id === selId);
+    items = items.filter((it, i) => !it.hdr || (items[i + 1] && !items[i + 1].hdr));
+    items.unshift({ id: null, name: 'the month’s budget', icon: '🗓️', cap: 'its category’s spending pot (the usual)', sel: !selId });
+  }
+  openPicker(mode === 'income' ? 'Lands in' : mode === 'paycard' ? 'Paid from' : (mode === 'fundexp' || mode === 'editDaily') ? 'Counts against' : (which === 'from' ? 'From fund' : 'To fund'),
+    items, it => {
       if (which === 'from') fundFromId = it.id; else fundToId = it.id;
       renderFundRow(which); afterFundChange();
     });
@@ -4242,6 +4256,8 @@ function afterFundChange(){
     if (differ) $('recvInput').placeholder = 'amount received in ' + curLabel(to.currency);
   } else if (mode === 'income') {
     $('fundCurLabel').textContent = to ? curLabel(to.currency) : '';
+  } else if (mode === 'editDaily') {
+    // a daily row keeps its own currency segment; the fund just has to match it
   } else {
     $('fundCurLabel').textContent = from ? curLabel(from.currency) : '';
   }
@@ -4355,26 +4371,28 @@ function openForm(m){
   mode = m; amt = ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; armSaveKey();
   editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none'; $('lockNote').style.display = 'none';
   $('descInput').value = ''; $('commentsInput').value = ''; setRefund(false);
-  $('refundWrap').style.display = (m === 'daily' || m === 'trip') && refundOK ? 'flex' : 'none';
+  $('refundWrap').style.display = (m === 'daily' || m === 'trip' || m === 'fundexp') && refundOK ? 'flex' : 'none';
   $('dateInput').value = isoDate(new Date()); updateDateVal();
   $('rowDetails').style.display = 'none';
   hideTake();
   // three tabs (Aug 2026): Expense · Income · Transfer — Expense splits into Daily / Fund / Trip below
   const TABS = [['Expense', 'daily'], ['Income', 'income'], ['Transfer', 'transfer']];
-  const tabOf = x => x === 'income' ? x : (x === 'transfer' || x === 'paycard') ? 'transfer' : 'expense';
+  const tabOf = x => x === 'income' ? x : (x === 'transfer' || x === 'paycard' || x === 'fund') ? 'transfer' : 'expense';
   $('rowMode').style.display = 'block';
   buildSeg('segMode', TABS.map(x => x[0]), Math.max(TABS.findIndex(x => tabOf(x[1]) === tabOf(m)), 0),
     lbl => { const target = TABS.find(x => x[0] === lbl)[1]; if (tabOf(target) !== tabOf(mode)) openForm(target); });
   const isExp = tabOf(m) === 'expense';
   const hasCC = (CTX.cards || []).some(c => c.kind === 'credit_card' && !c.is_archived);
-  const isXferTab = tabOf(m) === 'transfer' && hasCC;
+  const isXferTab = tabOf(m) === 'transfer';
   $('rowScope').style.display = (isExp || isXferTab) ? 'block' : 'none';
   if (isExp) {
-    const SCOPES = [['Daily', 'daily'], ['Fund', 'fund'], ['Trip', 'trip']];
+    // a purchase is a purchase wherever the money comes from: the month's budget (Daily), a fund, or a trip
+    const SCOPES = [['Daily', 'daily'], ['From a fund', 'fundexp'], ['Trip', 'trip']];
     buildSeg('segScope', SCOPES.map(x => x[0]), Math.max(SCOPES.findIndex(x => x[1] === m), 0),
       lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) openForm(target); });
   } else if (isXferTab) {
-    const SCOPES = [['Between funds', 'transfer'], ['💳 Pay a card', 'paycard']];
+    // money moving, not spending: between funds · out of a fund to somewhere else · paying a card
+    const SCOPES = [['Between funds', 'transfer'], ['Money out', 'fund']].concat(hasCC ? [['💳 Pay a card', 'paycard']] : []);
     buildSeg('segScope', SCOPES.map(x => x[0]), Math.max(SCOPES.findIndex(x => x[1] === m), 0),
       lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) openForm(target); });
   }
@@ -4385,15 +4403,16 @@ function openForm(m){
   const fundish = m === 'fund' || m === 'transfer' || m === 'income' || m === 'paycard';   // no category; the currency follows the fund
   $('rowTrip').style.display = m === 'trip' ? 'block' : 'none';
   $('rowPayCard').style.display = m === 'paycard' ? 'block' : 'none';
-  $('rowFundFrom').style.display = (m === 'fund' || m === 'transfer' || m === 'paycard') ? 'block' : 'none';
+  $('rowFundFrom').style.display = (m === 'fund' || m === 'transfer' || m === 'paycard' || m === 'fundexp') ? 'block' : 'none';
   $('rowFundTo').style.display = (m === 'transfer' || m === 'income') ? 'block' : 'none';
   $('recvInput').style.display = 'none'; $('recvInput').value = '';
   $('rowType').style.display = 'none';   // the in/out toggle only exists when editing old rows
   $('rowCategory').style.display = fundish ? 'none' : 'block';
   // a one-person household has nobody to split with — skip the payer row
   $('rowPayer').style.display = (fundish || names.length < 2) ? 'none' : 'block';
-  $('segCurrency').style.display = fundish ? 'none' : 'inline-flex';
-  $('fundCurLabel').style.display = fundish ? 'inline' : 'none';
+  $('segCurrency').style.display = (fundish || m === 'fundexp') ? 'none' : 'inline-flex';
+  $('fundCurLabel').style.display = (fundish || m === 'fundexp') ? 'inline' : 'none';
+  $('fundHint').style.display = 'none';
   $('cardWrap').style.display = fundish ? 'none' : 'block';
   $('detailsBtn').style.display = (m === 'transfer' || m === 'paycard') ? 'none' : 'inline-block';   // a transfer has no card or note
   $('amtDisp').style.color = m === 'income' ? 'var(--good)' : 'var(--primary)';
@@ -4406,12 +4425,25 @@ function openForm(m){
     buildSeg('segCurrency', homeLabels, Math.max(homeLabels.indexOf(lastCur), 0));
     selectedCat = (CTX.topDaily || FALLBACK_DAILY)[0];
     renderCatRow();
-  } else if (m === 'fund') {
+  } else if (m === 'fundexp') {
     $('formTitle').textContent = 'Add';
-    $('descInput').placeholder = 'remarks — e.g. groceries top-up';
+    $('descInput').placeholder = 'description — e.g. Car parts';
+    const lastFund = localStorage.getItem('bh-fundexp');
+    fundFromId = (lastFund && CTX.funds.some(f => f.id === lastFund)) ? lastFund
+      : ((CTX.funds.find(f => !f.is_spend_pot && !f.is_leftover_target) || CTX.funds[0] || {}).id || null);
+    renderFundRow('from'); afterFundChange();
+    selectedCat = (CTX.topDaily || FALLBACK_DAILY)[0];
+    renderCatRow();
+    $('fundHint').textContent = 'a purchase paid for by a fund — it goes on the card’s statement like any other, counts against the fund (not the month’s budget), and shows in the category’s history';
+    $('fundHint').style.display = 'block';
+  } else if (m === 'fund') {
+    $('formTitle').textContent = 'Money out';
+    $('descInput').placeholder = 'remarks — e.g. Stashaway top-up';
     const lastFund = localStorage.getItem('bh-fund');
     fundFromId = (lastFund && CTX.funds.some(f => f.id === lastFund)) ? lastFund : ((CTX.funds[0] || {}).id || null);
     renderFundRow('from'); afterFundChange();
+    $('fundHint').textContent = 'money leaving a fund that is NOT a purchase — an investment, paying someone back, a fee. Bought something with it? Use Expense → From a fund so it reaches the card’s statement.';
+    $('fundHint').style.display = 'block';
   } else if (m === 'income') {
     $('formTitle').textContent = 'Add income';
     $('descInput').placeholder = 'source — e.g. Salary';
@@ -4570,7 +4602,7 @@ async function saveEntry(){
       if (error) throw error;
       localStorage.setItem('bh-fund', fundId);
       const f = fundById(fundId);
-      done(true, 'saved — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
+      done(true, 'money out — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
       if (fundsInit) loadFunds();
       return;
     }
@@ -4674,18 +4706,20 @@ async function saveEntry(){
       if (atx) loadAllTx(true);
       return;
     }
-    const currency = SEG2CODE[segSel('segCurrency')] || primaryCur();
+    const fundExp = mode === 'fundexp' ? fundById(fundFromId) : null;
+    if (mode === 'fundexp' && !fundExp) { done(false, 'pick the fund this comes out of'); return; }
+    const currency = fundExp ? fundExp.currency : (SEG2CODE[segSel('segCurrency')] || primaryCur());
     const payer = segSel('segPayer');
     const cat = gridSel();
     if (!cat) { done(false, 'pick a category'); return; }
     const pid = (CTX.profiles.find(x => x.display_name === payer) || {}).id || null;
     // a row with no card can never sit on a statement — every new expense names one (cash counts)
-    if ((mode === 'daily' || mode === 'trip') && !$('cardSel').value && cat !== 'Payment') {
+    if ((mode === 'daily' || mode === 'trip' || mode === 'fundexp') && !$('cardSel').value && cat !== 'Payment') {
       if ($('rowDetails')) $('rowDetails').style.display = 'block';
       if ($('cardWrap')) $('cardWrap').style.display = 'block';
       done(false, 'pick the card you paid with (or Cash)'); return;
     }
-    if ((mode === 'daily' || mode === 'trip') && !curMismatchOk) {
+    if ((mode === 'daily' || mode === 'trip' || mode === 'fundexp') && !curMismatchOk) {
       const cardRow = (CTX.cards || []).find(c => c.name === $('cardSel').value);
       if (cardRow && cardRow.currency && cardRow.currency !== currency) {
         curMismatchOk = true; setTimeout(() => { curMismatchOk = false; }, 8000);
@@ -4695,7 +4729,7 @@ async function saveEntry(){
     }
     curMismatchOk = false;
     // a sanity check, not a rule: very large amounts and dates far from today are usually typos
-    if (!bigOk && (mode === 'daily' || mode === 'trip' || mode === 'editDaily' || mode === 'edit')) {
+    if (!bigOk && (mode === 'daily' || mode === 'trip' || mode === 'fundexp' || mode === 'editDaily' || mode === 'edit')) {
       const far = Math.abs((new Date(date + 'T00:00:00') - new Date(todayIso() + 'T00:00:00')) / 864e5) > 365;
       if (cost >= 100000 || far) {
         bigOk = true; setTimeout(() => { bigOk = false; }, 8000);
@@ -4721,12 +4755,21 @@ async function saveEntry(){
     }
     if (mode === 'editDaily') {
       // one server-side transaction: row + splits can never diverge (QA-5)
-      const { error } = await sb.rpc('save_expense', Object.assign({
+      const fundNow = fundIdOK ? (fundById(fundFromId) || null) : null;
+      if (fundIdOK && fundNow && fundNow.currency !== currency) { done(false, fundNow.name + ' holds ' + curLabel(fundNow.currency) + ' — a ' + curLabel(currency) + ' purchase can’t count against it'); return; }
+      const args = Object.assign({
         p_kind: 'daily', p_id: editingExp.id, p_date: date, p_description: desc,
         p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
         p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
         p_seen_updated_at: editingExp.updated_at || null,
-      }, refundOK ? { p_is_refund: isRefund } : {}));
+      }, refundOK ? { p_is_refund: isRefund } : {}, fundIdOK ? { p_set_fund: true, p_fund_id: fundFromId || null } : {});
+      let { error } = await sb.rpc('save_expense', args);
+      // the fund-aware save_expense may land a few minutes after the app — fall back to the old signature once
+      if (error && fundIdOK && /PGRST202|p_set_fund|could not find the function/i.test((error.code || '') + ' ' + (error.message || ''))) {
+        delete args.p_set_fund; delete args.p_fund_id;
+        if ((fundFromId || null) !== (editingExp.fund_id || null)) { done(false, 'the “counts against” change isn’t live yet — try again in a few minutes'); return; }
+        ({ error } = await sb.rpc('save_expense', args));
+      }
       if (error) throw error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
       if (atx) loadAllTx(true);
@@ -4744,6 +4787,7 @@ async function saveEntry(){
       base.trip_id = selectedTripId;
     }
     if (refundOK) base.is_refund = isRefund;
+    if (mode === 'fundexp') { base.fund_id = fundExp.id; localStorage.setItem('bh-fundexp', fundExp.id); }
     // the split rows (payer +, joint −) are derived by the database from payer + amount
     const { error } = await sb.from(table).insert(base).select('id').single();
     if (error) throw error;
@@ -4751,7 +4795,8 @@ async function saveEntry(){
     localStorage.setItem('bh-cur', segSel('segCurrency'));
     if (mode === 'trip' && travelInit) loadTravel(true);
     const tripName = mode === 'trip' ? (tripById(selectedTripId) || {}).name : '';
-    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (tripName ? ' · ' + tripName : ''));
+    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (tripName ? ' · ' + tripName : '') + (fundExp ? ' · from ' + fundExp.name : ''));
+    if (fundExp && fundsInit) loadFunds();
   } catch (err) {
     done(false, err.message || String(err));
   }
@@ -4833,7 +4878,11 @@ function openEditDaily(exp){
   $('dateInput').value = exp.date; updateDateVal();
   $('commentsInput').value = exp.comments || '';
   $('rowTrip').style.display = 'none';
-  $('rowFundFrom').style.display = 'none';
+  // which fund this purchase counts against (nothing = the month's budget, via its category's pot)
+  fundFromId = fundIdOK ? (exp.fund_id || null) : null;
+  $('rowFundFrom').style.display = fundIdOK ? 'block' : 'none';
+  $('fundHint').style.display = 'none';
+  if (fundIdOK) renderFundRow('from');
   $('rowFundTo').style.display = 'none';
   $('rowType').style.display = 'none';
   $('rowCategory').style.display = 'block';

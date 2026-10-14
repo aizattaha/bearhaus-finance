@@ -12,6 +12,8 @@ insert into public.payment_methods (household_id, name, kind, currency) values (
 select set_config('ci.visa', :'visa', true);
 insert into public.funds (household_id, name, country, currency) values (:'hh', 'Car Fund', 'AU', 'AUD') returning id as car \gset
 select set_config('ci.car', :'car', true);
+insert into public.funds (household_id, name, country, currency) values (:'hh', 'SG Savings', 'SG', 'SGD') returning id as sgfund \gset
+select set_config('ci.sgfund', :'sgfund', true);
 -- money in, then a "fund spend" the old way (a movement out)
 insert into public.fund_transactions (household_id, fund_id, type, date, amount, remarks, origin) values (:'hh', :'car', 'income', current_date - 10, 1000, 'opening', 'manual');
 insert into public.fund_transactions (household_id, fund_id, type, date, amount, remarks, origin) values (:'hh', :'car', 'expense', current_date - 5, 120.00, 'Car parts', 'manual') returning id as sc \gset
@@ -70,6 +72,35 @@ begin
   perform public.keep_fund_spend(array[current_setting('ci.sc')::uuid]);
   select count(*) into n from public.fund_spend_sort where id = current_setting('ci.sc')::uuid;
   assert n = 0, '"keep" removes it from the sort list';
+end $$;
+-- phase 2: the phone's edit sheet sets or clears the fund through save_expense
+do $$
+declare v_id uuid; v_pot uuid; n int; v numeric;
+begin
+  insert into public.daily_expenses (household_id, date, description, category, amount, currency, paid_with, payment_method_id)
+  values (current_setting('ci.hh')::uuid, current_date, 'Tyres', 'Car', 300, 'AUD', 'Visa', current_setting('ci.visa')::uuid) returning id into v_id;
+  select pot_fund_id into v_pot from public.expenses where id = v_id;
+  -- p_set_fund false: the fund is left alone (an old client, or a save that didn't touch the row)
+  perform public.save_expense('daily', v_id, current_date, 'Tyres', 'Car', 300, 'AUD', null, 'Visa', '', null, null, false, current_setting('ci.car')::uuid);
+  select count(*) into n from public.expenses where id = v_id and fund_id is null;
+  assert n = 1, 'p_set_fund false leaves fund_id alone';
+  -- p_set_fund true with a fund: counts against the Car Fund, stamped to it, pot untouched
+  perform public.save_expense('daily', v_id, current_date, 'Tyres', 'Car', 300, 'AUD', null, 'Visa', '', null, null, true, current_setting('ci.car')::uuid);
+  select count(*) into n from public.expenses where id = v_id and fund_id = current_setting('ci.car')::uuid and pot_fund_id = current_setting('ci.car')::uuid;
+  assert n = 1, 'save_expense set the fund and the stamp followed';
+  select balance into v from public.fund_balances where fund_id = current_setting('ci.car')::uuid;
+  assert v = 580.00, 'Car Fund 880.00 − 300, got ' || v;
+  -- p_set_fund true with null: back on the month's budget (its category's pot)
+  perform public.save_expense('daily', v_id, current_date, 'Tyres', 'Car', 300, 'AUD', null, 'Visa', '', null, null, true, null);
+  select count(*) into n from public.expenses where id = v_id and fund_id is null and pot_fund_id is not distinct from v_pot;
+  assert n = 1, 'clearing the fund restores the pot rule';
+  select balance into v from public.fund_balances where fund_id = current_setting('ci.car')::uuid;
+  assert v = 880.00, 'Car Fund back to 880.00, got ' || v;
+  -- another currency's fund is refused even through the RPC
+  begin
+    perform public.save_expense('daily', v_id, current_date, 'Tyres', 'Car', 300, 'AUD', null, 'Visa', '', null, null, true, current_setting('ci.sgfund')::uuid);
+    assert false, 'an SGD fund took an AUD purchase';
+  exception when assert_failure then raise; when others then null; end;
 end $$;
 rollback;
 \echo fund purchases hold

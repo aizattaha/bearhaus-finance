@@ -218,11 +218,12 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <section class="screen" id="scr-nocard">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
         <div><p class="cap">Browse &amp; bulk edit</p><h1 class="h1">Transactions</h1></div>
-        <p class="cap">tick several rows → <b>Edit selected</b> changes the card, category, who paid or comments on all of them at once · a row with no card can never sit on a statement</p>
+        <p class="cap">tick several rows → <b>Edit selected</b> changes the card, category, who paid, comments or the fund a purchase counts against, on all of them at once · a row with no card can never sit on a statement</p>
       </div>
       <div class="toolbar">
         <select class="descinput" id="ncMonth" style="min-width:180px"></select>
         <select class="descinput" id="ncCardF" style="min-width:220px"></select>
+        <select class="descinput" id="ncFundF" style="min-width:200px" title="purchases that count against a fund instead of the month’s budget"></select>
         <input class="descinput" id="ncSearch" placeholder="search descriptions" style="min-width:240px">
         <button class="chip" onclick="openAddTx('nc')">＋ add transaction</button>
         <span class="cap" id="ncMeta"></span>
@@ -382,8 +383,10 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
       <label class="bkf"><span class="cap">Category</span><select class="descinput" id="bkCat"></select></label>
       <label class="bkf"><span class="cap">Who paid</span><select class="descinput" id="bkWho"></select></label>
       <label class="bkf"><span class="cap">Comments</span><input class="descinput" id="bkComments" placeholder="— no change —"></label>
+      <label class="bkf" id="bkFundWrap" style="grid-column:1 / -1"><span class="cap">Counts against</span><select class="descinput" id="bkFund"></select><span class="cap">a fund instead of the month’s budget · daily rows only · never blocked by reconciliation</span></label>
     </div>
     <p class="cap" id="bkNote" style="margin-top:10px"></p>
+    <p class="cap" id="bkBackWrap" style="margin-top:6px;display:none">these all count against a fund — <a href="#" id="bkBack" onclick="sendBackToFund();return false">send them back to fund movements</a> (undoes a Sort move: the rows become plain money-out movements and lose their category)</p>
     <div class="row" style="justify-content:flex-end;margin-top:14px">
       <button class="btn btn-soft" onclick="closeBulk()">Cancel</button>
       <button class="btn btn-primary" id="bkApply" onclick="applyBulk()">Apply to selected</button>
@@ -427,6 +430,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
       <label class="bkf"><span class="cap">Card</span><select class="descinput" id="axCard"></select></label>
       <label class="bkf"><span class="cap">Who paid</span><select class="descinput" id="axWho"></select><span class="cap" id="axWhoNote"></span></label>
       <label class="bkf"><span class="cap">Comments</span><input class="descinput" id="axComments" placeholder="optional"></label>
+      <label class="bkf" id="axFundWrap"><span class="cap">Counts against</span><select class="descinput" id="axFund"></select><span class="cap">a fund instead of the month’s budget — e.g. a car service from the Car Fund</span></label>
     </div>
     <div class="row" style="margin-top:10px;gap:8px"><button type="button" class="chip" id="axRefund" onclick="this.classList.toggle('sel')">↩ refund / credit</button><span class="cap">a credit on the statement — counts against the category as a minus</span></div>
     <p class="cap" id="axErr" style="margin-top:10px;color:var(--bad)"></p>
@@ -607,7 +611,7 @@ async function loadStatement(){
   if (!c || !p) { renderStatement(); return; }
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
   const from = st.margin ? addDays(p.start, -5) : p.start, to = st.margin ? addDays(p.end, 5) : p.end;
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, is_refund';
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, fund_id, is_refund';
   // the statement record first: a CLOSED statement shows exactly the rows ticked on it, whatever their date
   const s0 = await sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle();
   const closed = !!(s0.data && s0.data.closed_at);
@@ -689,7 +693,7 @@ function renderStatement(){
     return '<tr class="' + (locked ? 'recd' : '') + (checked ? ' sel' : '') + '" data-key="' + r.key + '">'
       + '<td>' + (closedSt ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + (locked ? ' title="tick to un-reconcile with the others"' : '') + '>') + '</td>'
       + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
-      + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
+      + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + fundTag(r) + '</span></td>'
       + '<td class="ell">' + esc(r.category) + '</td>'
       + '<td class="ell c-who">' + esc(who(r.payer_profile_id)) + '</td>'
       + '<td class="c-src" style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod && !r._foreign ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
@@ -1106,14 +1110,22 @@ async function loadNoCard(reset){
     $('ncCardF').innerHTML = '<option value="">any card</option><option value="none">— no card —</option>' + cardOptions(null, false) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
     if (new URL(location.href).searchParams.get('rows') === 'nocard') $('ncCardF').value = 'none';
     $('ncCardF').onchange = () => loadNoCard(true);
+    $('ncFundF').innerHTML = '<option value="">any source</option><option value="any">💰 funded from a fund</option><option value="budget">🗓️ the month’s budget only</option>'
+      + '<optgroup label="a fund">' + CTX.funds.filter(f => !f.is_spend_pot).map(f => '<option value="' + f.id + '">' + esc(f.name) + ' · ' + esc(f.currency) + '</option>').join('') + '</optgroup>';
+    if (new URL(location.href).searchParams.get('rows') === 'funded') $('ncFundF').value = 'any';
+    $('ncFundF').onchange = () => loadNoCard(true);
     $('ncAll').onchange = () => { nc.rows.forEach(r => { if ($('ncAll').checked) nc.sel.add(r.key); else nc.sel.delete(r.key); }); renderNoCard(); };
   }
-  const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch), cf = $('ncCardF').value;
+  const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch), cf = $('ncCardF').value, ff = $('ncFundF').value;
   const cashCard = CTX.cards.find(c => c.kind === 'cash');
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, is_refund';
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, is_refund, fund_id';
+  if (ff) nc.tDone = true;   // only daily purchases can count against a fund — a trip's already count against the trip
   const mk = (t, off, extra) => {
     let qq = sb.from(t).select(sel + (extra || '')).neq('category', 'Payment')
       .order('date', {ascending:false}).range(off, off + NC_PAGE - 1);
+    if (ff === 'any') qq = qq.not('fund_id', 'is', null);
+    else if (ff === 'budget') qq = qq.is('fund_id', null);
+    else if (ff) qq = qq.eq('fund_id', ff);
     if (cf === 'none') qq = qq.is('payment_method_id', null);
     else if (cf === 'cash') qq = cashCard ? qq.eq('payment_method_id', cashCard.id) : qq.eq('payment_method_id', '00000000-0000-0000-0000-000000000000');
     else if (cf) qq = qq.eq('payment_method_id', cf);
@@ -1133,7 +1145,7 @@ function renderNoCard(){
   else body.innerHTML = nc.rows.map(r => { const c = cardById(r.payment_method_id); return '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + (r.reconciled_at ? ' recd' : '') + '" data-key="' + r.key + '">'
     + '<td><input type="checkbox" class="rowck"' + (nc.sel.has(r.key) ? ' checked' : '') + '></td>'
     + '<td class="num">' + fmtD(r.date) + '</td>'
-    + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + '</span></td>'
+    + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + fundTag(r) + '</span></td>'
     + '<td class="ell">' + esc(r.category) + '</td><td class="ell c-who">' + esc(who(r.payer_profile_id)) + '</td>'
     + '<td class="ell" title="' + esc(c ? c.name : '') + '">' + (c ? esc(c.name) : '<span class="tag warn">no card</span>') + (r.reconciled_at ? ' <span title="reconciled">🔒</span>' : '') + '</td>'
     + '<td class="c-src"><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
@@ -1180,8 +1192,33 @@ function openBulk(src){
   const cm = same('comments'); $('bkComments').value = ''; $('bkComments').placeholder = cm ? cm : (cm === undefined ? 'mixed — type to replace on all' : '— no change —'); $('bkComments').classList.remove('changed');
   $('bkComments').oninput = () => $('bkComments').classList.toggle('changed', !!$('bkComments').value);
   $('bkNote').innerHTML = lockNote;
+  // counts against: only when every selected row is a daily purchase
+  const allDaily = rows.every(r => r.kind === 'daily');
+  $('bkFundWrap').style.display = allDaily ? '' : 'none';
+  if (allDaily) {
+    const fsame = same('fund_id');
+    $('bkFund').innerHTML = keep + '<option value="none">🗓️ the month’s budget (clear the fund)</option>'
+      + '<optgroup label="a fund' + (curs.length === 1 ? ' holding ' + esc(curs[0]) : '') + '">' + CTX.funds.filter(f => !f.is_spend_pot && (curs.length !== 1 || f.currency === curs[0])).map(f => '<option value="' + f.id + '">' + esc(f.name) + ' · ' + esc(f.currency) + '</option>').join('') + '</optgroup>';
+    $('bkFund').value = NOCHG; $('bkFund').classList.remove('changed');
+    $('bkFund').onchange = () => $('bkFund').classList.toggle('changed', $('bkFund').value !== NOCHG);
+    $('bkFund').title = fsame === undefined ? 'mixed today' : fsame ? 'today: ' + fundName(fsame) : 'today: the month’s budget';
+  }
+  $('bkBackWrap').style.display = allDaily && rows.every(r => r.fund_id) ? '' : 'none';
   $('bkApply').disabled = false;
   $('bulk').classList.add('show');
+}
+// the reverse of a Sort move: a purchase becomes a plain fund movement again (money out, no card, no category)
+async function sendBackToFund(){
+  const rows = bk.rows.filter(r => r.kind === 'daily' && r.fund_id); if (!rows.length) return;
+  const ok = await ask('Send ' + rows.length + (rows.length === 1 ? ' row' : ' rows') + ' back to fund movements?', 'Each becomes "money out" of its fund with the same date and amount, still charged to the same card. Category and who-paid are dropped; the fund balance does not change. Rows on a closed statement are refused.', 'Send back');
+  if (!ok) return;
+  $('bkApply').disabled = true;
+  const { data, error } = await sb.rpc('move_expense_to_fund_spend', { p_ids: rows.map(r => r.id) });
+  $('bkApply').disabled = false;
+  if (error) { toast('couldn’t send back: ' + error.message); return; }
+  toast((typeof data === 'number' ? data : rows.length) + ' sent back to fund movements');
+  closeBulk();
+  if (bk.src === 'st') { st.sel.clear(); loadStatement(); } else { nc.rows = nc.rows.filter(r => !nc.sel.has(r.key)); nc.sel.clear(); renderNoCard(); }
 }
 function closeBulk(){ $('bulk').classList.remove('show'); }
 async function applyBulk(){
@@ -1196,6 +1233,13 @@ async function applyBulk(){
   if (whoV !== NOCHG && whoV !== 'owner') full.payer_profile_id = whoV === 'joint' ? null : whoV;
   if (catV !== NOCHG) soft.category = catV;
   if (cmV) soft.comments = cmV;
+  const fundV = $('bkFundWrap').style.display === 'none' ? NOCHG : $('bkFund').value;
+  if (fundV !== NOCHG) {
+    soft.fund_id = fundV === 'none' ? null : fundV;
+    const f = soft.fund_id ? CTX.funds.find(x => x.id === soft.fund_id) : null;
+    const bad = f ? rows.filter(r => r.currency !== f.currency) : [];
+    if (bad.length) { toast(bad.length + (bad.length === 1 ? ' row holds' : ' rows hold') + ' a different currency from ' + f.name + ' — it can’t count against it'); return; }
+  }
   if (!Object.keys(full).length && !Object.keys(soft).length && whoV !== 'owner') { toast('nothing changed'); return; }
   $('bkApply').disabled = true;
   let done = 0, skipped = 0;
@@ -1218,7 +1262,7 @@ async function applyBulk(){
       }
     }
     rows.forEach(r => { Object.assign(r, soft); if (!r.reconciled_at) { Object.assign(r, full); if (cardObj && cardObj.profile_id) r.payer_profile_id = cardObj.profile_id; if (cardObj && cardObj.kind === 'cash') { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'auto'; } } });
-    toast(done + ' updated' + (skipped ? ' · ' + skipped + ' reconciled rows kept their card/payer' : '') + (cardObj && cardObj.kind === 'cash' ? ' · cash rows reconcile automatically' : ''));
+    toast(done + ' updated' + (skipped ? ' · ' + skipped + ' reconciled rows kept their card/payer' : '') + (cardObj && cardObj.kind === 'cash' ? ' · cash rows reconcile automatically' : '') + (fundV !== NOCHG ? (soft.fund_id ? ' · now count against ' + fundName(soft.fund_id) : ' · back on the month’s budget') : ''));
     closeBulk();
     if (bk.src === 'st') { st.sel.clear(); loadStatement(); }
     else {
@@ -1374,6 +1418,13 @@ async function loadSwaps(){
   });
 }
 
+// a purchase that counts against a named fund (not the month's budget) wears the fund's name
+const fundName = id => (CTX.funds.find(f => f.id === id) || {}).name || 'a fund';
+const fundTag = r => (r.kind === 'daily' || !r.kind) && r.fund_id ? ' <span class="tag blue" title="counts against this fund, not the month’s budget">💰 ' + esc(fundName(r.fund_id)) + '</span>' : '';
+// funds that can take a purchase in this currency: everything active except spending pots (those are the budget)
+const fundOptsFor = (cur, selId, blankLabel) => '<option value="">' + esc(blankLabel || 'the month’s budget') + '</option>'
+  + CTX.funds.filter(f => (!cur || f.currency === cur) && !f.is_spend_pot).map(f => '<option value="' + f.id + '"' + (f.id === selId ? ' selected' : '') + '>' + esc(f.name) + ' · ' + esc(f.currency) + '</option>').join('');
+
 // ── add a transaction from the Desk (a statement line the app doesn't have yet) ──
 const ax = { src: null, kind: 'daily', trips: [] };
 async function openAddTx(src){
@@ -1389,6 +1440,8 @@ async function openAddTx(src){
   $('axAmount').value = ''; $('axDesc').value = ''; $('axComments').value = ''; $('axErr').textContent = '';
   setAxKind('daily'); axWhoFromCard();
   $('axCard').onchange = axWhoFromCard;
+  const axFunds = () => { const keep = $('axFund').value; $('axFund').innerHTML = fundOptsFor($('axCur').value, keep); };
+  axFunds(); $('axCur').onchange = axFunds;
   $('addtx').classList.add('show'); setTimeout(() => $('axDesc').focus(), 50);
 }
 function closeAddTx(){ $('addtx').classList.remove('show'); }
@@ -1396,6 +1449,7 @@ function setAxKind(k){
   ax.kind = k;
   $('axKindDaily').classList.toggle('sel', k === 'daily'); $('axKindTrip').classList.toggle('sel', k === 'travel');
   $('axTrip').style.display = k === 'travel' ? '' : 'none';
+  $('axFundWrap').style.display = k === 'daily' ? '' : 'none';   // a trip's purchases already count against the trip
   const cats = CTX.cats.filter(c => c.kind === k);
   const groups = [...new Set(cats.map(c => c.group_name || 'Other'))];
   $('axCat').innerHTML = groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.group_name || 'Other') === g).map(c => '<option value="' + esc(c.name) + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
@@ -1406,7 +1460,7 @@ function axWhoFromCard(){
   $('axWho').innerHTML = CTX.profiles.map(p => '<option value="' + p.id + '">' + esc(p.display_name) + '</option>').join('') + '<option value="joint">' + esc(CTX.hh.joint_label || 'Joint') + '</option>';
   $('axWho').value = owner || 'joint'; $('axWho').disabled = !!owner;
   $('axWhoNote').textContent = owner ? 'follows the card' : (c ? 'a shared card — pick who paid' : 'pick a card');
-  if (c && c.currency && [...$('axCur').options].some(o => o.value === c.currency)) $('axCur').value = c.currency;
+  if (c && c.currency && [...$('axCur').options].some(o => o.value === c.currency)) { $('axCur').value = c.currency; if ($('axCur').onchange) $('axCur').onchange(); }
 }
 async function saveAddTx(){
   const amount = parseFloat($('axAmount').value), desc = $('axDesc').value.trim(), date = $('axDate').value, cardV = $('axCard').value;
@@ -1419,6 +1473,7 @@ async function saveAddTx(){
   const whoV = $('axWho').value, pid = whoV === 'joint' ? null : whoV;
   const row = { household_id: CTX.hh.id, date, description: desc, category: $('axCat').value, amount, currency: $('axCur').value, payer_profile_id: pid, payment_method_id: card.id, paid_with: card.name, comments: $('axComments').value.trim() };
   if (ax.kind === 'travel') row.trip_id = $('axTrip').value;
+  else if ($('axFund').value) row.fund_id = $('axFund').value;
   $('axSave').disabled = true;
   const t = ax.kind === 'daily' ? 'daily_expenses' : 'travel_expenses';
   if ($('axRefund').classList.contains('sel')) row.is_refund = true;
@@ -1426,7 +1481,7 @@ async function saveAddTx(){
   const ins = await sb.from(t).insert(row).select('id').single();
   $('axSave').disabled = false;
   if (ins.error) return err('couldn’t save: ' + ins.error.message);
-  toast('saved — ' + desc + ' · ' + (row.is_refund ? '+' : '') + fmtMoney(amount, row.currency));
+  toast('saved — ' + desc + ' · ' + (row.is_refund ? '+' : '') + fmtMoney(amount, row.currency) + (row.fund_id ? ' · counts against ' + fundName(row.fund_id) : ''));
   closeAddTx();
   if (ax.src === 'st') loadStatement(); else loadNoCard(true);
 }
