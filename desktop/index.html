@@ -611,6 +611,15 @@ async function loadStatement(){
     .sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
   // a card payment or refund is a credit on a card statement
   st.rows.forEach(r => { if (r.kind !== 'fund') r.credit = r.category === 'Payment' || !!r.is_refund; });
+  // a row already ticked on ANOTHER statement belongs to that statement — it only clutters this one
+  // (the Transactions page still lists it); rows ticked on this statement and untouched rows stay
+  st.hiddenOther = 0;
+  if (!closed) {
+    const mine = st.statement ? st.statement.id : null;
+    const keep = st.rows.filter(r => !r.reconciled_statement_id || r.reconciled_statement_id === mine);
+    st.hiddenOther = st.rows.length - keep.length;
+    st.rows = keep;
+  }
   st.imp = null; $('impResult').style.display = 'none';
   st.legs = null; await refreshPay();
   // rows ticked against THIS statement vs. others
@@ -682,7 +691,7 @@ function updateStatementKpis(){
   const outT = inP.filter(r => !r.credit).reduce((s, r) => s + Number(r.amount), 0), inT = inP.filter(r => r.credit).reduce((s, r) => s + Number(r.amount), 0);
   $('kAppSub').textContent = c ? inP.length + ' rows' + (credits ? ' · out ' + fmtMoney(outT, cur) + ' · in ' + fmtMoney(inT, cur) + ' (net shown)' : '') + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
   $('kTicked').textContent = c ? fmtMoney(tickedTotal, cur) : '—';
-  $('kTickedSub').textContent = c ? tickedAll.length + ' of ' + st.rows.length + ' rows shown' + (tickedAll.length > ticked.length ? ' · ' + (tickedAll.length - ticked.length) + ' in another currency, not in the total' : '') : '';
+  $('kTickedSub').textContent = c ? tickedAll.length + ' of ' + st.rows.length + ' rows shown' + (tickedAll.length > ticked.length ? ' · ' + (tickedAll.length - ticked.length) + ' in another currency, not in the total' : '') + (st.hiddenOther ? ' · ' + st.hiddenOther + ' on other statements, hidden' : '') : '';
   const stTotal = parseFloat($('stTotal').value);
   if (c && !isNaN(stTotal)) {
     const diff = Math.round((stTotal - tickedTotal) * 100) / 100;
