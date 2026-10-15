@@ -1,4 +1,4 @@
-# BearHaus — handover (15 Oct 2026, updated after v2 sprint 1)
+# BearHaus — handover (15 Oct 2026, updated after v2 sprint 2)
 
 Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` first, then this, then `DECISIONS.md`.
 
@@ -7,9 +7,10 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 - Supabase (Postgres + RLS + security-definer RPCs; PostgREST from the browser with the publishable key). Static hosting on GitHub Pages from `main`: `https://aizattaha.github.io/bearhaus-finance/app/` and `/desktop/`.
 - Users: Aizat (owner) and Paige (member — **login not yet created**, see §5).
 
-## 2 · State of production (v2 sprint 1)
+## 2 · State of production (v2 sprint 2)
 - **v2 is under way.** The review panel's plan (2 phases × 4 sprints, QA gate per sprint) is in Aizat's Drive: `Reports/2026-10 v2 review/00-CTO-v2-plan.md`. Sprint 1 shipped: data-leak containment, fail-fast CI, privilege lockdown, transfer guard, statement-import and select-all fixes, card opening positions, SG cards for fund purchases. See DECISIONS §E.
-- Schema: baseline + 29 migrations, last `20261015010000_card_openings`. The Action's `test` job applies the chain from scratch on Postgres 17 (as production).
+- **Sprint 2 shipped** ("every number right"): card rules (where each card is offered, default card per person per context, archived cards locked except Desk overrides); one "today" per household; a trip or pot swap on a card leaves the bank once; statement sign and scheduled payments; transfers and the month plan written by the server (plan applied once); past months protected; "Payment" locked as the settle-up category; what the card charged for foreign-currency purchases; a nightly money check; a server-side sign-up check waiting to be switched on. DECISIONS E12–E19.
+- Schema: baseline + 33 migrations, last `20261016030000_settled_amounts_checks`. The Action's `test` job applies the chain from scratch on Postgres 17 (as production).
 - The October architecture review is **fully implemented** (items 1–6); the ledger plan **phases 1–3 are shipped**; phase 4 deferred.
 - QA round 2 (three testers) — every finding fixed and verified; summary in `docs/qa/2026-10-14-round-2.md`.
 - Known production-data facts the next engineer should know (no numbers here on purpose): the 356 historical "money out of a fund" rows are **still unsorted** — Desk → Sort fund spending is waiting for Aizat; no real card payments have been recorded yet, so every card shows its charges since `pot_start` (1 Sep 2026) as owed; HSBC's closing day (2) and the other cards' closing days are not set yet.
@@ -26,7 +27,8 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 9. Splits (`expense_splits`) are derived from payer + amount; settle-up reads them.
 10. Soft delete everywhere; transfers and card payments delete/restore as a unit; purge after 30 days.
 
-## 4 · What Aizat still has to do (reminded repeatedly; unchanged)
+## 4 · What Aizat still has to do
+0. **New in sprint 2:** Settings → **Default cards** — Aizat: Daily Macquarie - Aizat, Trip UOB PPV; Paige: Daily HSBC Star Alliance (the rest as you like); Settings → Payment cards — switch each card's Daily · Trip · From a fund chips. Supabase → Authentication → Hooks → **Before User Created** → Postgres → `public.hook_before_user_created` (after Paige has her login, or before — her JOIN code passes it). On the Desk, type what UOB PPV charged for each foreign trip purchase when you check its statement.
 1. ~~Backup passphrase~~ — **reset 15 Oct 2026** (the 13 Oct one had been lost) and saved in the password manager as "BearHaus backup passphrase (GitHub BACKUP_PASSPHRASE)". **Restore drill passed 15 Oct** — see `docs/RESTORE.md` (lessons: a restore must re-apply the privilege lockdown and record the migration history). Backups from before 15 Oct can't be opened.
 2. Phone → Settings → People → **that's me** (links his login to his profile).
 3. Settings → People → **invite to sign in** for Paige → send her the JOIN code; she signs up with it.
@@ -51,10 +53,13 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 - Exchange rates: the app fetches frankfurter.app for pot swaps; blocked in the sandbox, fine in production.
 - A view-only or member login can no longer change the household's owner or delete it; the public app key can run only the two sign-up checks (v2 sprint 1). One side of a transfer (or a card-payment leg) can't be edited on its own — the phone shows those fields dimmed.
 - Desk `Pots` lists spending pots plus any other fund with money on cards.
+- A purchase in another currency on a card shows on the card as *waiting* until its charged amount is typed on the Desk; card owed leaves it out until then (sprint 2).
+- The transfer/card-payment group check only **logs** (to `integrity_issues`, counted by the nightly check) in sprint 2; it starts refusing in sprint 3.
+- Trip sends made before sprint 2 were linked to their purchases only where the match was exact; an unlinked older send still counts fully as cash out (as before).
 
 ## 7 · Local development & QA
 - **Since v2 sprint 1: `tools/dev/README.md`** — the real Supabase stack on this Mac (Docker + `supabase start` from `~/Code/bh-local`), migrations by `run.sh`, apps via `tools/dev/serve.mjs`, synthetic data only. The working git clone is `~/Code/bearhaus-finance`. The notes below describe the older cloud-sandbox harness.
-- **Scratch CI run** (what the Action does): `createdb bh_ci2 && tools/sql-tests/run.sh "postgresql://…/bh_ci2"` — expect `✓ test_core.sql` and `✓ test_fund_purchases.sql`. Needs Postgres 16 with `psql`.
+- **Scratch CI run** (what the Action does): `createdb bh_ci2 && tools/sql-tests/run.sh "postgresql://…/bh_ci2"` — expect every `test_*.sql` ✓ (eight since sprint 2). Postgres 17 (`bh-ci` container, port 55432). `tools/dev/seed.sh` rebuilds the local Supabase stack, runs the suite there and loads the synthetic household.
 - **Whole product locally**: `tools/qa-local/README.md`. Requires a Postgres copy of the schema (restore the latest Drive backup, then apply any newer migrations), `setup.sql`, `start.sh` → `http://127.0.0.1:54321/app/` and `/desktop/`. The shim emulates PostgREST/GoTrue; `VIEW_BASE` inside it maps writes to compat views onto their base tables — extend it if you add a view the apps write to.
 - **Browser verification scripts** (Playwright): Drive `QA/tools/browser/` (`phase2.mjs`, `phase3.mjs`, `round2fix.mjs`, plus the round-1/2 batch and feature scripts). **Smoke harness** (no DB — a mock Supabase client fed by a JSON snapshot of the real data, so it stays in Drive): `QA/tools/smoke/` — `run.mjs` (phone) and `desk.mjs` (Desk) inline `common.js`, write `serve/app.html` / `serve/desk.html`, expect `python3 -m http.server 8766 --directory serve`, and print a long log ending in `ERRORS (0)` / `no console/page errors`. Both suites take ~2 min and are the fastest regression check for UI changes.
 - **QA rounds**: three persona agents, briefs in `tools/qa-local/BRIEF.md` + `ROUND2.md`; summaries in `docs/qa/`; raw round-2 reports in Drive `QA/round-2/` (they quote real balances).
@@ -67,7 +72,7 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
   - `QA/` — round summaries, raw reports, `tools/sql-tests/`, `tools/qa-local/`, `tools/browser/`.
   - `Backups/` — schema + data dumps used to seed the local copy. **Private.**
   - `Bank Accounts & Credit Cards/` — Aizat's statements (used for import testing). **Private.**
-- GitHub secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID` (`diqaezhdxloqhglndqrq`), `SUPABASE_DB_PASSWORD`; `BACKUP_PASSPHRASE` pending.
+- GitHub secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID` (`diqaezhdxloqhglndqrq`), `SUPABASE_DB_PASSWORD`, `BACKUP_PASSPHRASE` (reset 15 Oct).
 - Supabase project ref `diqaezhdxloqhglndqrq` (publishable key is in `app/common.js`; RLS does the protecting).
 
 ## 9 · If you only do three things
