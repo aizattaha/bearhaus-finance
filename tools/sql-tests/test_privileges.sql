@@ -28,6 +28,10 @@ begin
   select string_agg(c.relname, ', ') into v from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
   assert v is null, 'RLS is off on: ' || coalesce(v, '');
+  -- every view runs with the reader's own rights, so RLS applies (CREATE OR REPLACE VIEW drops the option if it isn't restated)
+  select string_agg(c.relname, ', ') into v from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'v' and not coalesce(c.reloptions @> array['security_invoker=true'], false);
+  assert v is null, 'views that bypass RLS: ' || coalesce(v, '');
   -- internal helpers are not callable by a signed-in login
   assert not has_function_privilege('authenticated', 'public.restamp_pots(uuid, date, date)', 'execute'), 'restamp_pots is callable by a login';
   assert not has_function_privilege('authenticated', 'public.seed_default_categories(uuid)', 'execute'), 'seed_default_categories is callable by a login';

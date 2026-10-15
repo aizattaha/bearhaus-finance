@@ -79,6 +79,12 @@ declare ok boolean := false; n int; v_id uuid;
 begin
   update public.expenses set description = 'old card purchase (edited)', comments = 'note' where id = current_setting('ci.olde')::uuid;
   get diagnostics n = row_count; assert n = 1, 'a row on an archived card can still be edited';
+  -- …and the phone's edit (save_expense, card sent by name) keeps it on that card
+  perform public.save_expense(p_kind => 'daily', p_id => current_setting('ci.olde')::uuid, p_date => current_date - 3, p_description => 'old card purchase (phone)',
+          p_category => 'Groceries', p_amount => 40, p_currency => 'AUD', p_payer => null, p_paid_with => 'Old card — Ana', p_comments => 'phone edit',
+          p_seen_updated_at => (select updated_at from public.expenses where id = current_setting('ci.olde')::uuid));
+  select count(*) into n from public.expenses where id = current_setting('ci.olde')::uuid and payment_method_id = current_setting('ci.old')::uuid and description = 'old card purchase (phone)';
+  assert n = 1, 'a phone edit of an archived-card row lost its card';
   begin
     insert into public.daily_expenses (household_id, date, description, category, amount, currency, payment_method_id, paid_with)
     values (current_setting('ci.hh')::uuid, current_date, 'new on old card', 'Groceries', 5, 'AUD', current_setting('ci.old')::uuid, 'Old card — Ana');

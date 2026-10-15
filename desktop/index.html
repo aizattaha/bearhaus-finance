@@ -856,9 +856,11 @@ function payFunds(){
   const cur = st.card && st.card.currency;
   return CTX.funds.filter(f => !cur || f.currency === cur).slice().sort((a, b) => (b.is_spend_pot - a.is_spend_pot) || (a.sort_order - b.sort_order));
 }
+// paid so far plus payments dated after today (statement_balances.scheduled, v2 sprint 2; 0 on an older database)
+const payCovered = pay => Number(pay.paid || 0) + Number(pay.scheduled || 0);
 function defaultLegs(){
   const cur = st.card.currency, s = st.statement, pay = st.pay || {};
-  const due = Number(pay.due || 0), paid = Number(pay.paid || 0), remaining = Math.round((due - paid) * 100) / 100;
+  const due = Number(pay.due || 0), paid = payCovered(pay), remaining = Math.round((due - paid) * 100) / 100;
   const funds = payFunds(); if (!funds.length) return [];
   const defPot = (funds.find(f => f.is_spend_pot) || funds[0]).id;
   const travel = CTX.hh.travel_fund_id && funds.some(f => f.id === CTX.hh.travel_fund_id) ? CTX.hh.travel_fund_id : defPot;
@@ -890,14 +892,15 @@ function renderPay(){
   if (!c || c.kind !== 'credit_card' || !s || !st.pay) { box.style.display = 'none'; return; }
   box.style.display = '';
   const cur = c.currency || 'AUD', pay = st.pay;
-  const due = Number(pay.due || 0), paid = Number(pay.paid || 0), remaining = Math.round((due - paid) * 100) / 100;
+  const due = Number(pay.due || 0), paid = Number(pay.paid || 0), remaining = Math.round((due - payCovered(pay)) * 100) / 100;
   $('payTitle').textContent = (pay.statement_total == null ? 'ticked so far ' : 'statement ') + fmtMoney(due, cur) + (paid > 0 ? ' · paid ' + fmtMoney(paid, cur) : '');
   $('payBadge').innerHTML = pay.status === 'paid' ? '<span class="tag good">paid ✓' + (pay.last_paid ? ' · ' + fmtD(pay.last_paid) : '') + '</span>'
-    : pay.status === 'part' ? '<span class="tag warn">part paid · ' + fmtMoney(remaining, cur) + ' to go</span>'
+    : pay.status === 'scheduled' ? '<span class="tag">scheduled' + (pay.next_payment ? ' · ' + fmtD(pay.next_payment) : '') + '</span>'
+    : pay.status === 'part' ? '<span class="tag warn">' + (paid > 0 ? 'part paid' : 'part scheduled') + ' · ' + fmtMoney(remaining, cur) + ' to go</span>'
     : '<span class="tag">unpaid</span>';
-  $('payList').innerHTML = st.payments.length ? '<table><tbody>' + st.payments.map(p => '<tr><td class="num" style="width:124px">' + fmtD(p.date) + '</td><td>from <b>' + esc(p.funds ? p.funds.name : 'fund') + '</b>' + (p.reconciled_at && p.reconciled_by === 'manual' ? ' <span class="tag" title="ticked on a bank statement">🔒 bank</span>' : '') + '</td><td class="amt">' + fmtMoney(p.amount, cur) + '</td><td style="width:70px;text-align:right">' + (p.reconciled_by === 'manual' ? '' : '<button class="btn-tert" onclick="undoPayment(\'' + p.transfer_group_id + '\')">undo</button>') + '</td></tr>').join('') + '</tbody></table>' : '';
+  $('payList').innerHTML = st.payments.length ? '<table><tbody>' + st.payments.map(p => '<tr><td class="num" style="width:124px">' + fmtD(p.date) + '</td><td>from <b>' + esc(p.funds ? p.funds.name : 'fund') + '</b>' + (p.date > isoDate(new Date()) ? ' <span class="tag">scheduled</span>' : '') + (p.reconciled_at && p.reconciled_by === 'manual' ? ' <span class="tag" title="ticked on a bank statement">🔒 bank</span>' : '') + '</td><td class="amt">' + fmtMoney(p.amount, cur) + '</td><td style="width:70px;text-align:right">' + (p.reconciled_by === 'manual' ? '' : '<button class="btn-tert" onclick="undoPayment(\'' + p.transfer_group_id + '\')">undo</button>') + '</td></tr>').join('') + '</tbody></table>' : '';
   const form = $('payForm');
-  if (pay.status === 'paid' || remaining <= 0) { form.style.display = 'none'; return; }
+  if (pay.status === 'paid' || pay.status === 'scheduled' || remaining <= 0) { form.style.display = 'none'; return; }
   form.style.display = '';
   if (!st.legs) { st.legs = defaultLegs(); $('payDate').value = isoDate(new Date()); }
   renderPayLegs();
@@ -915,10 +918,10 @@ function renderPayLegs(){
 }
 function updatePayTotal(){
   const cur = st.card.currency || 'AUD', pay = st.pay;
-  const remaining = Math.round((Number(pay.due || 0) - Number(pay.paid || 0)) * 100) / 100;
+  const remaining = Math.round((Number(pay.due || 0) - payCovered(pay)) * 100) / 100;
   const sum = Math.round(st.legs.reduce((t, l) => t + (l.amount || 0), 0) * 100) / 100;
   const diff = Math.round((remaining - sum) * 100) / 100;
-  $('payTotal').innerHTML = 'paying <b>' + fmtMoney(sum, cur) + '</b>' + (Math.abs(diff) < 0.005 ? ' · the full ' + (Number(pay.paid) > 0 ? 'remainder' : 'statement') + ' ✓'
+  $('payTotal').innerHTML = 'paying <b>' + fmtMoney(sum, cur) + '</b>' + (Math.abs(diff) < 0.005 ? ' · the full ' + (payCovered(pay) > 0 ? 'remainder' : 'statement') + ' ✓'
     : diff > 0 ? ' · <span class="tag warn">' + fmtMoney(diff, cur) + ' short of the statement — a part payment</span>'
     : ' · <span class="tag bad">' + fmtMoney(-diff, cur) + ' more than the statement</span>');
   $('payGo').disabled = !(sum > 0) || st.legs.some(l => !l.fund_id);
@@ -1180,7 +1183,7 @@ async function toggleCloseStatement(){
     st.statement.closed_at = closing ? new Date().toISOString() : null;
     st.period.closed = closing; { const o = $('stPeriod').options[st.periods.indexOf(st.period)]; if (o) o.textContent = fmtDs(st.period.start) + ' – ' + fmtD(st.period.end) + (closing ? ' · closed' : st.period.open ? ' · in progress' : ''); }
     toast(closing ? 'statement closed ✓ — only its rows are shown now' : 'statement reopened'); st.sel.clear(); await loadStatement();
-    if (closing && st.card.kind === 'credit_card' && st.pay && st.pay.status !== 'paid') { $('stPay').scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('closed ✓ — now record the payment below'); }
+    if (closing && st.card.kind === 'credit_card' && st.pay && st.pay.status !== 'paid' && st.pay.status !== 'scheduled') { $('stPay').scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('closed ✓ — now record the payment below'); }
   } catch (err) { toast('couldn’t update: ' + (err.message || err)); }
 }
 
