@@ -983,13 +983,24 @@ async function applyRole(){
   document.querySelectorAll('.fab').forEach(b => b.style.display = viewer ? 'none' : '');
   if (viewer) { const n = $('planNudge'); n.onclick = () => toast(VIEW_ONLY_MSG); }
 }
+// has month m's plan been applied? The server's answer (plan_status, v2 sprint 2), shaped like the old query —
+// { data: [{ date }] or [], error } — plus .status (saved, version). Falls back while the database is older.
+async function appliedQ(m){
+  if (planStatusOK) {
+    const r = await sb.rpc('plan_status', { p_month: m });
+    if (!r.error) { const st = (r.data || [])[0] || null; return { data: st && st.applied_on ? [{ id: 'plan', date: st.applied_on }] : [], error: null, status: st }; }
+    if (/PGRST202|plan_status|could not find the function/i.test((r.error.code || '') + ' ' + (r.error.message || ''))) planStatusOK = false;
+    else return r;
+  }
+  return sb.from('fund_transactions').select('id, date').eq('origin', 'planned').gte('date', m).lt('date', addMonths(m, 1)).limit(1);
+}
 // the ritual needs a cue: nudge until this month's plan is saved AND applied (WF-2)
 async function checkPlanNudge(){
   try {
     const m = curMonthIso(), next = addMonths(m, 1);
     const [fb, applied] = await Promise.all([
       sb.from('fund_budgets').select('id').eq('month', m).limit(1),
-      sb.from('fund_transactions').select('id').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
+      appliedQ(m),
     ]);
     if (fb.error || applied.error) return;
     const el = $('planNudge'), monthWord = monthName(m, true).split(' ')[0];
@@ -1036,8 +1047,7 @@ async function loadHome(){
       // the applied plan's income counts as income (Aizat's rule, Aug 2026):
       // once the month is applied, its named sources ARE money that arrived
       sb.from('income_budgets').select('source_name, currency, amount').eq('month', curMonthIso()),
-      sb.from('fund_transactions').select('id').eq('origin', 'planned')
-        .gte('date', curMonthIso()).lt('date', addMonths(curMonthIso(), 1)).limit(1),
+      appliedQ(curMonthIso()),
     ]);
     if (week.error) throw week.error;
     if (recent.error) throw recent.error;
@@ -1210,7 +1220,7 @@ async function openIncomeSheet(){
       .not('income_source', 'is', null).gte('date', m).lt('date', next)
       .order('date', {ascending:false}).order('created_at', {ascending:false}),
     sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
-    sb.from('fund_transactions').select('id').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
+    appliedQ(m),
   ]);
   if (ev.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(ev.error.message) + '</p>'; return; }
   const planRows = (!applied.error && applied.data.length && !pinc.error) ? pinc.data : [];
@@ -1569,7 +1579,7 @@ async function loadFunds(){
       sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
       sb.from('category_budgets').select('currency, amount').eq('month', m),
       sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
-      sb.from('fund_transactions').select('date').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
+      appliedQ(m),
       sb.from('fund_cash').select('fund_id, cash_balance, owed_on_cards'),   // every fund: what's still on cards vs in the bank
     ]);
     for (const r of [bal, inc, cat, fb, applied]) if (r.error) throw r.error;
@@ -1900,7 +1910,7 @@ async function toggleFundDrill(btn, fund){
       + '<span class="amt" style="color:' + (isXfer ? 'var(--ink-soft)' : inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span>';
     row.onclick = () => openEditFund({ id: t.id, date: t.date, type: t.type, amount: t.amount, remarks: t.remarks,
       origin: t.origin, fund_id: fund.fund_id, funds: { name: fund.name, currency: fund.currency },
-      reconciled_at: t.reconciled_at, reconciled_by: t.reconciled_by, transfer_group_id: t.transfer_group_id, kind: t.kind });
+      reconciled_at: t.reconciled_at, reconciled_by: t.reconciled_by, transfer_group_id: t.transfer_group_id, kind: t.kind, updated_at: t.updated_at });
     d.appendChild(row);
   });
   if (!list.length) d.innerHTML = '<p class="cap">no transactions yet</p>';
@@ -1935,7 +1945,7 @@ async function openPlanSheet(){
       sb.from('income_budgets').select('id, source_name, currency, amount').eq('month', m),
       catBudgets(m),
       sb.from('fund_budgets').select('id, fund_id, amount').eq('month', m),
-      sb.from('fund_transactions').select('date').eq('origin', 'planned').gte('date', m).lt('date', next).limit(1),
+      appliedQ(m),
     ]);
     for (const r of [funds, inc, cat, fb, applied]) if (r.error) throw r.error;
     const saved = !!(inc.data.length || cat.data.length || fb.data.length);
@@ -1957,6 +1967,7 @@ async function openPlanSheet(){
     planDraft = {
       month: m, saved, prefilledFrom: prevMonth,
       appliedOn: applied.data.length ? applied.data[0].date : null,
+      version: applied.status ? applied.status.version : null,   // the save names the plan it started from
       funds: funds.data || [],
       inc: (inc.data.length ? inc.data : pInc).map(r => ({ source_name: r.source_name, currency: r.currency, amount: Number(r.amount) })),
       cat: {},   // 'group|currency' -> amount
@@ -2283,18 +2294,27 @@ async function applyPlan(){
   if (!rows.length && !leftoverRows.length && !potRows.length) { toast('everything is skipped — nothing to apply'); return; }
   applying = true;
   if ($('applyGo')) $('applyGo').innerHTML = '<span class="spin"></span>';
-  const remark = monthName(d.month, true) + ' plan';
-  const { error } = await sb.from('fund_transactions').insert(rows.concat(leftoverRows, potRows).map(r => ({
-    household_id: CTX.hh.id, fund_id: r.fund_id, type: 'income',
-    date: isoDate(new Date()), amount: r.amount,
-    remarks: remark + (r.leftover ? ' — leftover' : r.pot ? ' — spending budget' : ''), origin: 'planned',
-  })));
+  // the server works the rows out again from the saved plan and applies the month once (v2 sprint 2);
+  // the rows above are the preview, and the way an older database is still served
+  let res = null, error = null;
+  if (planStatusOK) {
+    ({ data: res, error } = await sb.rpc('apply_month_plan', { p_month: d.month, p_skip: d.funds.filter(f => d.on[f.id] === false).map(f => f.id) }));
+    if (error && /PGRST202|apply_month_plan|could not find the function/i.test((error.code || '') + ' ' + (error.message || ''))) { planStatusOK = false; res = null; error = null; }
+  }
+  if (!res && !error) {
+    const remark = monthName(d.month, true) + ' plan';
+    ({ error } = await sb.from('fund_transactions').insert(rows.concat(leftoverRows, potRows).map(r => ({
+      household_id: CTX.hh.id, fund_id: r.fund_id, type: 'income',
+      date: isoDate(new Date()), amount: r.amount,
+      remarks: remark + (r.leftover ? ' — leftover' : r.pot ? ' — spending budget' : ''), origin: 'planned',
+    }))));
+  }
   applying = false;
   if (error) { if ($('applyGo')) $('applyGo').textContent = 'Apply'; toast('couldn’t apply: ' + error.message); return; }
   closeSheet();
-  toast('applied — ' + rows.length + ' contributions'
-    + (potRows.length ? ' + budget to ' + potRows.map(r => (d.funds.find(f => f.id === r.fund_id) || {}).name).join(' & ') : '')
-    + (leftoverRows.length ? ' + leftover moved' : '') + ' 🐻');
+  const nC = res ? res.contributions : rows.length, potNames = res ? res.pots : potRows.map(r => (d.funds.find(f => f.id === r.fund_id) || {}).name).join(' & ');
+  toast('applied — ' + nC + ' contributions' + (potNames ? ' + budget to ' + potNames : '')
+    + ((res ? res.leftover : leftoverRows.length) ? ' + leftover moved' : '') + ' 🐻');
   loadFunds();
   loadHome();   // income and the plan card change the moment the plan is applied
   checkPlanNudge();
@@ -2308,7 +2328,7 @@ async function savePlan(){
   const d = planDraft, m = d.month, hh = CTX.hh.id;
   try {
     // one server-side transaction — the plan can never be half-written (QA-3)
-    const { error } = await sb.rpc('save_month_plan', {
+    const args = {
       p_month: m,
       p_inc: d.inc.filter(x => x.amount > 0).map(x => ({ source_name: x.source_name, currency: x.currency, amount: x.amount })),
       p_cat: Object.entries(d.cat).filter(([, v]) => v > 0).map(([k, v]) => {
@@ -2320,7 +2340,12 @@ async function savePlan(){
       p_fb: Object.entries(d.fb)
         .filter(([id, v]) => v > 0 && !(d.funds.find(f => f.id === id) || {}).is_leftover_target)
         .map(([id, v]) => ({ fund_id: id, amount: v })),
-    });
+    };
+    if (d.version) args.p_seen = d.version;   // refused if another phone saved in between (v2 sprint 2)
+    let { error } = await sb.rpc('save_month_plan', args);
+    if (error && args.p_seen && /PGRST202|p_seen|could not find the function/i.test((error.code || '') + ' ' + (error.message || ''))) {
+      delete args.p_seen; ({ error } = await sb.rpc('save_month_plan', args));
+    }
     if (error) throw error;
     planSaving = false;
     toast('plan saved 🐻');
@@ -2345,8 +2370,11 @@ let reconOK = true;   // false until the reconciliation migration has landed (pr
 let swapOK = true;    // false until the pot-swap migration has landed
 let updOK = true;     // false until expenses carry updated_at (batch 4)
 let kindOK = true;    // false until fund rows carry kind (card payments, Oct 2026)
+let fundUpdOK = true; // false until fund rows carry updated_at (v2 sprint 2)
+let planStatusOK = true;   // false until plan_status / apply_month_plan exist (v2 sprint 2)
+let transferOK = true;     // false until record_transfer exists (v2 sprint 2)
 let refundOK = true;  // false until expenses carry is_refund (hygiene, Oct 2026)
-const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '') + (!fund && updOK ? ', updated_at' : '') + (fund && kindOK ? ', kind, settles_payment_method_id' : '') + (!fund && refundOK ? ', is_refund' + (fundIdOK ? ', fund_id' : '') : '');
+const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '') + (!fund && updOK ? ', updated_at' : '') + (fund && kindOK ? ', kind, settles_payment_method_id' : '') + (fund && fundUpdOK ? ', updated_at' : '') + (!fund && refundOK ? ', is_refund' + (fundIdOK ? ', fund_id' : '') : '');
 // a refund / card credit keeps a positive amount in the database and counts negative everywhere
 const sa = r => (r && r.is_refund ? -1 : 1) * Number(r.amount);
 const rf = () => refundOK ? ', is_refund' + (fundIdOK ? ', fund_id' : '') : '';
@@ -3947,6 +3975,8 @@ async function loadContext(){
     refundOK = !probe5.error;
     const probe6 = await sb.from('daily_expenses').select('fund_id').limit(1);
     fundIdOK = !probe6.error;
+    const probe7 = await sb.from('fund_transactions').select('updated_at').limit(1);
+    fundUpdOK = !probe7.error;
     if (refundOK) sb.rpc('purge_deleted').then(() => {});   // the bin empties itself after 30 days
     const chip = $('atxOpenOnly'); if (chip) chip.style.display = reconOK ? '' : 'none';
   }
@@ -4072,6 +4102,7 @@ function refreshCards(payerName){
   renderCardRow();
 }
 
+let saveId = null;   // the id the next new row is saved under — a retap after a lost reply finds it saved (v2 sprint 2)
 let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false, curMismatchOk = false, bigOk = false;
 let pendOp = null, pendVal = null;   // calculator: pendVal ⟨pendOp⟩ amt, evaluated left-to-right
 
@@ -4538,6 +4569,7 @@ function openForm(m){
   scopeSwitch = false;
   mode = m; amt = keep ? keep.amt : ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; armSaveKey();
   editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none'; $('lockNote').style.display = 'none';
+  saveId = null;
   $('descInput').value = keep ? keep.desc : ''; $('commentsInput').value = keep ? keep.comments : ''; setRefund(!!(keep && keep.refund));
   $('refundWrap').style.display = (m === 'daily' || m === 'trip' || m === 'fundexp') && refundOK ? 'flex' : 'none';
   $('dateInput').value = isoDate(new Date()); updateDateVal();
@@ -4753,6 +4785,7 @@ async function saveEntry(){
   if (!CTX.hh) { toast('still connecting — try again in a second'); await loadContext(); return; }
 
   saving = true; $('saveBtn').innerHTML = '<span class="spin"></span>';
+  if (!saveId && crypto.randomUUID) saveId = crypto.randomUUID();
   // stay locked after success — a tap during the close animation must not
   // write twice (QA-2); the form re-arms when it is next opened
   const done = (ok, msg) => {
@@ -4774,10 +4807,10 @@ async function saveEntry(){
           return;
         }
       }
-      const { error } = await sb.from('fund_transactions').insert({
+      const { error } = await sb.from('fund_transactions').insert(Object.assign({
         household_id: CTX.hh.id, fund_id: fundId, type: 'expense',
         date, amount: cost, remarks: desc, origin: 'manual',
-      });
+      }, saveId ? { id: saveId } : {}, kindOK ? { kind: 'movement' } : {}));
       if (error) throw error;
       localStorage.setItem('bh-fund', fundId);
       const f = fundById(fundId);
@@ -4799,10 +4832,10 @@ async function saveEntry(){
           return;
         }
       }
-      const { error } = await sb.from('fund_transactions').insert({
+      const { error } = await sb.from('fund_transactions').insert(Object.assign({
         household_id: CTX.hh.id, fund_id: fundId, type: 'income',
         date, amount: cost, remarks: desc, origin: 'manual', income_source: desc,
-      });
+      }, saveId ? { id: saveId } : {}, kindOK ? { kind: 'movement' } : {}));   // income is income, whatever it's called
       if (error) throw error;
       localStorage.setItem('bh-incfund', fundId);
       const f = fundById(fundId);
@@ -4828,14 +4861,21 @@ async function saveEntry(){
         }
       }
       const note = desc ? ' · ' + desc : '';
-      const gid = (crypto.randomUUID ? crypto.randomUUID() : null);   // the two halves lock and unlock together
+      const gid = saveId || (crypto.randomUUID ? crypto.randomUUID() : null);   // the two halves lock and unlock together
+      let error = null;
+      if (transferOK) {   // one server call writes both sides; a retap with the same id is the same transfer (v2 sprint 2)
+        ({ error } = await sb.rpc('record_transfer', { p_from: from.id, p_to: to.id, p_date: date, p_amount: cost,
+          p_received: crossCur ? received : null, p_note: desc || null, p_id: gid }));
+        if (error && /PGRST202|record_transfer|could not find the function/i.test((error.code || '') + ' ' + (error.message || ''))) { transferOK = false; error = null; }
+        else { if (error) throw error; done(true, fmtMoney(cost, from.currency) + ' moved: ' + from.name + ' → ' + to.name); if (fundsInit) loadFunds(); return; }
+      }
       let rows = [
         { household_id: CTX.hh.id, fund_id: from.id, type: 'expense', date,
           amount: cost, remarks: 'Transfer → ' + to.name + note, origin: 'manual', transfer_group_id: gid },
         { household_id: CTX.hh.id, fund_id: to.id, type: 'income', date,
           amount: received, remarks: 'Transfer ← ' + from.name + note, origin: 'manual', transfer_group_id: gid },
       ];
-      let { error } = await sb.from('fund_transactions').insert(rows);
+      ({ error } = await sb.from('fund_transactions').insert(rows));
       if (error && /transfer_group_id/.test(error.message || '')) {   // migration not landed yet
         rows.forEach(r => delete r.transfer_group_id);
         ({ error } = await sb.from('fund_transactions').insert(rows));
@@ -4879,8 +4919,12 @@ async function saveEntry(){
       }
       // one side of a group: only the note travels (amount, date, fund and direction are shared — v2 S1)
       if (moneyLocked()) { Object.keys(upd).forEach(k => { if (k !== 'remarks') delete upd[k]; }); }
-      const { error } = await sb.from('fund_transactions').update(upd).eq('id', editingExp.id);
+      let q = sb.from('fund_transactions').update(upd).eq('id', editingExp.id);
+      const seen = fundUpdOK && editingExp.updated_at;   // v2 sprint 2: refuse to overwrite an edit made elsewhere
+      if (seen) q = q.eq('updated_at', editingExp.updated_at);
+      const { data: upd1, error } = await q.select('id');
       if (error) throw error;
+      if (seen && !(upd1 || []).length) { done(false, 'this was changed on another phone — close it and open it again'); return; }
       const f = fundById(fundId) || (editingExp.funds ? { currency: editingExp.funds.currency } : null);
       done(true, 'updated — ' + fmtMoney(cost, f ? f.currency : 'AUD'));
       if (fundsInit) loadFunds();
@@ -4969,6 +5013,7 @@ async function saveEntry(){
     }
     if (refundOK) base.is_refund = isRefund;
     if (mode === 'fundexp') { base.fund_id = fundExp.id; localStorage.setItem('bh-fundexp', fundExp.id); }
+    if (saveId) base.id = saveId;
     // the split rows (payer +, joint −) are derived by the database from payer + amount
     const { error } = await sb.from(table).insert(base).select('id').single();
     if (error) throw error;
@@ -4979,6 +5024,8 @@ async function saveEntry(){
     done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (base.paid_with ? ' · ' + base.paid_with : '') + (tripName ? ' · ' + tripName : '') + (fundExp ? ' · from ' + fundExp.name : ''));
     if (fundExp && fundsInit) loadFunds();
   } catch (err) {
+    // the row is already there under this form's id: an earlier tap saved it and only the reply was lost
+    if (err && err.code === '23505' && saveId && /_pkey/.test(err.message || '')) { done(true, 'already saved ✓'); return; }
     done(false, err.message || String(err));
   }
 }
