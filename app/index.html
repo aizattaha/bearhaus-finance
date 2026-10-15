@@ -181,6 +181,8 @@ body:has(#sheet.full.open) .backdrop{background:#E9F1FD}
 select.descinput{appearance:none;-webkit-appearance:none}
 .amount-line{display:flex;align-items:center;gap:12px;margin:8px 0 2px;min-height:44px}
 .amount-line .disp{margin-left:auto}
+/* one side of a transfer / a card-payment leg: amount, date and fund are shared with the other rows (v2 S1) */
+.money-locked .amount-line,.money-locked #rowDate,.money-locked #rowFundFrom,.money-locked #keypad button:not(#saveBtn){opacity:.45}
 .seg{display:inline-flex;background:var(--field);border-radius:999px;padding:3px;gap:2px}
 .seg button{border:none;background:none;font-family:inherit;font-size:13px;font-weight:500;color:var(--ink-soft);border-radius:999px;padding:6px 14px;cursor:pointer;transition:all .15s}
 .seg button.sel{background:var(--primary);color:#fff}
@@ -1895,7 +1897,7 @@ async function toggleFundDrill(btn, fund){
       + '<span class="amt" style="color:' + (isXfer ? 'var(--ink-soft)' : inc ? 'var(--good)' : 'var(--bad)') + '">' + (inc ? '+' : '−') + fmtMoney(t.amount, fund.currency) + '</span>';
     row.onclick = () => openEditFund({ id: t.id, date: t.date, type: t.type, amount: t.amount, remarks: t.remarks,
       origin: t.origin, fund_id: fund.fund_id, funds: { name: fund.name, currency: fund.currency },
-      reconciled_at: t.reconciled_at, reconciled_by: t.reconciled_by });
+      reconciled_at: t.reconciled_at, reconciled_by: t.reconciled_by, transfer_group_id: t.transfer_group_id, kind: t.kind });
     d.appendChild(row);
   });
   if (!list.length) d.innerHTML = '<p class="cap">no transactions yet</p>';
@@ -3979,8 +3981,11 @@ function cardOptions(payerName){
   // cash is a kind, not a person's card — anyone can pay cash (QA round 1);
   // "who paid" and "which card" are different questions: Joint may sit on anyone's card, joint cards first (QA2 A-B4);
   // cards in the purchase's currency come first, so an S$ fund purchase lands on the S$ card by default (QA2 B-B3)
+  // "✈️ travel only" keeps a card out of new Daily entries; a fund purchase or an edit can still name it, so
+  // the SG cards are offered for an SGD fund (Aizat, 15 Oct — stop-gap until per-card Daily/Trip/Fund choices)
+  const travelOk = mode === 'trip' || mode === 'edit' || mode === 'fundexp' || mode === 'editDaily';
   return (CTX.cards || [])
-    .filter(c => (c.profile_id === pid || c.kind === 'cash' || pid === null) && (!c.travel_only || mode === 'trip' || mode === 'edit'))
+    .filter(c => (c.profile_id === pid || c.kind === 'cash' || pid === null) && (!c.travel_only || travelOk))
     .sort((a, b) => (a.kind === 'cash') - (b.kind === 'cash')
       || (cur ? ((b.currency === cur) - (a.currency === cur)) : 0)
       || (pid === null ? ((a.profile_id !== null) - (b.profile_id !== null)) : 0)
@@ -4166,6 +4171,7 @@ function dockPaneOn(){ return ['pad', 'pick', 'date'].some(x => $('dock-' + x).c
 // ── dock calendar (no system date wheel) ──
 let calMonth = null;   // 'YYYY-MM'
 function openDatePick(){
+  if (moneyLocked()) { toast(MONEY_LOCKED_MSG); return; }
   blurInputs();
   calMonth = ($('dateInput').value || isoDate(new Date())).slice(0, 7);
   renderCal(); dockShow('date');
@@ -4293,6 +4299,7 @@ function renderFundRow(which){
     + '<span class="chev">›</span>';
 }
 function openFundPicker(which){
+  if (moneyLocked()) { toast(MONEY_LOCKED_MSG); return; }
   const selId = which === 'from' ? fundFromId : fundToId;
   let items = fundPickerItems(selId);
   if (mode === 'editDaily') {
@@ -4434,6 +4441,7 @@ function refreshTripCurrencies(){
 window.addEventListener('unhandledrejection', e => { if (e.reason && /^(access removed|session invalid)$/.test(e.reason.message || '')) e.preventDefault(); });
 let scopeSwitch = false;   // set by the scope segment just before it re-opens the form
 function openForm(m){
+  $('sh-form').classList.remove('money-locked');
   // switching scope inside the same tab (Daily → From a fund → Trip) keeps what was already typed (QA2 B)
   const tabOf0 = x => x === 'income' ? x : (x === 'transfer' || x === 'paycard' || x === 'fund') ? 'transfer' : /^edit/.test(x) ? 'edit' : 'expense';
   const keep = (scopeSwitch && m !== mode && tabOf0(m) === tabOf0(mode) && tabOf0(m) !== 'edit')
@@ -4584,7 +4592,13 @@ function armSaveKey(){ const k = $('saveBtn'); if (k) k.innerHTML = '✓'; }
     pad.appendChild(b);
   });
 })();
+// a row that belongs to a group (both sides of a transfer, the legs of a card payment or a swap): its
+// amount, date and fund are shared, so only the note can change here; the database refuses the rest too
+const isGroupedFundRow = tx => !!(tx && (tx.transfer_group_id || tx.kind === 'card_payment' || /^Transfer [→←]/.test(tx.remarks || '')));
+const moneyLocked = () => mode === 'editFund' && isGroupedFundRow(editingExp);
+const MONEY_LOCKED_MSG = 'the amount, date and fund are shared with the other side — delete both sides and enter it again to change them';
 function keyTap(k){
+  if (k !== '✓' && moneyLocked()) { toast(MONEY_LOCKED_MSG); return; }
   if (k === '✓') {
     if (pendOp !== null) { calcEval(); renderAmt(); return; }   // ✓ acts as “=” first…
     saveEntry(); return;                                        // …then saves
@@ -4774,6 +4788,8 @@ async function saveEntry(){
       if ('income_source' in editingExp) {
         upd.income_source = (editingExp.income_source && upd.type === 'income') ? desc : null;
       }
+      // one side of a group: only the note travels (amount, date, fund and direction are shared — v2 S1)
+      if (moneyLocked()) { Object.keys(upd).forEach(k => { if (k !== 'remarks') delete upd[k]; }); }
       const { error } = await sb.from('fund_transactions').update(upd).eq('id', editingExp.id);
       if (error) throw error;
       const f = fundById(fundId) || (editingExp.funds ? { currency: editingExp.funds.currency } : null);
@@ -4887,6 +4903,7 @@ function payerFromSplits(exp){
 }
 function openEditExpense(exp){
   mode = 'edit'; editingExp = exp; saving = false;
+  $('sh-form').classList.remove('money-locked');
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
@@ -4942,6 +4959,7 @@ function openEditExpense(exp){
 // ── edit / delete a daily expense ────────────
 function openEditDaily(exp){
   mode = 'editDaily'; editingExp = exp; saving = false;
+  $('sh-form').classList.remove('money-locked');
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
@@ -5034,6 +5052,8 @@ function openEditFund(tx){
   if (!$('fundCurLabel').textContent && tx.funds) $('fundCurLabel').textContent = curLabel(tx.funds.currency);
   buildSeg('segType', ['Into the fund', 'Out of the fund'], tx.type === 'income' ? 0 : 1);
   if (tx.kind === 'card_payment') $('rowType').style.display = 'none';   // a card payment is always money out
+  if (isGroupedFundRow(tx)) $('rowType').style.display = 'none';        // …and a transfer side keeps its direction
+  $('sh-form').classList.toggle('money-locked', isGroupedFundRow(tx));
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   applyLockState(editingExp);
   armSaveKey();
@@ -5045,9 +5065,9 @@ function openEditFund(tx){
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
   if (tx.origin === 'planned') toast('written by Review & apply — edits change this record, not the plan');
   else if (tx.kind === 'card_payment') toast('a card payment — it never touches Available. Delete removes the whole payment (every fund it was split over)');
-  else if (/^Transfer [→←]/.test(tx.remarks || '')) {
+  else if (isGroupedFundRow(tx)) {
     $('lockNote').style.display = 'block'; $('lockUnlockBtn').style.display = 'none';
-    $('lockNoteText').textContent = '↔ one side of a transfer. The amount and date are shared with the other side, so they can’t be edited here — Delete removes BOTH sides (the other fund goes back up too). To change it, delete and redo the transfer.';
+    $('lockNoteText').textContent = '↔ one side of a transfer. The amount, date and fund are shared with the other side, so only the note can change here — Delete removes BOTH sides (the other fund goes back up too). To change the amount, delete and redo the transfer.';
     $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete both sides';
   }
 }

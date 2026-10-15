@@ -141,18 +141,30 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
       <div class="toolbar">
         <select class="descinput" id="stCard" style="min-width:260px"></select>
         <select class="descinput" id="stPeriod" style="min-width:230px"></select>
-        <button class="chip sel" id="stMargin" title="banks post a few days late — rows up to 5 days either side of the period are shown; click to show the exact period only">± 5 days</button>
+        <button class="chip sel" id="stMargin" title="a purchase made a few days before the period can post inside it — rows up to 5 days before the start are shown; click to show the exact period only">5 days before</button>
         <button class="chip" id="stCarry" title="older rows on this card that were never ticked">include earlier unreconciled</button>
         <button class="chip" id="stImport" onclick="openImport()" title="drop in the bank's CSV or paste the statement text — matching rows get ticked for you">⬇ import statement</button>
         <button class="chip" id="stAdd" onclick="openAddTx('st')" title="a line on the statement that isn't in the app yet">＋ add transaction</button>
         <span class="cap" id="stMeta"></span>
+      </div>
+      <!-- what a credit card already owed when the app started counting it (v2 S1 · card_openings) -->
+      <div class="card" id="stOpening" style="display:none;margin-top:10px;padding:12px 16px">
+        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+          <span class="lbl" id="opLabel">Owed on this card when BearHaus started counting it</span>
+          <input class="descinput num" id="opAmount" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" style="width:120px" aria-label="amount owed on the start date">
+          <span class="cap">set aside in</span>
+          <select class="descinput" id="opFund" style="min-width:180px" aria-label="fund whose money pays it"></select>
+          <button class="btn btn-soft" style="height:34px" id="opSave" onclick="saveOpening()">Save</button>
+          <span class="cap" id="opState"></span>
+        </div>
+        <p class="cap" style="margin-top:6px">Purchases before that day aren't in the app's numbers, so the first statement you pay would push this card below zero. Enter what the card owed that day, once: your bank's balance owing on the day before, or this statement's opening balance plus its purchases dated before the start. Available doesn't change; <i>owed on cards</i> and <i>in the bank</i> do.</p>
       </div>
 
       <div class="grid3" style="margin-top:14px">
         <div class="kpi"><p class="cap">In the app · this period</p><p class="v num" id="kApp">—</p><p class="cap" id="kAppSub"></p></div>
         <div class="kpi"><p class="cap">Ticked · reconciled</p><p class="v num" id="kTicked">—</p><p class="cap" id="kTickedSub"></p></div>
         <div class="kpi dark">
-          <p class="cap">Statement total (from the bank)</p>
+          <p class="cap">New spend on this statement</p>
           <div class="row" style="gap:8px;margin-top:4px">
             <input class="descinput num" id="stTotal" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="width:150px;background:rgba(255,255,255,.12);color:#fff;border-color:transparent">
             <button class="btn btn-soft" style="height:36px;padding:0 14px" onclick="saveStatementTotal()">Save</button>
@@ -197,7 +209,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         <div class="tablewrap">
           <table>
             <thead><tr>
-              <th style="width:34px"><input type="checkbox" id="stAll" title="select every unreconciled row shown"></th>
+              <th style="width:34px"><input type="checkbox" id="stAll" title="select every row in this period that is not reconciled yet"></th>
               <th style="width:112px">Date</th><th>Description</th><th style="width:124px">Category</th><th class="c-who" style="width:76px">Who</th><th class="c-src" style="width:64px">Source</th><th class="amt" style="width:112px">Amount</th><th style="width:40px"></th>
             </tr></thead>
             <tbody id="stRows"><tr><td colspan="8" class="empty">pick a card</td></tr></tbody>
@@ -530,7 +542,9 @@ async function loadContext(){
 }
 const who = pid => (pid && (CTX.profiles.find(p => p.id === pid) || {}).display_name) || (CTX.hh && CTX.hh.joint_label) || 'Joint';
 const cardById = id => CTX.cards.find(c => c.id === id);
-function cardOptions(sel, withNone){
+// withArchived: Statements lists archived cards too (own group), so a closed card's last statements can still
+// be reconciled and its final bill paid; everywhere else archived cards are not offered (v2 S1)
+function cardOptions(sel, withNone, withArchived){
   const KL = { credit_card:'credit card', debit_card:'debit card', bank:'bank', prepaid:'prepaid', cash:'cash' };
   const live = CTX.cards.filter(c => !c.is_archived && c.kind !== 'cash');
   const groups = [['credit_card', 'Credit cards'], ['debit_card', 'Debit cards'], ['bank', 'Bank accounts'], ['prepaid', 'Prepaid & wallets']];
@@ -543,6 +557,9 @@ function cardOptions(sel, withNone){
       + (c.currency ? ' · ' + esc(CURSYM[c.currency] || c.currency) : '')
       + (k === 'credit_card' ? (c.closing_day ? ' · closes ' + c.closing_day : ' · no closing day') : '') + '</option>').join('') + '</optgroup>';
   });
+  const archived = withArchived ? CTX.cards.filter(c => c.is_archived && c.kind !== 'cash') : [];
+  if (archived.length) html += '<optgroup label="Archived — for reconciling only">' + archived.map(c =>
+    '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.name) + (c.currency ? ' · ' + esc(CURSYM[c.currency] || c.currency) : '') + ' · archived</option>').join('') + '</optgroup>';
   return html;
 }
 
@@ -554,17 +571,19 @@ async function refreshCardList(){
   const before = CTX.cards.map(c => c.id + c.name + c.is_archived + c.closing_day + c.currency).join('|');
   CTX.cards = r.data;
   if (before === CTX.cards.map(c => c.id + c.name + c.is_archived + c.closing_day + c.currency).join('|')) return;
-  const keep = $('stCard').value; $('stCard').innerHTML = cardOptions(null, true); $('stCard').value = keep;
+  const keep = $('stCard').value; $('stCard').innerHTML = cardOptions(null, true, true); $('stCard').value = keep;
   if (st.card) st.card = cardById(st.card.id) || st.card;
 }
 function initStatements(){
-  $('stCard').innerHTML = cardOptions(null, true);
-  $('stCard').onchange = () => { st.card = cardById($('stCard').value) || null; st.sel.clear(); buildPeriods(); loadStatement(); };
+  $('stCard').innerHTML = cardOptions(null, true, true);
+  $('stCard').onchange = () => { st.card = cardById($('stCard').value) || null; st.sel.clear(); buildPeriods(); loadStatement(); loadOpening(); };
   $('stPeriod').onchange = () => { st.period = st.periods[parseInt($('stPeriod').value)] || null; st.sel.clear(); loadStatement(); };
   $('stMargin').onclick = () => { st.margin = !st.margin; $('stMargin').classList.toggle('sel', st.margin); loadStatement(); };
   $('stCarry').onclick = () => { st.carry = !st.carry; $('stCarry').classList.toggle('sel', st.carry); loadStatement(); };
   $('stAll').onchange = () => {
-    st.rows.forEach(r => { if ($('stAll').checked) st.sel.add(r.key); else st.sel.delete(r.key); });
+    // every row still to reconcile INSIDE the period; rows in the margin are picked one by one (v2 S1)
+    st.sel.clear();
+    if ($('stAll').checked) st.rows.forEach(r => { if (r.inPeriod && !r.reconciled_at) st.sel.add(r.key); });
     renderStatement();
   };
   $('stTotal').onkeydown = e => { if (e.key === 'Enter') saveStatementTotal(); };
@@ -573,6 +592,35 @@ function initStatements(){
   const u = new URL(location.href); const pre = u.searchParams.get('card');
   if (pre && cardById(pre)) { $('stCard').value = pre; $('stCard').onchange(); }
   if (u.searchParams.get('rows') === 'nocard') go('nocard');
+}
+// ── a credit card's opening position (what it owed on pot_start) ──
+async function loadOpening(){
+  const c = st.card, box = $('stOpening');
+  if (!c || c.kind !== 'credit_card' || !CTX.hh || !CTX.hh.pot_start) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  $('opLabel').textContent = 'Owed on ' + c.name + ' on ' + fmtD(CTX.hh.pot_start);
+  const funds = CTX.funds.filter(f => !c.currency || f.currency === c.currency);
+  const r = await sb.from('card_openings').select('amount, fund_id').eq('payment_method_id', c.id).maybeSingle();
+  if (st.card !== c) return;
+  if (r.error) { box.style.display = 'none'; return; }   // the database update hasn't landed yet
+  const o = r.data;
+  const def = (o && o.fund_id) || (funds.find(f => f.is_spend_pot) || funds[0] || {}).id;
+  $('opFund').innerHTML = funds.map(f => '<option value="' + f.id + '"' + (f.id === def ? ' selected' : '') + '>' + esc(f.name) + (f.is_spend_pot ? ' · spending pot' : '') + '</option>').join('');
+  $('opAmount').value = o ? Number(o.amount).toFixed(2) : '';
+  $('opState').innerHTML = o ? '<span class="tag good">saved</span>' : '<span class="tag warn">not set</span>';
+}
+async function saveOpening(){
+  const c = st.card; if (!c) return;
+  const v = $('opAmount').value.trim(), amount = v === '' ? null : Math.round(parseFloat(v) * 100) / 100;
+  if (amount !== null && !(amount >= 0)) { toast('enter the amount owed, or leave it empty to clear it'); return; }
+  $('opSave').disabled = true;
+  const r = amount === null || amount === 0
+    ? await sb.from('card_openings').delete().eq('payment_method_id', c.id)
+    : await sb.from('card_openings').upsert({ payment_method_id: c.id, household_id: CTX.hh.id, fund_id: $('opFund').value, amount }, { onConflict: 'payment_method_id' });
+  $('opSave').disabled = false;
+  if (r.error) { toast('couldn’t save: ' + r.error.message); return; }
+  toast(amount ? c.name + ' owed ' + fmtMoney(amount, c.currency) + ' on ' + fmtD(CTX.hh.pot_start) + ' — set aside in ' + fundName($('opFund').value) : c.name + ' — opening cleared');
+  loadOpening(); refreshPay().then(renderPay);
 }
 // statement periods for a card: credit cards close on closing_day; everything else by calendar month
 function buildPeriods(){
@@ -610,7 +658,7 @@ function buildPeriods(){
     st.periods.forEach((p, i) => { p.closed = closedEnds.has(p.end); const o = sel.options[i]; if (o) o.textContent = fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.closed ? ' · closed' : p.open ? ' · in progress' : ''); });
   });
   if (c.kind === 'credit_card' && !c.closing_day) $('stHint').textContent = 'this credit card has no closing day yet — set it in the app (Settings → Payment cards); showing calendar months meanwhile';
-  else $('stHint').textContent = 'tick what appears on the statement · untick to un-reconcile · close when the totals agree';
+  else $('stHint').textContent = 'select the rows on the statement → Reconcile selected · Un-reconcile selected undoes it · close when the totals agree';
 }
 async function loadStatement(){
   const c = st.card;
@@ -632,7 +680,8 @@ async function loadStatement(){
   st.rows = []; st.statement = null;
   if (!c || !p) { renderStatement(); return; }
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
-  const from = st.margin ? addDays(p.start, -5) : p.start, to = st.margin ? addDays(p.end, 5) : p.end;
+  // the margin reaches back only: a purchase can post a few days after it was made, never before (v2 S1)
+  const from = st.margin ? addDays(p.start, -5) : p.start, to = p.end;
   const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, fund_id, is_refund';
   // the statement record first: a CLOSED statement shows exactly the rows ticked on it, whatever their date
   const s0 = await sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle();
@@ -701,7 +750,7 @@ async function loadStatement(){
 function renderStatement(){
   const c = st.card, p = st.period, body = $('stRows');
   if (!c || !p) { body.innerHTML = '<tr><td colspan="8" class="empty">pick a card</td></tr>'; updateStatementKpis(); return; }
-  if (!st.rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">' + (st.statement && st.statement.closed_at ? 'this statement was closed with no rows ticked — reopen it to tick some' : 'no rows on ' + esc(c.name) + ' for this period' + (st.margin ? '' : ' — try ± 5 days')) + '</td></tr>'; updateStatementKpis(); return; }
+  if (!st.rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">' + (st.statement && st.statement.closed_at ? 'this statement was closed with no rows ticked — reopen it to tick some' : 'no rows on ' + esc(c.name) + ' for this period' + (st.margin ? '' : ' — try 5 days before')) + '</td></tr>'; updateStatementKpis(); return; }
   const cur = c.currency;
   const closedSt = !!(st.statement && st.statement.closed_at);
   body.innerHTML = st.rows.map(r => {
@@ -711,7 +760,7 @@ function renderStatement(){
     const curTag = cur && r.currency !== cur ? ' <span class="tag warn" title="a different currency from the card — the statement will show it converted">' + esc(r.currency) + '</span>' : '';
     // outside the exact period: − before it (incl. carried-over earlier rows), + after it
     const posTag = r.carry ? ' <span class="pos" title="earlier than this period — never reconciled">−</span>'
-                 : !r.inPeriod ? (r.date > p.end ? ' <span class="pos" title="after the period (within the ± 5 days)">+</span>' : ' <span class="pos" title="before the period (within the ± 5 days)">−</span>') : '';
+                 : !r.inPeriod ? (r.date > p.end ? ' <span class="pos" title="after the period">+</span>' : ' <span class="pos" title="before the period (within the 5 days before)">−</span>') : '';
     return '<tr class="' + (locked ? 'recd' : '') + (checked ? ' sel' : '') + '" data-key="' + r.key + '">'
       + '<td>' + (closedSt ? '' : '<input type="checkbox" class="rowck"' + (checked ? ' checked' : '') + (locked ? ' title="tick to un-reconcile with the others"' : '') + '>') + '</td>'
       + '<td class="num">' + fmtD(r.date) + posTag + '</td>'
@@ -756,13 +805,16 @@ function updateStatementKpis(){
   $('kAppSub').textContent = c ? inP.length + ' rows' + (isBankK ? ' · in ' + fmtMoney(inT, cur) + ' · out ' + fmtMoney(outT, cur) : (credits ? ' · spend ' + fmtMoney(outT, cur) + ' · payments & credits ' + fmtMoney(inT, cur) : '')) + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
   $('kTicked').textContent = c ? fmtMoney(tickedTotal, cur) : '—';
   $('kTickedSub').textContent = c ? tickedAll.length + ' of ' + st.rows.length + ' rows shown' + (tickedAll.length > ticked.length ? ' · ' + (tickedAll.length - ticked.length) + ' in another currency, not in the total' : '') + (st.hiddenOther ? ' · ' + st.hiddenOther + ' on other statements, hidden' : '') : '';
+  // "new spend" leaves card payments out, so the check does too (the opening → closing chain below keeps them)
+  const isCardPayment = r => (r.kind === 'fund' && r.tx_kind === 'card_payment') || r.category === 'Payment';
+  const tickedSpend = ticked.filter(r => !isCardPayment(r)).reduce((s, r) => s + signed(r), 0);
   const stTotal = parseFloat($('stTotal').value);
   if (c && !isNaN(stTotal)) {
-    const diff = Math.round((stTotal - tickedTotal) * 100) / 100;
+    const diff = Math.round((stTotal - tickedSpend) * 100) / 100;
     $('kDiff').innerHTML = Math.abs(diff) < 0.005
-      ? '<span class="tag good">matches the ticked total ✓</span>'
+      ? '<span class="tag good">matches the ticked spend ✓</span>'
       : '<span class="tag ' + (diff > 0 ? 'warn' : 'bad') + '">' + (diff > 0 ? 'statement is ' + fmtMoney(diff, cur) + ' MORE than ticked — something is missing in the app' : 'ticked is ' + fmtMoney(-diff, cur) + ' more than the statement — something is ticked that isn’t on it') + '</span>';
-  } else $('kDiff').textContent = c ? 'type the closing balance / total new spend from the statement' : '';
+  } else $('kDiff').textContent = c ? 'type the new spend from the statement (purchases − refunds, not the payment you made)' : '';
   // opening + ticked spend − credits = closing? (credits are already negative in tickedTotal)
   const op = parseFloat($('stOpen').value), cl = parseFloat($('stClosing').value);
   if (c && !isNaN(op) && !isNaN(cl)) {
@@ -786,7 +838,8 @@ function updateStatementKpis(){
   $('stClose').textContent = closed ? 'Reopen statement' : 'Close statement';
   $('stClose').className = 'btn ' + (closed ? 'btn-soft' : 'btn-primary');
   $('stMeta').innerHTML = c ? (closed ? '<span class="tag good">closed ' + fmtD(st.statement.closed_at.slice(0, 10)) + ' · showing only the rows on it</span>' : (st.statement ? '<span class="tag blue">statement saved · open</span>' : '')) : '';
-  $('stAll').checked = n > 0 && st.rows.every(r => st.sel.has(r.key));
+  const allIn = st.rows.filter(r => r.inPeriod && !r.reconciled_at);
+  $('stAll').checked = n > 0 && allIn.length > 0 && allIn.every(r => st.sel.has(r.key));
   renderPay();
 }
 // ── card payment (the cash event; the charges were the budget event) ──
@@ -1040,7 +1093,9 @@ async function runImport(){
   st.imp = { lines, total: lines.length, matched: M.matches.length, skipped, payments: M.payments, near: M.near };
   st.sel.clear(); lines.forEach(L => { if (L.match) st.sel.add(L.match.key); });
   closeImport(); renderImportResult(); renderStatement();
-  const spend = lines.filter(L => L.amount > 0).reduce((a, L) => a + L.amount, 0) - lines.filter(L => L.amount < 0).reduce((a, L) => a - L.amount, 0);
+  // new spend on the statement = purchases − refunds; last month's card payment is set aside, not netted (v2 S1)
+  const pays = new Set(M.payments), spendLines = lines.filter(L => !pays.has(L));
+  const spend = spendLines.filter(L => L.amount > 0).reduce((a, L) => a + L.amount, 0) - spendLines.filter(L => L.amount < 0).reduce((a, L) => a - L.amount, 0);
   if (!$('stTotal').value) { $('stTotal').value = spend.toFixed(2); updateStatementKpis(); }
   if (!$('impSelectOnly').checked && st.sel.size) reconcileSelected();
   toast(st.imp.matched + ' of ' + st.imp.total + ' statement lines matched' + (st.imp.matched ? ' — ticked for review' : ''));
