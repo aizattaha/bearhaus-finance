@@ -27,7 +27,7 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 10. Soft delete everywhere; transfers and card payments delete/restore as a unit; purge after 30 days.
 
 ## 4 · What Aizat still has to do (reminded repeatedly; unchanged)
-1. ~~Backup passphrase~~ — done 13 Oct; the first backup ran that day. Still to do: confirm the passphrase is long and random and in the password manager; nobody has tried a restore yet (v2 sprint 1 item 7 needs it).
+1. ~~Backup passphrase~~ — **reset 15 Oct 2026** (the 13 Oct one had been lost) and saved in the password manager as "BearHaus backup passphrase (GitHub BACKUP_PASSPHRASE)". **Restore drill passed 15 Oct** — see `docs/RESTORE.md` (lessons: a restore must re-apply the privilege lockdown and record the migration history). Backups from before 15 Oct can't be opened.
 2. Phone → Settings → People → **that's me** (links his login to his profile).
 3. Settings → People → **invite to sign in** for Paige → send her the JOIN code; she signs up with it.
 4. Settings → Payment cards → closing day per credit card (HSBC = 2; the rest as on the statements).

@@ -43,7 +43,7 @@ The working copy is a git clone at `~/Code/bearhaus-finance` (outside Drive). Co
 ## Deploy
 - Push to `main`. Pages redeploys the HTML in ~1 min. The DB Action runs on migration/test changes only.
 - **Two deployers (found 15 Oct 2026):** the Supabase GitHub integration (check run "Supabase Preview") *also* applies new migrations from `main` to production, ~2 minutes before the Action's tested push — so the Action usually reports "Remote database is up to date", and production does not wait for our tests. It is also the likely cause of the old "history insert" flake (both racing). Until Aizat turns the integration's production deploy off (Supabase → Project Settings → Integrations → GitHub), treat every push to `main` with a migration as going live immediately: **run the full local suite on Postgres 17 and the local Supabase stack before pushing**, never after.
-- Secrets in GitHub: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, `SUPABASE_DB_PASSWORD`, `BACKUP_PASSPHRASE` (set 13 Oct; the deploy refuses to run without it because it snapshots first).
+- Secrets in GitHub: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, `SUPABASE_DB_PASSWORD`, `BACKUP_PASSPHRASE` (reset 15 Oct 2026, kept in Aizat's password manager; the deploy refuses to run without it because it snapshots first). Restoring: `docs/RESTORE.md` + `tools/restore/check-restore.sql`.
 
 ## Mirror
 After every sprint, mirror changed files to Aizat's Drive folder `…/My Drive/Aizat/Claude/A Personal Finance/` (same layout: `app/`, `desktop/`, `supabase/migrations/`, `QA/tools/sql-tests/`, `QA/tools/ci/`, `QA/workflows/`, `QA/`, handbook at the root). From Claude Code on his Mac that is a plain `cp` from `~/Code/bearhaus-finance`.
