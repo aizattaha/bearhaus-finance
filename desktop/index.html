@@ -1268,7 +1268,7 @@ function openBulk(src){
   $('bkAmount').value = curs.length === 1 ? fmtMoney(rows.reduce((a, r) => a + Number(r.amount), 0), curs[0]) + ' total' : 'mixed currencies';
   const ds = same('description'); $('bkDesc').value = ds !== undefined ? ds : 'mixed';
   const keep = '<option value="' + NOCHG + '">— no change —</option>';
-  $('bkCard').innerHTML = keep + cardOptions(null, false) + '<optgroup label="Other"><option value="cash">Cash</option><option value="none">(no card)</option></optgroup>';
+  $('bkCard').innerHTML = keep + cardOptions(null, false, true) + '<optgroup label="Other"><option value="cash">Cash</option><option value="none">(no card)</option></optgroup>';
   const kinds = [...new Set(rows.map(r => r.kind))];
   const cats = CTX.cats.filter(c => kinds.includes(c.kind));
   const groups = [...new Set(cats.map(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other')))];
@@ -1333,6 +1333,12 @@ async function applyBulk(){
   $('bkApply').disabled = true;
   let done = 0, skipped = 0;
   try {
+    if (cardObj && cardObj.is_archived) {
+      // an archived card only takes rows through the Desk's reconciliation function; the other fields follow below
+      const openIds = rows.filter(r => !r.reconciled_at).map(r => r.id);
+      if (openIds.length) { const { error } = await sb.rpc('desk_set_card', { p_ids: openIds, p_card: cardObj.id }); if (error) throw error; }
+      delete full.payment_method_id; delete full.paid_with;
+    }
     for (const kind of ['daily', 'travel']) {
       const t = kind === 'daily' ? 'daily_expenses' : 'travel_expenses';
       const open = rows.filter(r => r.kind === kind && !r.reconciled_at).map(r => r.id);
@@ -1344,7 +1350,8 @@ async function applyBulk(){
         rows.filter(r => r.kind === kind && !r.reconciled_at).forEach(r => { const c = cardObj || cardById(r.payment_method_id); const o = c && c.profile_id ? c.profile_id : 'joint'; (byOwner[o] = byOwner[o] || []).push(r.id); });
         for (const [o, ids] of Object.entries(byOwner)) { const { error } = await sb.from(t).update(Object.assign({}, all, { payer_profile_id: o === 'joint' ? null : o })).in('id', ids); if (error) throw error; done += ids.length; }
         rows.filter(r => r.kind === kind && !r.reconciled_at).forEach(r => { const c = cardObj || cardById(r.payment_method_id); r.payer_profile_id = c && c.profile_id ? c.profile_id : null; });
-      } else if (open.length) { const { error } = await sb.from(t).update(all).in('id', open); if (error) throw error; done += open.length; }
+      } else if (open.length && Object.keys(all).length) { const { error } = await sb.from(t).update(all).in('id', open); if (error) throw error; done += open.length; }
+      else if (open.length) done += open.length;   // only the card changed, already done above
       if (lockedIds.length) {
         if (Object.keys(soft).length) { const { error } = await sb.from(t).update(soft).in('id', lockedIds); if (error) throw error; done += lockedIds.length; }
         if (Object.keys(full).length || whoV === 'owner') skipped += lockedIds.length;
@@ -1523,7 +1530,7 @@ async function openAddTx(src){
   if (!ax.trips.length) { const t = await sb.from('trips').select('id, name, currency, currencies, start_date').order('start_date', {ascending:false}).limit(30); ax.trips = t.data || []; }
   $('axTrip').innerHTML = ax.trips.map(t => '<option value="' + t.id + '">' + esc(t.name) + '</option>').join('') || '<option value="">no trips yet</option>';
   const card = src === 'st' && st.card ? st.card : null;
-  $('axCard').innerHTML = cardOptions(card ? card.id : null, true) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
+  $('axCard').innerHTML = cardOptions(card ? card.id : null, true, !!(card && card.is_archived)) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
   const curs = [...new Set(CTX.funds.map(f => f.currency))]; if (card && card.currency && !curs.includes(card.currency)) curs.unshift(card.currency);
   $('axCur').innerHTML = curs.map(c => '<option value="' + c + '">' + c + '</option>').join('');
   $('axCur').value = (card && card.currency) || curs[0];
@@ -1568,8 +1575,11 @@ async function saveAddTx(){
   $('axSave').disabled = true;
   const t = ax.kind === 'daily' ? 'daily_expenses' : 'travel_expenses';
   if ($('axRefund').classList.contains('sel')) row.is_refund = true;
-  // the split rows (payer +, joint −) are derived by the database
-  const ins = await sb.from(t).insert(row).select('id').single();
+  // the split rows (payer +, joint −) are derived by the database. An archived card refuses new rows, except
+  // through the Desk's reconciliation function (a closed card's last statement — card rules, sprint 2)
+  const ins = card.is_archived
+    ? await sb.rpc('desk_add_expense', { p: row })
+    : await sb.from(t).insert(row).select('id').single();
   $('axSave').disabled = false;
   if (ins.error) return err('couldn’t save: ' + ins.error.message);
   toast('saved — ' + desc + ' · ' + (row.is_refund ? '+' : '') + fmtMoney(amount, row.currency) + (row.fund_id ? ' · counts against ' + fundName(row.fund_id) : ''));

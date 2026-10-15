@@ -208,6 +208,9 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .arow .rval{font-size:14px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:19px}
 .arow .rmid{min-width:0;flex:1}
 .arow .chev{margin-left:auto;color:var(--ink-soft);flex:0 0 auto}
+/* category + paid with: two rows on a tall phone, side by side on a short one so the form never scrolls (v2 S2) */
+#rowCatCard>.f-sec{min-width:0}
+@media (max-height: 740px){ #sh-form #rowCatCard{display:flex;gap:8px;margin-top:6px} #sh-form #rowCatCard>.f-sec{flex:1 1 0;margin-top:0} #sh-form #rowCatCard .arow{gap:6px} }
 /* takeover suggestions — matches replace the form while typing */
 .take .trow{display:flex;align-items:center;gap:10px;width:100%;padding:12px 4px;background:none;border:none;border-bottom:1px solid var(--field);font-family:inherit;color:var(--ink);cursor:pointer;text-align:left}
 .take .trow:active{background:var(--accent-soft)}
@@ -2793,12 +2796,13 @@ function renderSettings(){
   const sections = [
     { icon:'👥', label:'People', cap: (CTX.profiles || []).map(p => p.display_name).join(' · ') || '…', render: renderSetPeople },
     { icon:'💰', label:'Funds', cap: 'rename · archive · travel & leftover funds', render: renderSetFunds },
-    { icon:'💳', label:'Payment cards', cap: 'per-person, archivable', render: renderSetCards },
+    { icon:'💳', label:'Payment cards', cap: 'per-person · where each card is offered · archivable', render: renderSetCards },
+  ].concat(cardRulesOK ? [{ icon:'⭐', label:'Default cards', cap: 'the card each person starts on — daily · trip · from a fund', render: renderSetCardDefaults }] : [], [
     { icon:'🏷️', label:'Categories', cap: 'add · rename · archive', render: renderSetCategories },
     { icon:'💵', label:'Income', cap: 'part of the monthly plan', render: renderSetIncome },
     { icon:'⬇️', label:'Export data', cap: 'full backup & CSV exports', render: renderSetExport },
     { icon:'🗑️', label:'Recently deleted', cap: 'deleted rows stay here 30 days — restore with a tap', render: renderSetBin },
-  ];
+  ]);
   sections.forEach(s => {
     const row = document.createElement('button');
     row.type = 'button'; row.className = 'setrow';
@@ -3130,7 +3134,7 @@ async function renderSetFunds(box){
 }
 
 async function renderSetCards(box){
-  let r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order, kind, closing_day, currency').order('sort_order');
+  let r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order, kind, closing_day, currency' + (cardRulesOK ? ', show_daily, show_trip, show_fund' : '')).order('sort_order');
   if (r.error && /kind|closing_day/.test(r.error.message || ''))   // reconciliation migration not landed yet
     r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
@@ -3147,7 +3151,7 @@ async function renderSetCards(box){
     const kindLabel = (KINDS.find(k => k[0] === c.kind) || [])[1] || '';
     d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + (c.kind === 'cash' ? '💵' : c.kind === 'bank' ? '🏦' : '💳') + '</div>'
       + '<div style="flex:1;min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div>'
-      + '<div class="cap">' + esc(owner) + (c.travel_only ? ' · travel only' : '')
+      + '<div class="cap">' + esc(owner) + offeredCap(c)
       + (hasKind ? ' · ' + esc(kindLabel || 'type?') + (c.kind === 'credit_card' ? ' · closes ' + (c.closing_day ? 'day ' + c.closing_day : '—') : '') + (c.currency ? ' · ' + esc(curLabel(c.currency)) : '') : '')
       + '</div></div>'
       + (c.is_archived ? '<span class="tag">archived</span>' : '');
@@ -3169,7 +3173,7 @@ async function renderSetCards(box){
         Object.assign(c, patch); await loadContext();
         // the caption under the name reads the row — redraw so it tells the truth
         const kl = (KINDS.find(k => k[0] === c.kind) || [])[1] || 'type?';
-        d.querySelector('.cap').innerHTML = esc(owner) + (c.travel_only ? ' · travel only' : '') + ' · ' + esc(kl) + (c.kind === 'credit_card' ? ' · closes ' + (c.closing_day ? 'day ' + c.closing_day : '—') : '') + (c.currency ? ' · ' + esc(curLabel(c.currency)) : '');
+        d.querySelector('.cap').innerHTML = esc(owner) + offeredCap(c) + ' · ' + esc(kl) + (c.kind === 'credit_card' ? ' · closes ' + (c.closing_day ? 'day ' + c.closing_day : '—') : '') + (c.currency ? ' · ' + esc(curLabel(c.currency)) : '');
         d.querySelector('.rowicon').textContent = c.kind === 'cash' ? '💵' : c.kind === 'bank' ? '🏦' : '💳';
         return true;
       };
@@ -3180,7 +3184,19 @@ async function renderSetCards(box){
       const trav = document.createElement('button'); trav.type = 'button'; trav.className = 'chip' + (c.travel_only ? ' sel' : ''); trav.style.cssText = 'font-size:11px;padding:4px 8px'; trav.textContent = '✈️ travel only';
       trav.title = 'only offered on trip expenses';
       trav.onclick = async () => { if (await save({ travel_only: !c.travel_only })) { trav.classList.toggle('sel', c.travel_only); toast(c.name + (c.travel_only ? ' · trips only' : ' · offered everywhere') + ' 🐻'); } };
-      cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel); cfg.appendChild(trav);
+      cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel);
+      if (cardRulesOK && c.show_daily !== undefined) {
+        // where this card is offered (Aizat, 15 Oct): Daily · Trip · From a fund
+        const cl = document.createElement('div'); cl.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+        cl.innerHTML = '<span class="cap">offered for</span>';
+        [['show_daily', 'Daily'], ['show_trip', '✈️ Trip'], ['show_fund', '💰 From a fund']].forEach(([col, lbl]) => {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'chip' + (c[col] ? ' sel' : ''); b.style.cssText = 'font-size:11px;padding:4px 8px';
+          b.textContent = lbl; b.setAttribute('aria-pressed', c[col] ? 'true' : 'false');
+          b.onclick = async () => { if (await save({ [col]: !c[col] })) { b.classList.toggle('sel', c[col]); b.setAttribute('aria-pressed', c[col] ? 'true' : 'false'); toast(c.name + (c[col] ? ' · offered for ' : ' · no longer offered for ') + lbl.replace(/^\W+ /, '') + ' 🐻'); } };
+          cl.appendChild(b);
+        });
+        cfg.appendChild(cl);
+      } else cfg.appendChild(trav);
       d._cfg = cfg;
     }
     const ebtn = document.createElement('button');
@@ -3227,6 +3243,50 @@ async function renderSetCards(box){
     if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
     await loadContext(); renderSetCards(box); toast(v + ' added 🐻');
   };
+}
+
+// "· offered for Daily · Trip" under a card's name (or the old "travel only" on an older database)
+function offeredCap(c){
+  if (!cardRulesOK || c.show_daily === undefined) return c.travel_only ? ' · travel only' : '';
+  const on = [c.show_daily && 'Daily', c.show_trip && 'Trip', c.show_fund && 'Fund'].filter(Boolean);
+  return on.length === 3 ? '' : on.length ? ' · ' + on.join(' · ') + ' only' : ' · not offered (More cards…)';
+}
+// Default cards: per person (and Shared), the card the form starts on for each kind of expense
+async function renderSetCardDefaults(box){
+  const [cr, dr] = await Promise.all([
+    sb.from('payment_methods').select('id, name, profile_id, kind, currency, show_daily, show_trip, show_fund').eq('is_archived', false).order('sort_order'),
+    sb.from('card_defaults').select('profile_id, context, payment_method_id'),
+  ]);
+  if (cr.error || dr.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc((cr.error || dr.error).message) + '</p>'; return; }
+  const cards = cr.data || [], defs = dr.data || [];
+  const CTXS = [['daily', 'Daily'], ['trip', '✈️ Trip'], ['fund', '💰 From a fund']];
+  const people = (CTX.profiles || []).map(p => ({ id: p.id, name: p.display_name })).concat([{ id: null, name: jointLabel() || 'Shared' }]);
+  box.innerHTML = '';
+  box.appendChild(capEl('the card a new expense starts on. Empty = the first card in the list. A person’s default is their own card, a shared card or cash; only cards offered for that kind of expense are listed.'));
+  people.forEach(person => {
+    const row = document.createElement('div'); row.className = 'srow'; row.style.cssText = 'flex-wrap:wrap;gap:6px';
+    row.innerHTML = '<div class="lbl" style="flex-basis:100%">' + esc(person.name) + '</div>';
+    CTXS.forEach(([ctx, lbl]) => {
+      const eligible = cards.filter(c => c['show_' + ctx] !== false && (c.profile_id === person.id || c.profile_id === null || c.kind === 'cash'));
+      const cur = (defs.find(d => (d.profile_id || null) === person.id && d.context === ctx) || {}).payment_method_id || '';
+      const cell = document.createElement('label'); cell.style.cssText = 'flex:1 1 30%;min-width:96px;display:flex;flex-direction:column;gap:2px';
+      cell.innerHTML = '<span class="cap">' + lbl + '</span>';
+      const sel = document.createElement('select'); sel.className = 'descinput'; sel.style.cssText = 'padding:6px 8px;font-size:12px;width:100%';
+      sel.setAttribute('aria-label', person.name + ' · ' + lbl.replace(/^\W+ /, '') + ' default card');
+      sel.innerHTML = '<option value="">first in list</option>' + eligible.map(c => '<option value="' + c.id + '"' + (c.id === cur ? ' selected' : '') + '>' + esc(c.name) + '</option>').join('');
+      sel.onchange = async () => {
+        let q = sb.from('card_defaults').delete().eq('household_id', CTX.hh.id).eq('context', ctx);
+        q = person.id ? q.eq('profile_id', person.id) : q.is('profile_id', null);
+        let { error } = await q;
+        if (!error && sel.value) ({ error } = await sb.from('card_defaults').insert({ household_id: CTX.hh.id, profile_id: person.id, context: ctx, payment_method_id: sel.value }));
+        if (error) { toast('couldn’t save: ' + error.message); return; }
+        await loadContext();
+        toast(person.name + ' · ' + lbl.replace(/^\W+ /, '') + ' → ' + (sel.value ? sel.options[sel.selectedIndex].text : 'first in list') + ' 🐻');
+      };
+      cell.appendChild(sel); row.appendChild(cell);
+    });
+    box.appendChild(row);
+  });
 }
 
 async function renderSetCategories(box){
@@ -3809,12 +3869,12 @@ async function loadContext(){
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
   if (CTX.cats) applyCategories(CTX.cats);   // instant catalogue from the last visit
   if (CTX.firstMonth) BUD_MIN = CTX.firstMonth;
-  const [hh, profiles, funds, trips, cards, cats, dCats, tCats, firstD, incSrc, incPast] = await Promise.all([
+  const [hh, profiles, funds, trips, cards0, cats, dCats, tCats, firstD, incSrc, incPast, cardDefs] = await Promise.all([
     sb.from('households').select('id, name, travel_fund_id, joint_label, pot_start').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot, icon').eq('is_active', true).order('sort_order'),
     sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
-    sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order, kind, currency').eq('is_archived', false).order('sort_order'),
+    sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order, kind, currency, show_daily, show_trip, show_fund').eq('is_archived', false).order('sort_order'),
     sb.from('categories').select('kind, name, group_name, icon').eq('is_active', true).order('sort_order'),
     sb.from('daily_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(300),
     sb.from('travel_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(120),
@@ -3822,7 +3882,12 @@ async function loadContext(){
     sb.from('income_budgets').select('source_name, month').order('month', {ascending:false}).limit(60),
     sb.from('fund_transactions').select('income_source, created_at').not('income_source', 'is', null)
       .order('created_at', {ascending:false}).limit(120),
+    sb.from('card_defaults').select('profile_id, context, payment_method_id'),
   ]);
+  // card rules (sprint 2): per-card Daily/Trip/Fund flags + default cards; an older database has neither
+  let cards = cards0;
+  cardRulesOK = !(cards0.error && /show_daily/.test(cards0.error.message || ''));
+  if (!cardRulesOK) cards = await sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order, kind, currency').eq('is_archived', false).order('sort_order');
   if (funds.error && /icon/.test(funds.error.message || '')) {   // database not updated yet
     const f2 = await sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot').eq('is_active', true).order('sort_order');
     funds.data = f2.data; funds.error = f2.error;
@@ -3865,7 +3930,7 @@ async function loadContext(){
             topDaily: topCats(dCats.data, FALLBACK_DAILY).filter(n => !catRows.length || catRows.some(c => c.kind === 'daily' && c.name === n)),
             topTravel: topCats(tCats.data, FALLBACK_TRAVEL).filter(n => !catRows.length || catRows.some(c => c.kind === 'travel' && c.name === n)),
             histDaily: histFrom(dCats.data), histTravel: histFrom(tCats.data),
-            incomeSources };
+            incomeSources, cardDefaults: cardDefs.error ? [] : (cardDefs.data || []) };
     CTX.firstMonth = (!firstD.error && firstD.data && firstD.data[0])
       ? firstD.data[0].date.slice(0, 7) + '-01' : curMonthIso();
     BUD_MIN = CTX.firstMonth;
@@ -3974,19 +4039,26 @@ function formCurrency(){
   if (mode === 'fundexp' || mode === 'fund' || mode === 'transfer' || mode === 'paycard') { const f = fundById(fundFromId); return f ? f.currency : null; }
   return SEG2CODE[segSel('segCurrency')] || null;
 }
-function cardOptions(payerName){
+// card rules (Aizat, 15 Oct): each card says where it's offered — Daily, Trip, From a fund — and each person has a
+// default card per kind of expense (Settings → Payment cards / Default cards). Archived cards never load here.
+let cardRulesOK = true;   // false until the card-rules migration has landed (probed in loadContext)
+const cardContext = () => (mode === 'trip' || mode === 'edit') ? 'trip' : mode === 'fundexp' ? 'fund' : 'daily';
+function cardDefaultFor(pid){
+  const d = (CTX.cardDefaults || []).find(x => (x.profile_id || null) === (pid || null) && x.context === cardContext());
+  return d ? d.payment_method_id : null;
+}
+function cardOptions(payerName, all){
   const p = CTX.profiles.find(x => x.display_name === payerName);
   const pid = p ? p.id : null;   // null = Joint
-  const cur = formCurrency();
+  const cur = formCurrency(), ctx = cardContext(), def = cardDefaultFor(pid);
+  const offered = c => all || (cardRulesOK ? c['show_' + ctx] !== false : (!c.travel_only || ctx !== 'daily'));
   // cash is a kind, not a person's card — anyone can pay cash (QA round 1);
   // "who paid" and "which card" are different questions: Joint may sit on anyone's card, joint cards first (QA2 A-B4);
   // cards in the purchase's currency come first, so an S$ fund purchase lands on the S$ card by default (QA2 B-B3)
-  // "✈️ travel only" keeps a card out of new Daily entries; a fund purchase or an edit can still name it, so
-  // the SG cards are offered for an SGD fund (Aizat, 15 Oct — stop-gap until per-card Daily/Trip/Fund choices)
-  const travelOk = mode === 'trip' || mode === 'edit' || mode === 'fundexp' || mode === 'editDaily';
   return (CTX.cards || [])
-    .filter(c => (c.profile_id === pid || c.kind === 'cash' || pid === null) && (!c.travel_only || travelOk))
-    .sort((a, b) => (a.kind === 'cash') - (b.kind === 'cash')
+    .filter(c => (c.profile_id === pid || c.kind === 'cash' || pid === null) && offered(c))
+    .sort((a, b) => (b.id === def) - (a.id === def)   // this person's default card for this kind of expense first
+      || (a.kind === 'cash') - (b.kind === 'cash')
       || (cur ? ((b.currency === cur) - (a.currency === cur)) : 0)
       || (pid === null ? ((a.profile_id !== null) - (b.profile_id !== null)) : 0)
       || a.sort_order - b.sort_order);
@@ -4222,8 +4294,25 @@ function openCardPicker(){
     id: o.value, name: o.value === '' ? 'no card' : o.textContent,
     icon: o.value === '' ? '👛' : '💳', sel: o.value === cur,
   }));
-  openPicker('Paid with', items, it => { $('cardSel').value = it.id; renderCardRow(); });
+  // the payer's other active cards — not offered for this kind of expense, but there for the odd one-off
+  const payer = segSel('segPayer') || payerNames()[0];
+  const listed = new Set(items.map(i => i.id));
+  const more = cardOptions(payer, true).filter(c => !listed.has(c.name));
+  if (more.length) items.push({ id: '__more__', name: 'More cards…', icon: '➕', cap: more.length + ' not shown for this kind of expense' });
+  openPicker('Paid with', items, it => {
+    if (it.id !== '__more__') { $('cardSel').value = it.id; renderCardRow(); return; }
+    openPicker('More cards', more.map(c => ({ id: c.name, name: c.name, icon: '💳', cap: c.currency ? curLabel(c.currency) : '' })), m => {
+      if (![...$('cardSel').options].some(o => o.value === m.id)) { const o = document.createElement('option'); o.textContent = m.id; $('cardSel').appendChild(o); }
+      $('cardSel').value = m.id; renderCardRow();
+    });
+  });
 }
+// the card row sits right under the category, always visible — a wrong card should be seen before saving
+(function () {
+  const w = $('cardWrap'), c = $('rowCategory'); if (!w || !c) return;
+  const pair = document.createElement('div'); pair.id = 'rowCatCard';
+  c.before(pair); pair.appendChild(c); w.classList.add('f-sec'); pair.appendChild(w);
+})();
 function gridSel(){ return selectedCat; }
 function renderCatRow(){
   $('catRow').innerHTML = '<span class="ric">' + (CAT_ICON[selectedCat] || '🛍️') + '</span>'
@@ -4811,7 +4900,7 @@ async function saveEntry(){
       if ($('cardWrap')) $('cardWrap').style.display = 'block';
       done(false, 'pick the card you paid with (or Cash)'); return;
     }
-    if ((mode === 'daily' || mode === 'trip' || mode === 'fundexp') && !curMismatchOk) {
+    if ((mode === 'daily' || mode === 'fundexp') && !curMismatchOk) {
       const cardRow = (CTX.cards || []).find(c => c.name === $('cardSel').value);
       if (cardRow && cardRow.currency && cardRow.currency !== currency) {
         curMismatchOk = true; setTimeout(() => { curMismatchOk = false; }, 8000);
@@ -4887,7 +4976,7 @@ async function saveEntry(){
     localStorage.setItem('bh-cur', segSel('segCurrency'));
     if (mode === 'trip' && travelInit) loadTravel(true);
     const tripName = mode === 'trip' ? (tripById(selectedTripId) || {}).name : '';
-    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (tripName ? ' · ' + tripName : '') + (fundExp ? ' · from ' + fundExp.name : ''));
+    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (base.paid_with ? ' · ' + base.paid_with : '') + (tripName ? ' · ' + tripName : '') + (fundExp ? ' · from ' + fundExp.name : ''));
     if (fundExp && fundsInit) loadFunds();
   } catch (err) {
     done(false, err.message || String(err));
