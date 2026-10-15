@@ -1,0 +1,2 @@
+# Made-up example figures that may appear in docs (one regex per line). Never add a real figure here.
+1,234\.50

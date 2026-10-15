@@ -17,13 +17,19 @@ on:
   pull_request:
     paths: ['supabase/migrations/**', 'tools/sql-tests/**']
   workflow_dispatch:
+# one deploy at a time, never cancelled half-way; the workflow only needs to read the repo
+concurrency:
+  group: deploy-db
+  cancel-in-progress: false
+permissions:
+  contents: read
 jobs:
   test:
     name: Migrations from scratch + SQL tests
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17   # production runs Postgres 17
         env:
           POSTGRES_PASSWORD: postgres
         ports: ['5432:5432']
@@ -33,7 +39,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Apply every migration to an empty database, then test
         run: tools/sql-tests/run.sh "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
   push-migrations:
@@ -41,22 +47,42 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1
         with:
-          version: latest
+          version: 2.120.0   # pinned: a new CLI release never touches production untested
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      - name: Encrypted snapshot before the push
+        # a restore point for this deploy; encrypted like the weekly backup, kept 30 days
+        run: |
+          set -o pipefail
+          if [ -z "$BACKUP_PASSPHRASE" ]; then echo "::error::BACKUP_PASSPHRASE missing — no snapshot, no deploy"; exit 1; fi
+          supabase db dump --linked -f schema.sql
+          supabase db dump --linked --data-only -f data.sql
+          cat schema.sql data.sql > snapshot.sql
+          gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$BACKUP_PASSPHRASE" -o "pre-deploy-${GITHUB_SHA::7}.sql.gpg" snapshot.sql
+          shred -u schema.sql data.sql snapshot.sql
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pre-deploy-${{ github.sha }}
+          path: pre-deploy-*.sql.gpg
+          retention-days: 30
+          if-no-files-found: error
       - name: Push migrations
         # the full log is only readable in the browser; surface the tail of any failure as an
         # annotation too, so it can be read through the API
         run: |
           set -o pipefail
-          supabase db push 2>&1 | tee push.log || { echo "::error title=supabase db push failed::$(tail -c 2500 push.log | tr '\n' ' ' | tr '\r' ' ')"; exit 1; }
+          supabase db push 2>&1 | tee push.log || { echo "::error title=supabase db push failed::$(tail -c 800 push.log | tr '\n' ' ' | tr '\r' ' ')"; exit 1; }
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
