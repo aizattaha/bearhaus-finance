@@ -682,9 +682,10 @@ function go(id){
   const tabFor = {'scr-home':'scr-home','scr-settings':'scr-home','scr-alltx':'scr-home','scr-budget':'scr-budget','scr-travel':'scr-travel','scr-trip':'scr-travel','scr-funds':'scr-funds'};
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.scr === tabFor[id]));
   window.scrollTo(0, 0);
-  if (id === 'scr-budget' && !budgetInit) initBudget();
-  if (id === 'scr-funds' && !fundsInit) initFunds();
-  if (id === 'scr-travel' && !travelInit) initTravel();
+  if (id === 'scr-budget' && !budgetInit) { stale.budget = false; initBudget(); }
+  else if (id === 'scr-funds' && !fundsInit) { stale.funds = false; initFunds(); }
+  else if (id === 'scr-travel' && !travelInit) { stale.travel = false; initTravel(); }
+  else refreshScreen(id);   // something was saved since this screen last loaded
   if (id === 'scr-settings') renderSettings();
 }
 // CURSYM, COUNTRY_CUR, ZERO_DEC, fmtMoney, flagOf, COUNTRY_NAME, countryTitle, todayIso → common.js
@@ -765,7 +766,7 @@ $('loginForm').addEventListener('submit', async e => {
     done();
     if (error) { fail(/already registered/i.test(error.message) ? 'that email already has an account — sign in, or use “forgot password?”' : 'couldn’t create the account: ' + error.message); return; }
     localStorage.setItem('bh-invite', code);
-    if (data.session) { boot(); return; }
+    if (data.session) { if (!booted) boot(); return; }   // the auth listener may have started it already
     errEl.style.color = 'var(--good)';
     errEl.textContent = 'account created — confirm it via the email we just sent, then sign in here';
     return;
@@ -779,7 +780,7 @@ $('loginForm').addEventListener('submit', async e => {
       : 'couldn’t sign in: ' + error.message);
     return;
   }
-  boot();
+  if (!booted) boot();   // the auth listener usually got here first — start the app once
 });
 
 let outArm = false;
@@ -793,7 +794,7 @@ async function signOut(){
   }
   await sb.auth.signOut();
   // this device may be handed to someone else — leave no cached numbers behind
-  ['bh-home','bh-budget','bh-funds','bh-travel','bh-ctx','bh-trip','bh-fund','bh-payer','bh-cur','bh-invite','bh-tut-done'].forEach(k => localStorage.removeItem(k));
+  ['bh-home','bh-budget','bh-funds','bh-travel','bh-home2','bh-budget2','bh-travel2','bh-purged','bh-ctx','bh-trip','bh-fund','bh-payer','bh-cur','bh-invite','bh-tut-done'].forEach(k => localStorage.removeItem(k));
   location.reload();
 }
 
@@ -909,21 +910,8 @@ async function createHousehold(){
 }
 
 // ── category knowledge ───────────────────────
-// 'Payment' rows are settle-up transfers between you two, not spending —
-// they are excluded from every total on this screen.
-const GROUP_OF = {};
-const GROUPS = {
-  'Rent':               ['Rent'],
-  'Daily Expenses':     ['Dining out','Groceries','Furniture','Home - Other','Household supplies',
-                         'Sports','Clothing','Gifts','Life - Other','Medical Expenses','Liquor',
-                         'Entertainment - Other','Electronics','Movies','Games','Health','Hotel'],
-  'Education':          ['Childcare','Education','Activities'],
-  'Transportation':     ['Bus/train','Gas/fuel','Car','Parking','Taxi','Bicycle','Transportation - Other'],
-  'Utilities':          ['Water','Electricity','Gas'],
-  'Insurance':          ['Insurance'],
-  'TV/Phone/Internet':  ['TV/Phone/Internet'],
-};
-Object.entries(GROUPS).forEach(([g, cats]) => cats.forEach(c => GROUP_OF[c] = g));
+// icons for the built-in categories (the household's own icons replace these as they load). Which purchases
+// count, and in which group, is the database's call — by category id (v2 sprint 3)
 const CAT_ICON = {
   'Groceries':'🛒','Dining out':'🍜','Bus/train':'🚆','Taxi':'🚕','Parking':'🅿️','Gas/fuel':'⛽',
   'Car':'🚗','Bicycle':'🚲','Rent':'🏠','Electricity':'💡','Water':'🚿','Gas':'🔥',
@@ -945,18 +933,18 @@ async function enterApp(){
   $('todayLabel').textContent = now.toLocaleDateString('en-AU', {weekday:'long', day:'numeric', month:'long'});
   $('monthLabel').textContent = now.toLocaleDateString('en-AU', {month:'long'});
 
-  // instant paint from the last visit, then refresh live
-  const cached = localStorage.getItem('bh-home');
+  // instant paint from the last visit, then refresh live: launch is two calls, app_bootstrap + home_summary (v2 sprint 3)
+  const cached = localStorage.getItem('bh-home2');
   if (cached) { try { renderHome(JSON.parse(cached)); } catch(e){} }
   loadHome();
-  checkPlanNudge();
   loadContext().then(() => {
     if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
     applyRole();
+    checkPlanNudge(CTX.plan);
     // the first paint guessed the home currency — repaint with the real one
-    const c = localStorage.getItem('bh-home');
+    const c = localStorage.getItem('bh-home2');
     if (c) { try { renderHome(JSON.parse(c)); } catch(e){} }
-  });
+  }).catch(e => { if (!/access removed|session invalid/.test(String(e && e.message))) showError('couldn’t load your household: ' + (e.message || e)); });
 }
 
 // two phones, one household: coming back to the app after a while refetches whatever is on screen (QA2 A)
@@ -965,48 +953,51 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { lastAway = Date.now(); return; }
   if (!lastAway || Date.now() - lastAway < 60000 || $('app').style.display === 'none') return;
   lastAway = 0;
-  try {
-    loadHome();
-    if (budgetInit && $('scr-budget').classList.contains('active')) selectBudgetMonth(budgetMonth);
-    if (fundsInit && $('scr-funds').classList.contains('active')) loadFunds();
-    if (atx && $('scr-alltx').classList.contains('active')) loadAllTx(true);
-  } catch (e) {}
+  // the partner may have renamed a card or a category meanwhile: the context comes back too (one call)
+  try { markStale(); loadContext().catch(() => {}); refreshVisible(); } catch (e) {}
 });
+// after a save (or a return to the app): refresh the screen that's showing now, the others when they're next opened
+const stale = { home: false, budget: false, funds: false, alltx: false, travel: false };
+function markStale(){ Object.keys(stale).forEach(k => stale[k] = true); }
+function activeScreen(){ return (document.querySelector('.screen.active') || {}).id || 'scr-home'; }
+function refreshVisible(){ refreshScreen(activeScreen()); }
+function refreshScreen(id){
+  if ((id === 'scr-home' || id === 'scr-settings') && stale.home) { stale.home = false; loadHome(); }
+  else if (id === 'scr-budget' && budgetInit && stale.budget) { stale.budget = false; selectBudgetMonth(budgetMonth); }
+  else if (id === 'scr-funds' && fundsInit && stale.funds) { stale.funds = false; loadFunds(); }
+  else if (id === 'scr-alltx' && atx && stale.alltx) { stale.alltx = false; loadAllTx(true); }
+  else if ((id === 'scr-travel' || id === 'scr-trip') && travelInit && stale.travel) { stale.travel = false; loadTravel(true); }
+}
+function refreshAfterSave(){ markStale(); refreshVisible(); }
 // a view-only login: say so once on Home, hide the + button, and keep the plan card read-only (QA2 C-B3)
-async function applyRole(){
-  try {
-    const u = await sb.auth.getUser(); const uid = u.data && u.data.user && u.data.user.id; if (!uid) return;
-    const r = await sb.from('household_members').select('role').eq('user_id', uid).maybeSingle();
-    CTX.role = r.data ? r.data.role : 'member';
-  } catch (e) { CTX.role = 'member'; }
-  const viewer = CTX.role === 'viewer';
+function applyRole(){
+  const viewer = CTX.role === 'viewer';   // from app_bootstrap — no extra call
   $('viewerNote').style.display = viewer ? 'block' : 'none';
   document.querySelectorAll('.fab').forEach(b => b.style.display = viewer ? 'none' : '');
   if (viewer) { const n = $('planNudge'); n.onclick = () => toast(VIEW_ONLY_MSG); }
 }
-// has month m's plan been applied? The server's answer (plan_status, v2 sprint 2), shaped like the old query —
-// { data: [{ date }] or [], error } — plus .status (saved, version). Falls back while the database is older.
+// has month m's plan been applied? The server's answer (plan_status), shaped like a list —
+// { data: [{ date }] or [], error } — plus .status (saved, version)
 async function appliedQ(m){
-  if (planStatusOK) {
-    const r = await sb.rpc('plan_status', { p_month: m });
-    if (!r.error) { const st = (r.data || [])[0] || null; return { data: st && st.applied_on ? [{ id: 'plan', date: st.applied_on }] : [], error: null, status: st }; }
-    if (/PGRST202|plan_status|could not find the function/i.test((r.error.code || '') + ' ' + (r.error.message || ''))) planStatusOK = false;
-    else return r;
-  }
-  return sb.from('fund_transactions').select('id, date').eq('origin', 'planned').gte('date', m).lt('date', addMonths(m, 1)).limit(1);
+  const r = await sb.rpc('plan_status', { p_month: m });
+  if (r.error) return r;
+  const st = (r.data || [])[0] || null;
+  return { data: st && st.applied_on ? [{ id: 'plan', date: st.applied_on }] : [], error: null, status: st };
 }
-// the ritual needs a cue: nudge until this month's plan is saved AND applied (WF-2)
-async function checkPlanNudge(){
+// the ritual needs a cue: nudge until this month's plan is saved AND applied (WF-2).
+// At launch the answer comes with app_bootstrap; after a plan save or apply it is asked again (two calls)
+async function checkPlanNudge(plan){
   try {
-    const m = curMonthIso(), next = addMonths(m, 1);
-    const [fb, applied] = await Promise.all([
-      sb.from('fund_budgets').select('id').eq('month', m).limit(1),
-      appliedQ(m),
-    ]);
-    if (fb.error || applied.error) return;
+    const m = curMonthIso();
+    if (!plan || plan.month !== m) {
+      const [fb, applied] = await Promise.all([sb.from('fund_budgets').select('id').eq('month', m).limit(1), appliedQ(m)]);
+      if (fb.error || applied.error) return;
+      plan = { month: m, fund_lines: fb.data.length > 0, applied_on: applied.data.length ? applied.data[0].date : null };
+      if (CTX) CTX.plan = Object.assign({}, CTX.plan || {}, plan);
+    }
     const el = $('planNudge'), monthWord = monthName(m, true).split(' ')[0];
-    if (!fb.data.length) { $('planNudgeMsg').textContent = monthWord + '’s plan isn’t set up yet'; el.style.display = 'block'; }
-    else if (!applied.data.length) { $('planNudgeMsg').textContent = monthWord + '’s plan is saved — apply it when ready'; el.querySelector('.cap').textContent = 'tap to open the plan — it takes two minutes'; el.style.display = 'block'; }
+    if (!plan.fund_lines) { $('planNudgeMsg').textContent = monthWord + '’s plan isn’t set up yet'; el.style.display = 'block'; }
+    else if (!plan.applied_on) { $('planNudgeMsg').textContent = monthWord + '’s plan is saved — apply it when ready'; el.querySelector('.cap').textContent = 'tap to open the plan — it takes two minutes'; el.style.display = 'block'; }
     else { $('planNudgeMsg').textContent = monthWord + '’s plan applied ✓'; el.querySelector('.cap').textContent = 'tap to open the plan'; el.style.display = 'block'; }
   } catch (e) {}
 }
@@ -1025,41 +1016,16 @@ async function retryLoad(){
 window.addEventListener('unhandledrejection', e =>
   showError('unexpected error: ' + (e.reason && e.reason.message || e.reason)));
 
-// ── HOME: fetch tiny, pre-scoped slices ──────
+// ── HOME: the database does the sums (home_summary, v2 sprint 3) ──
+// the last seven days, the five latest purchases, this month by category group (by id), and the income that
+// arrived — the applied plan's named sources ARE money that arrived (Aizat's rule, Aug 2026)
 let homeRetried = false;
 async function loadHome(){
   try {
-    const now = new Date();
-    const weekStart = new Date(now); weekStart.setDate(now.getDate() - 6);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [week, recent, month, inc, pinc, applied] = await Promise.all([
-      sb.from('daily_expenses').select('date, amount, currency, category' + rf())
-        .gte('date', isoDate(weekStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
-      sb.from('daily_expenses')
-        .select('id, date, description, category, amount, currency, profiles(display_name)' + rf())
-        .lte('date', isoDate(now))
-        .order('date', {ascending:false}).order('created_at', {ascending:false}).limit(5),
-      sb.from('daily_expenses').select('category, amount, currency' + rf())
-        .gte('date', isoDate(monthStart)).lte('date', isoDate(now)).neq('category', 'Payment'),
-      sb.from('fund_transactions').select('amount, income_source, funds(currency)')
-        .not('income_source', 'is', null)
-        .gte('date', isoDate(monthStart)).lte('date', isoDate(now)),
-      // the applied plan's income counts as income (Aizat's rule, Aug 2026):
-      // once the month is applied, its named sources ARE money that arrived
-      sb.from('income_budgets').select('source_name, currency, amount').eq('month', curMonthIso()),
-      appliedQ(curMonthIso()),
-    ]);
-    if (week.error) throw week.error;
-    if (recent.error) throw recent.error;
-    if (month.error) throw month.error;
-    if (inc.error) throw inc.error;
-
-    const state = { week: week.data, recent: recent.data, month: month.data, inc: inc.data,
-                    planInc: pinc.error ? [] : pinc.data,
-                    planApplied: !applied.error && applied.data.length > 0,
-                    today: isoDate(now) };
-    localStorage.setItem('bh-home', JSON.stringify(state));
+    const { data: state, error } = await sb.rpc('home_summary');
+    if (error) throw error;
+    if (!state) return;   // no household (yet) — loadContext sends this login to the join screen
+    localStorage.setItem('bh-home2', JSON.stringify(state));
     $('errorCard').style.display = 'none';
     homeRetried = false;   // a success re-arms the one-shot token refresh (QA-34)
     renderHome(state);
@@ -1085,8 +1051,9 @@ async function loadHome(){
 }
 
 function renderHome(state){
-  const now = new Date();
-  // hero + bars: last 7 days, A$ (S$ shown separately, never blended)
+  if (!state || !state.week) return;   // a cache from before v2 sprint 3
+  const now = new Date((state.today || todayIso()) + 'T00:00:00');   // the household's today
+  // hero + bars: last 7 days, A$ (S$ shown separately, never blended); fund purchases are already left out
   const days = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now); d.setDate(now.getDate() - i);
@@ -1095,8 +1062,7 @@ function renderHome(state){
   const PC = primaryCur();
   let weekMain = 0; const weekOther = {};
   (state.week || []).forEach(r => {
-    if (fromFund(r)) return;   // funded from a fund, not this week's spending money
-    const amt = sa(r);
+    const amt = Number(r.amount);
     if (r.currency !== PC) { weekOther[r.currency] = (weekOther[r.currency] || 0) + amt; return; }
     weekMain += amt;
     const day = days.find(d => d.iso === r.date);
@@ -1113,7 +1079,7 @@ function renderHome(state){
   // recent
   $('recentList').innerHTML = (state.recent || []).map(r => {
     const icon = CAT_ICON[r.category] || '🛍️';
-    const who = r.profiles ? r.profiles.display_name : (jointLabel() || 'Joint');
+    const who = r.payer || jointLabel() || 'Joint';
     const d = new Date(r.date + 'T00:00:00');
     const daysAgo = Math.round((new Date(state.today + 'T00:00:00') - d) / 86400000);
     const when = daysAgo < 0 ? 'scheduled · ' + d.toLocaleDateString('en-AU', {day:'numeric', month:'short'}) : daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday'
@@ -1159,15 +1125,14 @@ function renderHome(state){
       <text x="60" y="69" text-anchor="middle" font-size="26" fill="#55657D" font-family="Poppins,sans-serif">›</text>
     </svg>`;
 
-  // expense: this month by category group, primary currency
+  // expense: this month by category group (grouped by id in the database), primary currency
   const byGroup = {};
   let monthAU = 0; const expOther = {};
-  (state.month || []).forEach(r => {
-    if (r.category === 'Payment' || fromFund(r)) return;
-    if (r.currency !== PC) { expOther[r.currency] = (expOther[r.currency] || 0) + sa(r); return; }
-    const g = GROUP_OF[r.category] || 'Other';
-    byGroup[g] = (byGroup[g] || 0) + sa(r);
-    monthAU += sa(r);
+  (state.month_groups || []).forEach(r => {
+    const v = Number(r.amount);
+    if (r.currency !== PC) { expOther[r.currency] = (expOther[r.currency] || 0) + v; return; }
+    byGroup[r.name] = (byGroup[r.name] || 0) + v;
+    monthAU += v;
   });
   const sorted = Object.entries(byGroup).sort((a, b) => b[1] - a[1]);
   const top = sorted.slice(0, 4);
@@ -1192,8 +1157,7 @@ function renderHome(state){
     incPC += a;
     bySrc[src] = (bySrc[src] || 0) + a;
   };
-  if (state.planApplied) (state.planInc || []).forEach(r => addInc(r.source_name, Number(r.amount), r.currency));
-  (state.inc || []).forEach(r => addInc(r.income_source || 'Other', Number(r.amount), r.funds ? r.funds.currency : PC));
+  (state.income || []).forEach(r => addInc(r.source || 'Other', Number(r.amount), r.currency || PC));
   const iSorted = Object.entries(bySrc).sort((a, b) => b[1] - a[1]);
   const iTop = iSorted.slice(0, 4);
   const iRest = iSorted.slice(4).reduce((s, [, v]) => s + v, 0);
@@ -1287,7 +1251,6 @@ let BUDGET_ROWS = [
   { icon:'📱', group:'TV/Phone/Internet', blabel:'Phone Bill/Internet' },
   { icon:'🛡️', group:'Insurance',         blabel:'Insurance' },
 ];
-let CHART_GROUPS = ['Rent','Daily Expenses','Education','Transportation'];   // rest = Other; rebuilt from the household's groups
 const CHART_COLORS = ['#004A98','#5A8AC7','#B4CEFF','#E4EEFF','#E6E5E5'];
 let budgetMonth = null, budgetInit = false, budSeq = 0;
 let budgetCur = null;   // the Budget page's country lens (one currency at a time)
@@ -1327,59 +1290,50 @@ function initBudget(){
   $('mrPrev').onclick = $('mrPrevLabel').onclick = step(-1);
   $('mrNext').onclick = $('mrNextLabel').onclick = step(1);
   renderBudgetLens();
-  const cached = localStorage.getItem('bh-budget');
+  const cached = localStorage.getItem('bh-budget2');
   if (cached) { try { renderBudget(JSON.parse(cached)); } catch(e){} }
   selectBudgetMonth(budgetMonth);
 }
+// Budget: six months summed in the database by category group id (budget_summary, v2 sprint 3) — no row cap,
+// an archived category's history stays in its group, and a renamed group keeps its lines
 async function selectBudgetMonth(m){
   budgetMonth = m;
   const mySeq = ++budSeq;   // last requested month wins, not last to resolve (QA-9)
   updateRotor();
-  const chartStart = addMonths(m, -5), next = addMonths(m, 1);
   try {
     const LC = budgetLensCur();
     renderBudgetLens();
-    const [exp, bud, pots] = await Promise.all([
-      sb.from('daily_expenses').select('id, date, description, category, amount, currency' + rf())
-        .gte('date', chartStart).lt('date', next).neq('category', 'Payment'),
-      sb.from('category_budgets').select('month, category_group, amount')
-        .gte('month', chartStart).lte('month', m).eq('currency', LC),
-      sb.from('fund_balances').select('fund_id, name, balance, currency').eq('is_spend_pot', true).eq('is_active', true).eq('currency', LC).order('sort_order'),
-    ]);
-    if (exp.error) throw exp.error;
-    if (bud.error) throw bud.error;
-    if (mySeq !== budSeq) return;
-    const state = { month: m, chartStart, exp: exp.data, bud: bud.data, cur: LC,
-                    pots: pots.error ? [] : pots.data || [] };
-    localStorage.setItem('bh-budget', JSON.stringify(state));
+    const { data, error } = await sb.rpc('budget_summary', { p_month: m, p_currency: LC, p_months: 6 });
+    if (error) throw error;
+    if (mySeq !== budSeq || !data) return;
+    const state = Object.assign(data, { cur: LC });
+    localStorage.setItem('bh-budget2', JSON.stringify(state));
     renderBudget(state);
   } catch (err) { toast('couldn’t load budget: ' + err.message); }
 }
 
 function renderBudget(st){
-  const PC = st.cur || 'AUD';
+  if (!st || !st.groups) return;   // a cache from before v2 sprint 3
+  const PC = st.cur || st.currency || 'AUD';
   $('budCurPill').textContent = curLabel(PC);
   const months = []; for (let i = 5; i >= 0; i--) months.push(addMonths(st.month, -i));
-  // sums[month] = {group: amount}, totals + budgets per month
-  const sums = {}, budTot = {}, budByLabel = {}, schedTot = {};
-  const todayS = todayIso();
-  months.forEach(m => { sums[m] = {}; budTot[m] = 0; schedTot[m] = 0; });
-  const fundFunded = {};   // purchases paid from a fund: shown, never counted against the budget
-  (st.exp || []).forEach(r => {
-    if (r.currency !== PC) return;
-    const m = r.date.slice(0, 7) + '-01';
-    if (!sums[m]) return;
-    if (fromFund(r)) { fundFunded[m] = (fundFunded[m] || 0) + sa(r); return; }
-    if (r.date > todayS) { schedTot[m] += sa(r); return; }   // Scheduled: counts on its day, not before
-    const g = GROUP_OF[r.category] || 'Other';
-    sums[m][g] = (sums[m][g] || 0) + sa(r);
-  });
-  (st.bud || []).forEach(r => {
+  const gk = id => id || 'other';   // purchases with no group (rare) gather under Other
+  // sums[month][group] — counted spend · budTot / schedTot / fundFunded per month · budget lines this month by group
+  const sums = {}, budTot = {}, schedTot = {}, fundFunded = {}, budBy = {}, labelOf = {};
+  months.forEach(m => { sums[m] = {}; budTot[m] = 0; schedTot[m] = 0; fundFunded[m] = 0; });
+  (st.spend || []).forEach(r => { if (sums[r.month]) sums[r.month][gk(r.group_id)] = (sums[r.month][gk(r.group_id)] || 0) + Number(r.amount); labelOf[gk(r.group_id)] = r.name; });
+  (st.scheduled || []).forEach(r => { if (schedTot[r.month] !== undefined) schedTot[r.month] += Number(r.amount); });
+  (st.from_funds || []).forEach(r => { if (fundFunded[r.month] !== undefined) fundFunded[r.month] += Number(r.amount); });
+  (st.budget || []).forEach(r => {
     if (budTot[r.month] === undefined) return;
     budTot[r.month] += Number(r.amount);
-    if (r.month === st.month) budByLabel[r.category_group] = Number(r.amount);
+    if (r.month === st.month) { const k = r.group_id || 'label:' + r.label; budBy[k] = (budBy[k] || 0) + Number(r.amount); labelOf[k] = labelOf[k] || r.label; }
   });
-  const totalOf = m => Object.values(sums[m]).reduce((s, v) => s + v, 0);
+  const totalOf = m => Object.values(sums[m]).reduce((a, v) => a + v, 0);
+  const groups = st.groups || [];
+  groups.forEach(g => labelOf[g.id] = g.name);
+  const chartIds = groups.filter(g => g.active).slice(0, 4).map(g => g.id);   // rest = Other
+  const todayS = st.today || todayIso();
 
   // chart
   const maxV = Math.max(...months.map(m => Math.max(totalOf(m), budTot[m])), 1);
@@ -1388,8 +1342,8 @@ function renderBudget(st){
   months.forEach((m, i) => {
     const x = 20 + i * 50;
     let y = baseY;
-    const chartVals = CHART_GROUPS.map(g => sums[m][g] || 0);
-    const other = totalOf(m) - chartVals.reduce((s, v) => s + v, 0);
+    const chartVals = chartIds.map(id => sums[m][id] || 0);
+    const other = totalOf(m) - chartVals.reduce((a, v) => a + v, 0);
     chartVals.concat(other).forEach((v, gi) => {
       const h = v * k; if (h < 0.5) return;
       y -= h;
@@ -1411,13 +1365,13 @@ function renderBudget(st){
     svg += `<text x="${x + 15}" y="137" text-anchor="middle" font-size="9" font-family="Poppins,sans-serif"
       font-weight="${sel ? 600 : 400}" fill="${over ? '#D25353' : sel ? '#004A98' : '#55657D'}">${monthName(m).split(' ')[0]}</text>`;
   });
-  const hasAnyChart = (st.exp || []).length > 0 || Object.values(budTot).some(v => v > 0);
+  const hasAnyChart = (st.spend || []).length > 0 || (st.scheduled || []).length > 0 || (st.from_funds || []).length > 0 || Object.values(budTot).some(v => v > 0);
   if (!hasAnyChart) $('budChart').innerHTML = '<p class="cap" style="padding:16px 0">your chart fills in as you spend 🐻</p>';
   else $('budChart').innerHTML = `<svg viewBox="0 0 320 150" style="display:block;width:100%;height:auto" role="img" aria-label="Six months of spending vs budget">${svg}</svg>`;
-  $('budLegend').innerHTML = CHART_GROUPS.map((g, i) =>
-    '<span class="li"><span class="dot" style="background:' + CHART_COLORS[i] + '"></span>' + esc(g) + '</span>').join('')
+  $('budLegend').innerHTML = chartIds.map((id, i) =>
+    '<span class="li"><span class="dot" style="background:' + CHART_COLORS[i] + '"></span>' + esc(labelOf[id]) + '</span>').join('')
     + '<span class="li"><span class="dot" style="background:' + CHART_COLORS[4] + '"></span>Other</span>'
-    + '<span class="li"><span class="dash"></span>budget</span>;'.slice(0, -1);
+    + '<span class="li"><span class="dash"></span>budget</span>';
 
   // total card
   const spent = totalOf(st.month), budget = budTot[st.month];
@@ -1445,11 +1399,16 @@ function renderBudget(st){
     + '<div style="flex:1;min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.name) + '</div></div>'
     + '<div class="lbl num" style="font-size:16px;color:' + (Number(p.balance) < 0 ? 'var(--bad)' : 'var(--primary)') + '">' + fmtMoney(p.balance, p.currency) + '</div></div>').join('');
 
-  // pace cards with drill-down
+  // pace cards with drill-down: the household's groups in order, then spending with no group, then budget lines no group carries
   const box = $('paceCards'); box.innerHTML = '';
-  BUDGET_ROWS.forEach(row => {
-    const s = sums[st.month][row.group] || 0, b = budByLabel[row.blabel] || 0;
-    if (!s && !b) return;
+  const rows = groups.map(g => ({ key: g.id, name: g.name, icon: g.icon ? esc(String(g.icon).slice(0, 8)) : '🎯', empty: !g.active }))
+    .concat([{ key: 'other', name: 'Other', icon: '🗂️' }])
+    .concat(Object.keys(budBy).filter(k2 => k2.startsWith('label:')).map(k2 => ({ key: k2, name: labelOf[k2], icon: '🎯', empty: true })));
+  const catsOf = key => (st.cats || []).filter(c => gk(c.group_id) === key);
+  rows.forEach(row => {
+    const s = sums[st.month][row.key] || 0, b = budBy[row.key] || 0;
+    const cats = catsOf(row.key);
+    if (!s && !b && !cats.length) return;
     const over = b > 0 && s > b;
     const wMain = b <= 0 ? 0 : Math.min(s / b, 1) * (over ? b / s : 1) * 100;   // no budget → empty track (QA-28)
     const wOver = over ? (1 - b / s) * 100 : 0;
@@ -1457,87 +1416,75 @@ function renderBudget(st){
       : over ? '<div class="lbl num" style="color:var(--bad)">' + fmtMoney(s - b, PC) + ' over</div>'
       : b - s < 0.005 ? '<div class="lbl num" style="color:var(--good)">on budget</div>'
              : '<div class="lbl num" style="color:var(--good)">' + fmtMoney(b - s, PC) + ' left</div>';
-    const capTxt = b > 0 ? fmtMoney(s, PC) + ' of ' + fmtMoney(b, PC)
-                         : fmtMoney(s, PC) + ' · no budget';
-    // drill level 1: this group's categories, biggest spend first;
-    // level 2: a category's line items, revealed on tap
-    const monthExp = (st.exp || []).filter(r =>
-      r.currency === PC && r.date <= todayS && r.date.slice(0, 7) + '-01' === st.month && (GROUP_OF[r.category] || 'Other') === row.group);
-    // fund-funded purchases are listed under their category (tagged) but never add to the month's number
-    const catSums = {};
-    monthExp.forEach(r => catSums[r.category] = (catSums[r.category] || 0) + (fromFund(r) ? 0 : sa(r)));
+    const capTxt = b > 0 ? fmtMoney(s, PC) + ' of ' + fmtMoney(b, PC) : fmtMoney(s, PC) + ' · no budget';
     const card = document.createElement('div');
     card.className = 'card pacecard';
     card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
         <div class="rowicon">${row.icon}</div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-end">
-            <span class="lbl">${esc(row.group)}</span>
+            <span class="lbl">${esc(row.name)}</span>
             <span style="text-align:right">${status}<div class="cap num">${capTxt}</div></span>
           </div>
           <div class="pace"><i style="width:${wMain.toFixed(1)}%"></i>${over ? '<i class="over" style="width:' + wOver.toFixed(1) + '%"></i>' : ''}</div>
+          ${row.empty && b > 0 && !s ? '<p class="cap" style="margin-top:4px">no category is in this group yet, so nothing counts against it — add one in Settings → Categories, or rename the line to a group you use</p>' : ''}
         </div>
       </div>`;
+    // drill level 1: this group's categories this month, biggest first (fund purchases are listed, never counted);
+    // level 2: a category's purchases, fetched when tapped
     const drill = document.createElement('div');
     drill.className = 'drill';
-    const catList = Object.entries(catSums).sort((a, c) => c[1] - a[1]);
-    if (!catList.length) drill.innerHTML = '<p class="cap" style="padding:4px 0">nothing this month</p>';
-    catList.forEach(([cName, cSum]) => {
+    if (!cats.length) drill.innerHTML = '<p class="cap" style="padding:4px 0">nothing this month</p>';
+    cats.forEach(c => {
+      const cSum = Number(c.amount);
       const crow = document.createElement('div');
       crow.className = 'drow';
       crow.style.cursor = 'pointer';
-      crow.innerHTML = '<span style="flex-shrink:0">' + (CAT_ICON[cName] || '🛍️') + '</span>'
-        + '<span class="dd" style="font-weight:500">' + esc(cName) + '</span>'
+      crow.innerHTML = '<span style="flex-shrink:0">' + (c.icon ? esc(String(c.icon).slice(0, 8)) : (CAT_ICON[c.name] || '🛍️')) + '</span>'
+        + '<span class="dd" style="font-weight:500">' + esc(c.name) + '</span>'
         + '<span class="cap">▾</span>'
-        + (cSum > 0.005 || !monthExp.some(r => r.category === cName && fromFund(r)) ? '<span class="amt">−' + fmtMoney(cSum, PC) + '</span>' : '<span class="cap">from funds</span>');
-      const sub = document.createElement('div');
-      sub.style.cssText = 'display:none;padding-left:22px';
-      monthExp.filter(r => r.category === cName)
-        .sort((a, c) => c.date < a.date ? -1 : 1)
-        .forEach(r => {
+        + (Math.abs(cSum) > 0.005 || !c.from_funds ? '<span class="amt">−' + fmtMoney(cSum, PC) + '</span>' : '<span class="cap">from funds</span>');
+      const sub2 = document.createElement('div');
+      sub2.style.cssText = 'display:none;padding-left:22px';
+      crow.onclick = async e => {
+        e.stopPropagation();
+        if (sub2.style.display !== 'none') { sub2.style.display = 'none'; return; }
+        sub2.style.display = 'block';
+        if (sub2.dataset.loaded) return;
+        sub2.innerHTML = '<p class="cap">loading…</p>';
+        let q = sb.from('daily_expenses').select('id, date, description, amount, is_refund, fund_id')
+          .eq('household_id', CTX.hh.id).eq('currency', PC).neq('category', 'Payment')
+          .gte('date', st.month).lte('date', todayS).lt('date', addMonths(st.month, 1))
+          .order('date', { ascending: false }).limit(500);
+        q = c.category_id ? q.eq('category_id', c.category_id) : q.is('category_id', null);
+        const { data: lines, error } = await q;
+        if (error) { sub2.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
+        sub2.dataset.loaded = '1'; sub2.innerHTML = '';
+        (lines || []).forEach(r => {
           const lr = document.createElement('div');
           lr.className = 'drow';
           const ff = fromFund(r);
           lr.innerHTML = `<span class="dd">${esc(r.description)}${ff ? ' <span class="cap" style="color:var(--primary)">💰 ' + esc((fundById(r.fund_id) || {}).name || 'a fund') + '</span>' : ''}</span>
           <span class="cap">${new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})}</span>
           <span class="amt"${ff ? ' style="color:var(--ink-soft)"' : ''}>${r.is_refund ? '+' : '−'}${fmtMoney(r.amount, PC)}</span>`;
-          if (r.id) {
-            lr.style.cursor = 'pointer';
-            lr.onclick = async ev => {
-              ev.stopPropagation();
-              const { data, error } = await sb.from('daily_expenses')
-                .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)')
-                .eq('id', r.id).single();
-              if (error) { toast('couldn’t open: ' + error.message); return; }
-              openEditDaily(data);
-            };
-          }
-          sub.appendChild(lr);
+          lr.style.cursor = 'pointer';
+          lr.onclick = async ev => {
+            ev.stopPropagation();
+            const { data: row, error: err2 } = await sb.from('daily_expenses')
+              .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)')
+              .eq('id', r.id).single();
+            if (err2) { toast('couldn’t open: ' + err2.message); return; }
+            openEditDaily(row);
+          };
+          sub2.appendChild(lr);
         });
-      crow.onclick = e => { e.stopPropagation(); sub.style.display = sub.style.display === 'none' ? 'block' : 'none'; };
+        if (!(lines || []).length) sub2.innerHTML = '<p class="cap">nothing to show</p>';
+      };
       drill.appendChild(crow);
-      drill.appendChild(sub);
+      drill.appendChild(sub2);
     });
     card.appendChild(drill);
     card.onclick = () => drill.classList.toggle('open');
-    box.appendChild(card);
-  });
-  // budget lines that aren't one of the category groups (added by hand in the plan): shown, with the gap made plain
-  Object.keys(budByLabel).forEach(label => {
-    if (BUDGET_ROWS.some(r => r.blabel === label) || !(budByLabel[label] > 0)) return;
-    const b = budByLabel[label];
-    const card = document.createElement('div'); card.className = 'card pacecard';
-    card.innerHTML = `<div style="display:flex;gap:12px;align-items:center">
-        <div class="rowicon">🎯</div>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-end">
-            <span class="lbl">${esc(label)}</span>
-            <span style="text-align:right"><div class="lbl num" style="color:var(--good)">${fmtMoney(b, PC)} left</div><div class="cap num">${fmtMoney(0, PC)} of ${fmtMoney(b, PC)}</div></span>
-          </div>
-          <div class="pace"><i style="width:0%"></i></div>
-          <p class="cap" style="margin-top:4px">no category group has this name, so spending can't count against it yet — rename it to a group, or add a group called “${esc(label)}” in Settings → Categories</p>
-        </div>
-      </div>`;
     box.appendChild(card);
   });
 }
@@ -1547,7 +1494,7 @@ let fundsInit = false, fundsState = null, fundsExpanded = { AU:false, SG:false }
 let fundsEdit = { AU:false, SG:false }, fundsExtraGroups = { AU:[], SG:[] };
 function fundIcon(name){
   const stored = (CTX.funds || []).find(f => f.name === name);
-  if (stored && stored.icon) return stored.icon;
+  if (stored && stored.icon) return esc(String(stored.icon).slice(0, 16));   // typed by a person: escaped (E1-F5)
   const n = (name || '').toLowerCase();
   if (n.includes('float')) return '🌊';
   if (n.includes('car')) return '🚗';
@@ -1573,19 +1520,20 @@ function initFunds(){
   loadFunds();
 }
 async function loadFunds(){
-  const m = curMonthIso(), next = addMonths(m, 1);
+  const m = curMonthIso();
   try {
-    const [bal, inc, cat, fb, applied, cash] = await Promise.all([
-      sb.from('fund_balances').select('fund_id, name, country, currency, balance, sort_order, group_name, is_leftover_target, is_spend_pot').eq('is_active', true).order('sort_order'),
+    // every fund's numbers in one pass (household_money, v2 sprint 3) + this month's plan lines
+    const [money, inc, cat, fb, applied] = await Promise.all([
+      sb.rpc('household_money'),
       sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
       sb.from('category_budgets').select('currency, amount').eq('month', m),
       sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
       appliedQ(m),
-      sb.from('fund_cash').select('fund_id, cash_balance, owed_on_cards'),   // every fund: what's still on cards vs in the bank
     ]);
-    for (const r of [bal, inc, cat, fb, applied]) if (r.error) throw r.error;
-    const cashBy = {}; (cash.error ? [] : cash.data || []).forEach(r => cashBy[r.fund_id] = r);
-    fundsState = { month: m, bal: bal.data, inc: inc.data, cat: cat.data, fb: fb.data, cash: cashBy,
+    for (const r of [money, inc, cat, fb, applied]) if (r.error) throw r.error;
+    const live = (money.data || []).filter(f => f.is_active);
+    const cashBy = {}; live.forEach(r => cashBy[r.fund_id] = r);   // what's still on cards vs in the bank
+    fundsState = { month: m, bal: live, inc: inc.data, cat: cat.data, fb: fb.data, cash: cashBy,
                    appliedOn: applied.data.length ? applied.data[0].date : null };
     localStorage.setItem('bh-funds', JSON.stringify(fundsState));
     renderFunds(fundsState);
@@ -1893,7 +1841,7 @@ async function toggleFundDrill(btn, fund){
       row.innerHTML = '<span class="dd">' + monthName(t.month, true) + ' spending <span class="cap">· ' + t.n + ' items' + (t.month === curMonthIso() ? ' so far' : '') + '</span></span>'
         + '<span class="cap">' + new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'2-digit'}) + '</span>'
         + '<span class="amt" style="color:var(--bad)">−' + fmtMoney(t.amount, fund.currency) + '</span>';
-      row.onclick = () => openAllTx(fundIdOK ? { type: 'Funds', what: fund.fund_id, month: t.month } : { type: 'Daily', month: t.month });
+      row.onclick = () => openAllTx({ type: 'Funds', what: fund.fund_id, month: t.month });
       d.appendChild(row);
       return;
     }
@@ -1922,12 +1870,9 @@ async function toggleFundDrill(btn, fund){
 // pre-filled box in place. the equation footer stays live in both states.
 let planDraft = null, planEditMode = false, planSaving = false, applying = false;
 
-// budget lines for a month, with their pot when the database has that column yet
-// (the pots-by-category migration may deploy a few minutes after the app)
-async function catBudgets(month){
-  const r = await sb.from('category_budgets').select('id, category_group, currency, amount, pot_fund_id').eq('month', month);
-  if (r.error && /pot_fund_id/.test(r.error.message || '')) return sb.from('category_budgets').select('id, category_group, currency, amount').eq('month', month);
-  return r;
+// budget lines for a month, with their pot
+function catBudgets(month){
+  return sb.from('category_budgets').select('id, category_group, currency, amount, pot_fund_id').eq('month', month);
 }
 async function openPlanSheet(){
   if (!CTX.hh) { toast('still connecting — try again in a second'); return; }
@@ -2296,32 +2241,18 @@ async function applyPlan(){
   applying = true;
   if ($('applyGo')) $('applyGo').innerHTML = '<span class="spin"></span>';
   // the server works the rows out again from the saved plan and applies the month once (v2 sprint 2);
-  // the rows above are the preview, and the way an older database is still served
-  let res = null, error = null;
-  if (planStatusOK) {
-    ({ data: res, error } = await sb.rpc('apply_month_plan', { p_month: d.month, p_skip: d.funds.filter(f => d.on[f.id] === false).map(f => f.id) }));
-    if (error && /PGRST202|apply_month_plan|could not find the function/i.test((error.code || '') + ' ' + (error.message || ''))) { planStatusOK = false; res = null; error = null; }
-  }
-  if (!res && !error) {
-    const remark = monthName(d.month, true) + ' plan';
-    ({ error } = await sb.from('fund_transactions').insert(rows.concat(leftoverRows, potRows).map(r => ({
-      household_id: CTX.hh.id, fund_id: r.fund_id, type: 'income',
-      date: isoDate(new Date()), amount: r.amount,
-      remarks: remark + (r.leftover ? ' — leftover' : r.pot ? ' — spending budget' : ''), origin: 'planned',
-    }))));
-  }
+  // the rows above are only the preview
+  const { data: res, error } = await sb.rpc('apply_month_plan', { p_month: d.month, p_skip: d.funds.filter(f => d.on[f.id] === false).map(f => f.id) });
   applying = false;
   if (error) { if ($('applyGo')) $('applyGo').textContent = 'Apply'; toast('couldn’t apply: ' + error.message); return; }
   closeSheet();
-  const nC = res ? res.contributions : rows.length, potNames = res ? res.pots : potRows.map(r => (d.funds.find(f => f.id === r.fund_id) || {}).name).join(' & ');
-  toast('applied — ' + nC + ' contributions' + (potNames ? ' + budget to ' + potNames : '')
-    + ((res ? res.leftover : leftoverRows.length) ? ' + leftover moved' : '') + ' 🐻');
-  loadFunds();
-  loadHome();   // income and the plan card change the moment the plan is applied
+  toast('applied — ' + res.contributions + ' contributions' + (res.pots ? ' + budget to ' + res.pots : '')
+    + (res.leftover ? ' + leftover moved' : '') + ' 🐻');
+  refreshAfterSave();   // income and the plan card change the moment the plan is applied
   checkPlanNudge();
 }
 
-// Save — wipe-and-rewrite this month's three tables, then reload the sheet
+// Save — the server changes only the lines that changed (v2 sprint 3), then the sheet reloads
 async function savePlan(){
   if (planSaving || !planDraft) return;
   planSaving = true;
@@ -2343,16 +2274,13 @@ async function savePlan(){
         .map(([id, v]) => ({ fund_id: id, amount: v })),
     };
     if (d.version) args.p_seen = d.version;   // refused if another phone saved in between (v2 sprint 2)
-    let { error } = await sb.rpc('save_month_plan', args);
-    if (error && args.p_seen && /PGRST202|p_seen|could not find the function/i.test((error.code || '') + ' ' + (error.message || ''))) {
-      delete args.p_seen; ({ error } = await sb.rpc('save_month_plan', args));
-    }
+    const { error } = await sb.rpc('save_month_plan', args);
     if (error) throw error;
     planSaving = false;
     toast('plan saved 🐻');
-    if (budgetInit) selectBudgetMonth(budgetMonth);
+    stale.budget = true; stale.home = true;   // the budget lines changed: Budget and Home refetch when next shown
     // stay in the sheet — reload fresh, landing back on the review
-    await loadFunds();
+    if (fundsInit) await loadFunds();
     checkPlanNudge();
     openPlanSheet();
   } catch (err) {
@@ -2367,19 +2295,13 @@ async function savePlan(){
 // and the one place where any line can be edited or deleted.
 const ATX_PAGE = 60;
 const RECON_COLS = 'reconciled_at, reconciled_by, reconciled_statement_id';
-let reconOK = true;   // false until the reconciliation migration has landed (probed in loadContext)
-let swapOK = true;    // false until the pot-swap migration has landed
-let updOK = true;     // false until expenses carry updated_at (batch 4)
-let kindOK = true;    // false until fund rows carry kind (card payments, Oct 2026)
-let fundUpdOK = true; // false until fund rows carry updated_at (v2 sprint 2)
-let planStatusOK = true;   // false until plan_status / apply_month_plan exist (v2 sprint 2)
-let transferOK = true;     // false until record_transfer exists (v2 sprint 2)
-let refundOK = true;  // false until expenses carry is_refund (hygiene, Oct 2026)
-const rc = fund => (reconOK ? ', ' + RECON_COLS + (fund ? ', transfer_group_id' : '') : '') + (!fund && swapOK ? ', pot_swap_id' : '') + (!fund && updOK ? ', updated_at' : '') + (fund && kindOK ? ', kind, settles_payment_method_id' : '') + (fund && fundUpdOK ? ', updated_at' : '') + (!fund && refundOK ? ', is_refund' + (fundIdOK ? ', fund_id' : '') : '');
+// the columns every list and edit sheet reads. The probes that switched them on one migration at a time went in
+// v2 sprint 3 — every database has had them since 14–16 Oct 2026
+const rc = fund => ', ' + RECON_COLS + (fund
+  ? ', transfer_group_id, kind, settles_payment_method_id, updated_at'
+  : ', pot_swap_id, updated_at, is_refund, fund_id, payment_method_id, category_id');
 // a refund / card credit keeps a positive amount in the database and counts negative everywhere
 const sa = r => (r && r.is_refund ? -1 : 1) * Number(r.amount);
-const rf = () => refundOK ? ', is_refund' + (fundIdOK ? ', fund_id' : '') : '';
-let fundIdOK = true;  // false until expenses carry fund_id (phase 1 of the ledger plan, Oct 2026)
 // a purchase funded from a fund (not the month's budget) — counts against that fund, never against the monthly budget
 const fromFund = r => !!(r && r.fund_id);
 let atx = null, atxSeq = 0;
@@ -2413,7 +2335,7 @@ function lockEl(kind, r){
     }
     const type = segSel('atxType') || 'All';
     renderAllTx(type);
-    if (fundsInit) loadFunds();
+    stale.funds = true; stale.home = true;
   };
   el.onkeydown = ev => { if (ev.key === 'Enter') el.click(); };
   return el;
@@ -2428,7 +2350,7 @@ const ATX_TYPES = ['All', 'Daily', 'Trips', 'Income', 'Funds'];
 // one fund's history is its movements PLUS the purchases counted against it (pot or named fund)
 const atxWhatVal = () => $('atxWhat').style.display === 'none' ? '' : $('atxWhat').value;
 const atxSources = type => type === 'All' ? ['d', 't', 'f'] : type === 'Daily' ? ['d'] : type === 'Trips' ? ['t']
-  : (type === 'Funds' && atxWhatVal() && fundIdOK) ? ['d', 'f'] : ['f'];
+  : (type === 'Funds' && atxWhatVal()) ? ['d', 'f'] : ['f'];
 let atxAux = null;                 // {inc: income_budgets rows, applied: {month: date}} — the plan's story
 let atxOpenPlans = new Set();      // months whose plan group is expanded
 let atxOpenSwaps = new Set();      // pot swaps whose legs are expanded
@@ -2476,12 +2398,11 @@ function fundOptionsByCountry(funds, selId){
 function refreshAtxWhat(sel){
   const type = segSel('atxType'), w = $('atxWhat');
   if (type === 'Daily') {
-    // categories under their group headings, in Budget order
+    // categories under their group headings, in Budget order — filtered by id, so a renamed category keeps its history
     const groups = {};
-    (CTX.cats || []).filter(c => c.kind === 'daily').forEach(c => (groups[c.group_name] = groups[c.group_name] || []).push(c.name));
-    if (!Object.keys(groups).length) Object.entries(DAILY_GROUPED).forEach(([g, cats]) => groups[g] = cats.slice());
+    (CTX.cats || []).filter(c => c.kind === 'daily').forEach(c => (groups[c.group_name] = groups[c.group_name] || []).push(c));
     w.innerHTML = '<option value="">all categories</option>' + Object.entries(groups).map(([g, cats]) =>
-      '<optgroup label="' + esc(g) + '">' + cats.map(c => '<option' + (c === sel ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</optgroup>').join('');
+      '<optgroup label="' + esc(g) + '">' + cats.map(c => '<option value="' + c.id + '"' + (c.id === sel || c.name === sel ? ' selected' : '') + '>' + esc(c.name) + '</option>').join('') + '</optgroup>').join('');
     w.style.display = 'block';
   } else if (type === 'Funds') {
     w.innerHTML = '<option value="">all funds</option>' + fundOptionsByCountry(CTX.funds || [], sel);
@@ -2508,45 +2429,48 @@ async function loadAllTx(reset){
     if (!atxAux) {
       const [pinc, pap] = await Promise.all([
         sb.from('income_budgets').select('month, source_name, currency, amount').order('month', {ascending:false}).limit(400),
-        sb.from('fund_transactions').select('date').eq('origin', 'planned').order('date', {ascending:false}).limit(600),
+        sb.from('plan_applications').select('month, applied_on').order('month', {ascending:false}),   // one row per applied month
       ]);
       if (mySeq !== atxSeq) return;
       const applied = {};
-      (pap.error ? [] : pap.data || []).forEach(r => { const M = r.date.slice(0, 7); if (!applied[M]) applied[M] = r.date; });
+      (pap.error ? [] : pap.data || []).forEach(r => { applied[r.month.slice(0, 7)] = r.applied_on; });
       atxAux = { inc: pinc.error ? [] : pinc.data || [], applied };
     }
     let qd = null, qf = null, qt = null;
     if (src.includes('d') && !atx.dDone) {
       qd = sb.from('daily_expenses')
         .select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)')
+        .eq('household_id', CTX.hh.id)   // naming the household lets the database read its newest rows straight from the index
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.dOff, atx.dOff + ATX_PAGE - 1);
       if (q) qd = qd.ilike('description', '%' + q + '%');
       if (m) qd = qd.gte('date', m).lt('date', addMonths(m, 1));
-      if (type === 'Daily' && what) qd = qd.eq('category', what);
+      if (type === 'Daily' && what) qd = qd.eq('category_id', what);
       if (type === 'Funds' && what) qd = qd.eq('pot_fund_id', what);
-      if (openOnly && reconOK) qd = qd.is('reconciled_at', null);
+      if (openOnly) qd = qd.is('reconciled_at', null);
     }
     if (src.includes('t') && !atx.tDone) {
       qt = sb.from('travel_expenses')
         .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rc() + ', travel_expense_splits(profile_id, amount)')
+        .eq('household_id', CTX.hh.id)
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.tOff, atx.tOff + ATX_PAGE - 1);
       if (q) qt = qt.ilike('description', '%' + q + '%');
       if (m) qt = qt.gte('date', m).lt('date', addMonths(m, 1));
       if (type === 'Trips' && what) qt = qt.eq('trip_id', what);
-      if (openOnly && reconOK) qt = qt.is('reconciled_at', null);
+      if (openOnly) qt = qt.is('reconciled_at', null);
     }
     if (src.includes('f') && !atx.fDone) {
       qf = sb.from('fund_transactions')
         .select('id, date, type, amount, remarks, origin, income_source, fund_id' + rc(true) + ', funds(name, currency)')
+        .eq('household_id', CTX.hh.id)
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.fOff, atx.fOff + ATX_PAGE - 1);
       if (q) qf = qf.ilike('remarks', '%' + q + '%');
       if (m) qf = qf.gte('date', m).lt('date', addMonths(m, 1));
       if (type === 'Funds' && what) qf = qf.eq('fund_id', what);
       if (type === 'Income') qf = qf.not('income_source', 'is', null);   // real income events only
-      if (openOnly && reconOK) qf = qf.is('reconciled_at', null);
+      if (openOnly) qf = qf.is('reconciled_at', null);
     }
     const [dr, tr, fr] = await Promise.all([qd || Promise.resolve(null), qt || Promise.resolve(null), qf || Promise.resolve(null)]);
     if (mySeq !== atxSeq) return;
@@ -2588,17 +2512,17 @@ function renderAllTx(type){
   // both halves of a transfer collapse into one neutral row when both are loaded
   const paired = new Set();
   const merged = [];
+  // the two sides share a transfer_group_id: find each pair first (one map lookup per row, not a search of the
+  // list), then list it once, whichever side happened to sort first
+  const inByGroup = {}, partnerOf = {};
+  rows.forEach((y, k) => { if (y.kind === 'f' && y.r.transfer_group_id && y.r.type === 'income' && /^Transfer ← /.test(y.r.remarks || '')) inByGroup[y.r.transfer_group_id] = k; });
   rows.forEach((x, i) => {
-    if (paired.has(i)) return;
-    if (x.kind === 'f' && /^Transfer → /.test(x.r.remarks || '')) {
-      const toName = (x.r.remarks || '').slice(11).split(' · ')[0];
-      const j = rows.findIndex((y, k) => k !== i && !paired.has(k) && y.kind === 'f'
-        && y.r.date === x.r.date
-        && /^Transfer ← /.test(y.r.remarks || '')
-        && (y.r.funds ? y.r.funds.name : '') === toName
-        && ((y.r.remarks || '').slice(11).split(' · ')[0]) === (x.r.funds ? x.r.funds.name : ''));
-      if (j >= 0) { paired.add(j); merged.push({ kind: 'x', r: x.r, inn: rows[j].r }); return; }
-    }
+    const j = x.kind === 'f' && x.r.transfer_group_id && x.r.type === 'expense' && /^Transfer → /.test(x.r.remarks || '') ? inByGroup[x.r.transfer_group_id] : undefined;
+    if (j !== undefined) { partnerOf[i] = j; paired.add(j); }
+  });
+  rows.forEach((x, i) => {
+    if (paired.has(i)) return;   // the incoming side shows inside its pair
+    if (partnerOf[i] !== undefined) { merged.push({ kind: 'x', r: x.r, inn: rows[partnerOf[i]].r }); return; }
     merged.push(x);
   });
   // the plan's story (derived, never written): a month's applied writes collapse
@@ -2826,7 +2750,7 @@ function renderSettings(){
     { icon:'👥', label:'People', cap: (CTX.profiles || []).map(p => p.display_name).join(' · ') || '…', render: renderSetPeople },
     { icon:'💰', label:'Funds', cap: 'rename · archive · travel & leftover funds', render: renderSetFunds },
     { icon:'💳', label:'Payment cards', cap: 'per-person · where each card is offered · archivable', render: renderSetCards },
-  ].concat(cardRulesOK ? [{ icon:'⭐', label:'Default cards', cap: 'the card each person starts on — daily · trip · from a fund', render: renderSetCardDefaults }] : [], [
+  ].concat([{ icon:'⭐', label:'Default cards', cap: 'the card each person starts on — daily · trip · from a fund', render: renderSetCardDefaults }], [
     { icon:'🏷️', label:'Categories', cap: 'add · rename · archive', render: renderSetCategories },
     { icon:'💵', label:'Income', cap: 'part of the monthly plan', render: renderSetIncome },
     { icon:'⬇️', label:'Export data', cap: 'full backup & CSV exports', render: renderSetExport },
@@ -2873,7 +2797,7 @@ async function renderSetBin(box){
     b.onclick = async () => {
       const u = await sb.rpc('restore_rows', { p_kind: x.kind === 'fund' ? 'fund' : 'expense', p_ids: [x.id] });
       if (u.error) { toast('couldn’t restore: ' + u.error.message); return; }
-      toast('restored 🐻'); renderSetBin(box); loadHome(); if (fundsInit) loadFunds(); if (budgetInit) selectBudgetMonth(budgetMonth); if (atx) loadAllTx(true); if (travelInit) loadTravel(true);
+      toast('restored 🐻'); renderSetBin(box); loadHome(); stale.funds = true; stale.budget = true; if (atx) loadAllTx(true); if (travelInit) loadTravel(true);
     };
     d.appendChild(b);
     box.appendChild(d);
@@ -2995,8 +2919,7 @@ function showInviteCode(who, code, box){
 }
 
 async function renderSetFunds(box){
-  let r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, is_spend_pot, group_name, sort_order, icon').order('sort_order');
-  if (r.error && /icon/.test(r.error.message || '')) r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, is_spend_pot, group_name, sort_order').order('sort_order');
+  const r = await sb.from('funds').select('id, name, country, currency, is_active, is_leftover_target, is_spend_pot, group_name, sort_order, icon').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const funds = r.data || [], active = funds.filter(f => f.is_active);
   box.innerHTML = '';
@@ -3020,7 +2943,7 @@ async function renderSetFunds(box){
           const c1 = await sb.from('funds').update({ is_leftover_target: false }).eq('country', cc);
           if (c1.error) { toast('couldn’t update: ' + c1.error.message); return; }
         }
-        if (fundsInit) loadFunds();
+        stale.funds = true;
         toast(countryTitle(cc) + ' leftover fund updated 🐻');
       }, '— none —')));
   });
@@ -3041,7 +2964,7 @@ async function renderSetFunds(box){
         const u = await sb.from('funds').update({ is_spend_pot: ev.target.checked }).eq('id', f.id);
         if (u.error) { toast('couldn’t update: ' + u.error.message); ev.target.checked = !ev.target.checked; return; }
         await loadContext();
-        if (fundsInit) loadFunds();
+        stale.funds = true;
         renderSetFunds(box);
         toast(f.name + (ev.target.checked ? ' is now a spending pot' : ' is no longer a spending pot') + ' 🐻');
       };
@@ -3070,18 +2993,15 @@ async function renderSetFunds(box){
       }
       const u = await sb.from('funds').update({ is_active: !f.is_active }).eq('id', f.id);
       if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
-      await loadContext(); if (fundsInit) loadFunds();
+      await loadContext(); stale.funds = true;
       renderSetFunds(box); toast(f.name + (f.is_active ? ' archived' : ' restored') + ' 🐻');
     };
     d.querySelector('.edit').onclick = () => editInline(d, f.name, async v => {
       // keep the icon the fund has today, whatever the new name would suggest
       const patch = { name: v }; if (!f.icon) patch.icon = fundIcon(f.name);
       const u = await sb.from('funds').update(patch).eq('id', f.id);
-      if (u.error && /icon/.test(u.error.message || '')) {   // database not updated yet: rename without the icon
-        delete patch.icon; const u2 = await sb.from('funds').update(patch).eq('id', f.id);
-        if (u2.error) { toast('couldn’t rename: ' + u2.error.message); return; }
-      } else if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
-      await loadContext(); if (fundsInit) loadFunds();
+      if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+      await loadContext(); stale.funds = true;
       renderSetFunds(box); toast('renamed 🐻');
     });
     d.appendChild(arch);
@@ -3156,16 +3076,14 @@ async function renderSetFunds(box){
     if (gSel.value === '__newg__' && !grp) { toast('give the new group a name'); return; }
     const i = await sb.from('funds').insert({ household_id: CTX.hh.id, name: v, country: cc, currency: cur, group_name: grp || '', sort_order: funds.length });
     if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
-    await loadContext(); if (fundsInit) loadFunds();
+    await loadContext(); stale.funds = true;
     renderSetFunds(box); toast(v + ' added 🐻');
   };
   box.appendChild(capEl('archiving hides a fund (and its balance) from lists without touching history — best for funds already at zero'));
 }
 
 async function renderSetCards(box){
-  let r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order, kind, closing_day, currency' + (cardRulesOK ? ', show_daily, show_trip, show_fund' : '')).order('sort_order');
-  if (r.error && /kind|closing_day/.test(r.error.message || ''))   // reconciliation migration not landed yet
-    r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order').order('sort_order');
+  const r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order, kind, closing_day, currency, show_daily, show_trip, show_fund').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const cards = r.data || [];
   const KINDS = [['credit_card', 'credit card'], ['debit_card', 'debit card'], ['bank', 'bank account'], ['prepaid', 'prepaid / wallet'], ['cash', 'cash']];
@@ -3214,7 +3132,7 @@ async function renderSetCards(box){
       trav.title = 'only offered on trip expenses';
       trav.onclick = async () => { if (await save({ travel_only: !c.travel_only })) { trav.classList.toggle('sel', c.travel_only); toast(c.name + (c.travel_only ? ' · trips only' : ' · offered everywhere') + ' 🐻'); } };
       cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel);
-      if (cardRulesOK && c.show_daily !== undefined) {
+      if (c.show_daily !== undefined) {
         // where this card is offered (Aizat, 15 Oct): Daily · Trip · From a fund
         const cl = document.createElement('div'); cl.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap';
         cl.innerHTML = '<span class="cap">offered for</span>';
@@ -3274,9 +3192,9 @@ async function renderSetCards(box){
   };
 }
 
-// "· offered for Daily · Trip" under a card's name (or the old "travel only" on an older database)
+// "· offered for Daily · Trip" under a card's name
 function offeredCap(c){
-  if (!cardRulesOK || c.show_daily === undefined) return c.travel_only ? ' · travel only' : '';
+  if (c.show_daily === undefined) return c.travel_only ? ' · travel only' : '';
   const on = [c.show_daily && 'Daily', c.show_trip && 'Trip', c.show_fund && 'Fund'].filter(Boolean);
   return on.length === 3 ? '' : on.length ? ' · ' + on.join(' · ') + ' only' : ' · not offered (More cards…)';
 }
@@ -3319,8 +3237,7 @@ async function renderSetCardDefaults(box){
 }
 
 async function renderSetCategories(box){
-  let r = await sb.from('categories').select('id, kind, name, group_name, group_id, icon, is_active, sort_order').order('sort_order');
-  if (r.error && /group_id/.test(r.error.message || '')) r = await sb.from('categories').select('id, kind, name, group_name, icon, is_active, sort_order').order('sort_order');
+  const r = await sb.from('categories').select('id, kind, name, group_name, group_id, icon, is_active, sort_order, role').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const cats = r.data || [];
   // groups are rows of their own (Oct 2026): a budget line with no category behind it is still a group
@@ -3363,7 +3280,7 @@ async function renderSetCategories(box){
         const bad = results.find(x => x.error);
         if (bad) { toast('couldn’t reorder: ' + bad.error.message); return; }
         await loadContext();
-        if (budgetInit) selectBudgetMonth(budgetMonth);
+        stale.budget = true;
         renderSetCategories(box);
         toast('moved ' + g + (dir < 0 ? ' up' : ' down') + ' 🐻');
       });
@@ -3376,16 +3293,14 @@ async function renderSetCategories(box){
         ok.onclick = async () => {
           const v = input.value.trim();
           if (!v || v === g) { renderSetCategories(box); return; }
-          // groups are rows now: rename the row and the categories + budget lines follow (triggers)
+          // groups are rows: rename the row and the categories + budget lines follow (triggers). An error is shown,
+          // never "fixed" by rewriting names across tables (that fallback could merge two groups — E1-F9)
           const gid = gidOf(kind, g);
-          let u = gid ? await sb.from('category_groups').update({ name: v }).eq('id', gid) : { error: { message: 'no group id' } };
-          if (u.error) {   // older database: rename by text (budgets follow by hand)
-            u = await sb.from('categories').update({ group_name: v }).eq('kind', kind).eq('group_name', g);
-            if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
-            if (kind === 'daily') { const b2 = await sb.from('category_budgets').update({ category_group: v }).eq('category_group', g); if (b2.error) toast('group renamed, but budgets didn’t follow: ' + b2.error.message); }
-          }
+          if (!gid) { toast('couldn’t rename: reload the app and try again'); return; }
+          const u = await sb.from('category_groups').update({ name: v }).eq('id', gid);
+          if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
           await loadContext();
-          if (budgetInit) selectBudgetMonth(budgetMonth);
+          stale.budget = true;
           renderSetCategories(box);
           toast('group renamed 🐻' + (kind === 'daily' ? ' — budgets followed' : ''));
         };
@@ -3395,7 +3310,7 @@ async function renderSetCategories(box){
       groups[g].forEach(c => {
         const d = document.createElement('div'); d.className = 'srow';
         if (!c.is_active) d.style.opacity = '.45';
-        const locked = c.name === 'Payment';   // settle-up transfers are load-bearing
+        const locked = c.role === 'settle_up' || c.name === 'Payment';   // settle-up transfers are load-bearing (a role since v2 sprint 2)
         d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + esc(c.icon) + '</div>'
           + '<span class="lbl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</span>'
           + (locked ? '<span class="tag">settle-up</span>' : (!c.is_active ? '<span class="tag">archived</span>' : ''))
@@ -3404,7 +3319,7 @@ async function renderSetCategories(box){
           d.querySelector('.edit').onclick = () => editInline(d, c.name, async v => {
             const u = await sb.from('categories').update({ name: v }).eq('id', c.id);
             if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
-            await loadContext(); if (budgetInit) selectBudgetMonth(budgetMonth); renderSetCategories(box);
+            await loadContext(); stale.budget = true; renderSetCategories(box);
             toast('renamed 🐻 — past expenses follow the new name');
           });
           const mv = document.createElement('button');
@@ -3599,6 +3514,15 @@ function tripAgg(exps){
   });
   return { byCur, allSent };
 }
+// the trip list's version: the database already summed each person's unsent lines
+function frontedByPerson(fronted){
+  const map = {};
+  (fronted || []).forEach(f => { const m = map[f.profile_id] = map[f.profile_id] || {}; m[f.currency] = (m[f.currency] || 0) + Number(f.amount); });
+  return CTX.profiles.filter(p => map[p.id]).map(p => ({
+    name: p.display_name,
+    amounts: Object.entries(map[p.id]).map(([c, v]) => fmtMoney(v, c)).join(' · '),
+  }));
+}
 // the joint pot owes back whoever fronted money — outstanding (unsent) expenses only
 function owedByPerson(exps){
   const map = {};
@@ -3616,38 +3540,51 @@ function owedByPerson(exps){
 async function initTravel(){
   travelInit = true;
   if (!CTX.trips.length) await loadContext();
-  const cached = localStorage.getItem('bh-travel');
+  const cached = localStorage.getItem('bh-travel2');
   if (cached) { try { travelState = JSON.parse(cached); renderTravel(); } catch(e){} }
   loadTravel();
 }
+// the trip list is summed in the database (trip_summary, v2 sprint 3); a trip's own lines load when it is opened,
+// page by page, so a long trip never loses rows to the 1,000-row cap
+let tripRows = { id: null, exps: [] };
+async function loadTripRows(id){
+  const out = [];
+  for (let from = 0;; from += 1000) {
+    const { data, error } = await sb.from('travel_expenses')
+      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rc() + ', travel_expense_splits(profile_id, amount)')
+      .eq('trip_id', id).order('date', {ascending: false}).order('id').range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  tripRows = { id, exps: out };
+  return out;
+}
 async function loadTravel(keepDetail){
   try {
-    const { data, error } = await sb.from('travel_expenses')
-      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rf() + ', travel_expense_splits(profile_id, amount)')
-      .order('date', {ascending: false});
+    const { data, error } = await sb.rpc('trip_summary');
     if (error) throw error;
-    travelState = { exps: data || [] };
-    localStorage.setItem('bh-travel', JSON.stringify(travelState));
+    travelState = { sum: data || [] };
+    localStorage.setItem('bh-travel2', JSON.stringify(travelState));
     renderTravel();
-    if (keepDetail && curTripId) renderTripDetail();
+    if (keepDetail && curTripId) { await loadTripRows(curTripId); renderTripDetail(); }
   } catch (err) { toast('couldn’t load trips: ' + err.message); }
 }
 function renderTravel(){
   const box = $('tripCards'); box.innerHTML = '';
   if (!CTX.trips.length) { box.innerHTML = '<p class="cap">no trips yet — tap + to create one 🐻</p>'; return; }
   CTX.trips.forEach(t => {
-    const exps = (travelState ? travelState.exps : []).filter(e => e.trip_id === t.id);
-    const { byCur, allSent } = tripAgg(exps);
-    const settled = allSent && exps.length > 0;   // settled = everything has gone to the fund
+    const ts = ((travelState && travelState.sum) || []).find(x => x.trip_id === t.id) || { n: 0, all_sent: false, totals: {}, fronted: [] };
+    const settled = ts.all_sent && ts.n > 0;   // settled = everything has gone to the fund
     const flags = (t.countries || []).map(flagOf).join('') || '✈️';
     const card = document.createElement('div');
     card.className = 'card' + (settled ? ' settled' : '');
     let body;
-    if (!exps.length) body = '<p class="cap" style="margin-top:8px">no expenses yet 🐻</p>';
+    if (!ts.n) body = '<p class="cap" style="margin-top:8px">no expenses yet 🐻</p>';
     else if (settled) body = '<p class="h2" style="margin-top:10px">Settled</p>';
     else {
-      const totals = Object.entries(byCur).map(([c, d]) => fmtMoney(d.total, c)).join(' + ');
-      const owed = payerNames().length < 2 ? [] : owedByPerson(exps);   // nobody to settle with solo
+      const totals = Object.entries(ts.totals || {}).map(([c, v]) => fmtMoney(v, c)).join(' + ');
+      const owed = payerNames().length < 2 ? [] : frontedByPerson(ts.fronted);   // nobody to settle with solo
       const settleHtml = owed.map(o => '<div class="lbl num">Joint owes ' + esc(o.name) + ' ' + o.amounts + '</div>').join('');
       body = '<p class="disp num" style="font-size:22px;line-height:30px;margin-top:10px">' + totals + '</p>'
         + (settleHtml ? '<div class="settlebox">' + settleHtml + '</div>' : '');
@@ -3665,13 +3602,16 @@ function renderTravel(){
 }
 function openTripDetail(id){
   curTripId = id; tripCurFilter = 'All';
+  if (tripRows.id !== id) tripRows = { id: null, exps: [] };
   renderTripDetail();
   go('scr-trip');
+  loadTripRows(id).then(() => { if (curTripId === id) renderTripDetail(); }).catch(err => toast('couldn’t load the trip: ' + err.message));
 }
 function renderTripDetail(){
   const t = tripById(curTripId);
   if (!t) { go('scr-travel'); return; }
-  const exps = (travelState ? travelState.exps : []).filter(e => e.trip_id === curTripId);
+  const loading = tripRows.id !== curTripId;
+  const exps = loading ? [] : tripRows.exps;
   const { byCur, allSent } = tripAgg(exps);
   $('tripDetName').textContent = ((t.countries || []).map(flagOf).join('') || '✈️') + ' ' + t.name;
   $('tripDetCap').textContent = tripDates(t) + (allSent && exps.length ? ' · settled' : '');
@@ -3717,7 +3657,7 @@ function renderTripDetail(){
     });
     gbox.appendChild(d);
   });
-  if (!shown.length) gbox.innerHTML = '<p class="cap" style="padding:8px 0">no expenses' + (tripCurFilter !== 'All' ? ' in this currency' : ' yet 🐻') + '</p>';
+  if (!shown.length) gbox.innerHTML = '<p class="cap" style="padding:8px 0">' + (loading ? 'loading…' : 'no expenses' + (tripCurFilter !== 'All' ? ' in this currency' : ' yet 🐻')) + '</p>';
   // settle card — the joint pot (ultimately the household's travel fund) pays back whoever fronted money
   const tf = travelFund();
   const unsentInFund = tf ? exps.filter(e => !e.sent_to_fund && e.currency === tf.currency) : [];
@@ -3761,8 +3701,7 @@ function renderTripDetail(){
 async function sendForeignConverted(){
   const tf = travelFund();
   if (!tf) return;
-  const exps = (travelState ? travelState.exps : []).filter(e =>
-    e.trip_id === curTripId && !e.sent_to_fund && e.currency !== tf.currency);
+  const exps = (tripRows.id === curTripId ? tripRows.exps : []).filter(e => !e.sent_to_fund && e.currency !== tf.currency);
   if (!exps.length) return;
   const v = parseFloat($('convIn').value);
   if (!(v > 0)) { toast('enter what it cost in ' + curLabel(tf.currency)); return; }
@@ -3788,8 +3727,7 @@ async function sendForeignConverted(){
 // foreign-currency lines can also settle flag-only (no money moves)
 function settleForeign(){
   const tf = travelFund();
-  const exps = (travelState ? travelState.exps : []).filter(e =>
-    e.trip_id === curTripId && !e.sent_to_fund && tf && e.currency !== tf.currency);
+  const exps = (tripRows.id === curTripId ? tripRows.exps : []).filter(e => !e.sent_to_fund && tf && e.currency !== tf.currency);
   if (!exps.length) return;
   sb.from('travel_expenses').update({ sent_to_fund: true }).in('id', exps.map(e => e.id))
     .then(({ error }) => {
@@ -3805,7 +3743,7 @@ let sendArm = false;
 async function sendToTravelFund(){
   const tf = travelFund();
   if (!tf) { toast('no travel fund set — choose one in Settings'); return; }
-  const exps = travelState.exps.filter(e => e.trip_id === curTripId && !e.sent_to_fund && e.currency === tf.currency);
+  const exps = (tripRows.id === curTripId ? tripRows.exps : []).filter(e => !e.sent_to_fund && e.currency === tf.currency);
   const total = exps.reduce((s, e) => s + sa(e), 0);
   if (!exps.length) { toast('nothing unsent in ' + (CURSYM[tf.currency] || tf.currency)); return; }
   const btn = $('sendFundBtn');
@@ -3898,90 +3836,49 @@ async function loadContext(){
   if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
   if (CTX.cats) applyCategories(CTX.cats);   // instant catalogue from the last visit
   if (CTX.firstMonth) BUD_MIN = CTX.firstMonth;
-  const [hh, profiles, funds, trips, cards0, cats, dCats, tCats, firstD, incSrc, incPast, cardDefs] = await Promise.all([
-    sb.from('households').select('id, name, travel_fund_id, joint_label, pot_start').single(),
-    sb.from('profiles').select('id, display_name').order('sort_order'),
-    sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot, icon').eq('is_active', true).order('sort_order'),
-    sb.from('trips').select('id, name, currency, currencies, countries, start_date, end_date').order('start_date', {ascending:false}),
-    sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order, kind, currency, show_daily, show_trip, show_fund').eq('is_archived', false).order('sort_order'),
-    sb.from('categories').select('kind, name, group_name, icon').eq('is_active', true).order('sort_order'),
-    sb.from('daily_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(300),
-    sb.from('travel_expenses').select('description, category, amount, currency').order('date', {ascending:false}).limit(120),
-    sb.from('daily_expenses').select('date').order('date', {ascending:true}).limit(1),
-    sb.from('income_budgets').select('source_name, month').order('month', {ascending:false}).limit(60),
-    sb.from('fund_transactions').select('income_source, created_at').not('income_source', 'is', null)
-      .order('created_at', {ascending:false}).limit(120),
-    sb.from('card_defaults').select('profile_id, context, payment_method_id'),
-  ]);
-  // card rules (sprint 2): per-card Daily/Trip/Fund flags + default cards; an older database has neither
-  let cards = cards0;
-  cardRulesOK = !(cards0.error && /show_daily/.test(cards0.error.message || ''));
-  if (!cardRulesOK) cards = await sb.from('payment_methods').select('id, name, profile_id, travel_only, sort_order, kind, currency').eq('is_archived', false).order('sort_order');
-  if (funds.error && /icon/.test(funds.error.message || '')) {   // database not updated yet
-    const f2 = await sb.from('funds').select('id, name, country, currency, group_name, sort_order, is_spend_pot').eq('is_active', true).order('sort_order');
-    funds.data = f2.data; funds.error = f2.error;
-  }
-  if (hh.error && (hh.error.code === 'PGRST116' || hh.status === 401 || hh.status === 403 || hh.status === 406 || /JWT|token/i.test(hh.error.message || ''))) {
-    // not a flaky network: this login can't read exactly one household (expired/garbled session, or
-    // something wrong with the account) — never run on cached numbers as if nothing happened
+  // everything the app needs to start, in one call: household, role, people, funds, cards, categories (with ids),
+  // trips, default cards, recent descriptions, income sources, first month, this month's plan (v2 sprint 3)
+  const { data: b, error, status } = await sb.rpc('app_bootstrap');
+  if (error || !b || !b.household) {
     const hadHh = CTX && CTX.hh && CTX.hh.name;
-    const removed = hh.error.code === 'PGRST116' && !/multiple/i.test(hh.error.details || '') && hadHh;
-    localStorage.removeItem('bh-ctx');
-    if (removed) {
-      // the session is fine; the membership is gone (the owner removed this login) — straight to the join/create screen with the reason
-      localStorage.setItem('bh-lost', hadHh);
+    if (!error && b && !b.household) {
+      // the session is fine but this login has no household: the owner removed it, or it never had one
+      localStorage.removeItem('bh-ctx');
+      if (hadHh) localStorage.setItem('bh-lost', hadHh);
       CTX = { profiles: [], funds: [], trips: [], cards: [] };
       showOnboard();
       throw new Error('access removed');
     }
-    await sb.auth.signOut().catch(() => {});
-    $('app').style.display = 'none'; $('onboard').style.display = 'none'; $('login').style.display = 'flex';
-    const el = $('loginError'); if (el) el.textContent = hh.error.code === 'PGRST116' && /multiple/i.test(hh.error.details || '') ? 'something’s wrong with this account — more than one household is attached. Tell Aizat.' : 'your session expired — sign in again';
-    throw new Error('session invalid');
+    if (status === 401 || status === 403 || /JWT|token/i.test((error && error.message) || '')) {
+      // an expired or garbled session — never run on cached numbers as if nothing happened
+      localStorage.removeItem('bh-ctx');
+      await sb.auth.signOut().catch(() => {});
+      $('app').style.display = 'none'; $('onboard').style.display = 'none'; $('login').style.display = 'flex';
+      const el = $('loginError'); if (el) el.textContent = 'your session expired — sign in again';
+      throw new Error('session invalid');
+    }
+    throw error || new Error('couldn’t load your household');   // a network blip: the cached context stays
   }
-  if (!hh.error) {
-    // table may predate the categories migration — fall back to built-ins
-    const catRows = cats.error ? (CTX.cats || []) : (cats.data || []);
-    applyCategories(catRows);
-    const srcSeen = new Set();
-    const incomeSources = (incSrc.error ? [] : incSrc.data || []).filter(r => {
-      const k = r.source_name.toLowerCase();
-      if (srcSeen.has(k)) return false; srcSeen.add(k); return true;
-    }).map(r => r.source_name);
-    // sources you've actually used (Interest, a side hustle…) join the plan's named ones
-    (incPast.error ? [] : incPast.data || []).forEach(r => {
-      const k = r.income_source.toLowerCase();
-      if (srcSeen.has(k)) return; srcSeen.add(k);
-      incomeSources.push(r.income_source);
-    });
-    CTX = { hh: hh.data, profiles: profiles.data || [], funds: funds.data || [],
-            trips: trips.data || [], cards: cards.data || [], cats: catRows,
-            topDaily: topCats(dCats.data, FALLBACK_DAILY).filter(n => !catRows.length || catRows.some(c => c.kind === 'daily' && c.name === n)),
-            topTravel: topCats(tCats.data, FALLBACK_TRAVEL).filter(n => !catRows.length || catRows.some(c => c.kind === 'travel' && c.name === n)),
-            histDaily: histFrom(dCats.data), histTravel: histFrom(tCats.data),
-            incomeSources, cardDefaults: cardDefs.error ? [] : (cardDefs.data || []) };
-    CTX.firstMonth = (!firstD.error && firstD.data && firstD.data[0])
-      ? firstD.data[0].date.slice(0, 7) + '-01' : curMonthIso();
-    BUD_MIN = CTX.firstMonth;
-    // has the reconciliation migration landed? (lock icons + filter switch on when it has)
-    const probe = await sb.from('daily_expenses').select('reconciled_at').limit(1);
-    reconOK = !probe.error;
-    const probe2 = await sb.from('daily_expenses').select('pot_swap_id').limit(1);
-    swapOK = !probe2.error;
-    const probe3 = await sb.from('daily_expenses').select('updated_at').limit(1);
-    updOK = !probe3.error;
-    const probe4 = await sb.from('fund_transactions').select('kind').limit(1);
-    kindOK = !probe4.error;
-    const probe5 = await sb.from('daily_expenses').select('is_refund').limit(1);
-    refundOK = !probe5.error;
-    const probe6 = await sb.from('daily_expenses').select('fund_id').limit(1);
-    fundIdOK = !probe6.error;
-    const probe7 = await sb.from('fund_transactions').select('updated_at').limit(1);
-    fundUpdOK = !probe7.error;
-    if (refundOK) sb.rpc('purge_deleted').then(() => {});   // the bin empties itself after 30 days
-    const chip = $('atxOpenOnly'); if (chip) chip.style.display = reconOK ? '' : 'none';
+  const catRows = b.categories || [];
+  applyCategories(catRows);
+  CTX = { hh: b.household, profiles: b.profiles || [], funds: b.funds || [], trips: b.trips || [], cards: b.cards || [],
+          cats: catRows, role: (b.me && b.me.role) || 'member', me: b.me || null, today: b.today, plan: b.plan || null,
+          topDaily: topCats(b.recent_daily, FALLBACK_DAILY).filter(n => !catRows.length || catRows.some(c => c.kind === 'daily' && c.name === n)),
+          topTravel: topCats(b.recent_travel, FALLBACK_TRAVEL).filter(n => !catRows.length || catRows.some(c => c.kind === 'travel' && c.name === n)),
+          histDaily: histFrom(b.recent_daily), histTravel: histFrom(b.recent_travel),
+          incomeSources: b.income_sources || [], cardDefaults: b.card_defaults || [],
+          firstMonth: b.first_month || curMonthIso() };
+  BUD_MIN = CTX.firstMonth;
+  // the bin empties itself after 30 days — once a day from this device is plenty
+  if (CTX.role !== 'viewer' && localStorage.getItem('bh-purged') !== todayIso()) {
+    sb.rpc('purge_deleted').then(r => { if (!r.error) localStorage.setItem('bh-purged', todayIso()); });
   }
   localStorage.setItem('bh-ctx', JSON.stringify(CTX));
+}
+// a category's id from its name, in the kind of expense being entered (the picker works in names)
+function catIdOf(name, kind){
+  const c = (CTX.cats || []).find(x => x.name === name && x.kind === (kind || 'daily'));
+  return c ? c.id : null;
 }
 // unique past descriptions with their usual category + last amount — feeds the takeover
 function histFrom(rows){
@@ -4038,9 +3935,8 @@ function applyCategories(cats){
     daily.forEach(c => {
       if (c.group_name === 'Transfers' || seen[c.group_name]) return;
       seen[c.group_name] = true;
-      BUDGET_ROWS.push({ icon: c.icon, group: c.group_name, blabel: c.group_name });
+      BUDGET_ROWS.push({ icon: esc(String(c.icon || '🎯').slice(0, 8)), group: c.group_name, blabel: c.group_name });
     });
-    CHART_GROUPS = BUDGET_ROWS.slice(0, 4).map(b => b.group);
   }
   if (travel.length) {
     TRAVEL_GROUPED = {};
@@ -4049,7 +3945,6 @@ function applyCategories(cats){
   }
   (cats || []).forEach(c => {
     CAT_ICON[c.name] = esc(String(c.icon || CAT_ICON[c.name] || '🛍️').slice(0, 8));
-    if (c.kind === 'daily') GROUP_OF[c.name] = c.group_name;   // legacy names keep their old mapping
   });
 }
 function topCats(rows, fallback){
@@ -4072,7 +3967,6 @@ function formCurrency(){
 }
 // card rules (Aizat, 15 Oct): each card says where it's offered — Daily, Trip, From a fund — and each person has a
 // default card per kind of expense (Settings → Payment cards / Default cards). Archived cards never load here.
-let cardRulesOK = true;   // false until the card-rules migration has landed (probed in loadContext)
 const cardContext = () => (mode === 'trip' || mode === 'edit') ? 'trip' : mode === 'fundexp' ? 'fund' : 'daily';
 function cardDefaultFor(pid){
   const d = (CTX.cardDefaults || []).find(x => (x.profile_id || null) === (pid || null) && x.context === cardContext());
@@ -4082,7 +3976,7 @@ function cardOptions(payerName, all){
   const p = CTX.profiles.find(x => x.display_name === payerName);
   const pid = p ? p.id : null;   // null = Joint
   const cur = formCurrency(), ctx = cardContext(), def = cardDefaultFor(pid);
-  const offered = c => all || (cardRulesOK ? c['show_' + ctx] !== false : (!c.travel_only || ctx !== 'daily'));
+  const offered = c => all || c['show_' + ctx] !== false;
   // cash is a kind, not a person's card — anyone can pay cash (QA round 1);
   // "who paid" and "which card" are different questions: Joint may sit on anyone's card, joint cards first (QA2 A-B4);
   // cards in the purchase's currency come first, so an S$ fund purchase lands on the S$ card by default (QA2 B-B3)
@@ -4097,10 +3991,26 @@ function cardOptions(payerName, all){
 function refreshCards(payerName){
   const opts = cardOptions(payerName);
   const editing = /^edit/.test(mode);   // only an old row may keep "no card" — new rows always name one
-  $('cardSel').innerHTML = opts.map(c => '<option>' + esc(c.name) + '</option>').join('')
+  // option value = the card's id (sent to the database), text = its name (v2 sprint 3: ids, not names)
+  $('cardSel').innerHTML = opts.map(c => '<option value="' + c.id + '">' + esc(c.name) + '</option>').join('')
     + (editing || !opts.length ? '<option value="">no card</option>' : '');
-  if (opts.length) $('cardSel').value = opts[0].name;
+  if (opts.length) $('cardSel').value = opts[0].id;
   renderCardRow();
+}
+// the card picked in the form: { id, name } — id null for "no card", or for an old row whose card has no id
+function pickedCard(){
+  const o = $('cardSel').selectedOptions[0];
+  if (!o || !o.value) return { id: null, name: '' };
+  if (o.value.startsWith('name:')) return { id: null, name: o.value.slice(5) };
+  return { id: o.value, name: o.textContent };
+}
+// an edit sheet shows the row's own card even when it isn't offered any more (archived, another person's)
+function selectRowCard(exp){
+  const v = exp.payment_method_id || (exp.paid_with ? 'name:' + exp.paid_with : '');
+  if (v && ![...$('cardSel').options].some(o => o.value === v)) {
+    const o = document.createElement('option'); o.value = v; o.textContent = exp.paid_with || 'card'; $('cardSel').appendChild(o);
+  }
+  $('cardSel').value = v;
 }
 
 let saveId = null;   // the id the next new row is saved under — a retap after a lost reply finds it saved (v2 sprint 2)
@@ -4315,7 +4225,7 @@ function renderCal(){
 
 // ── card picker (no system list box) ──
 function renderCardRow(){
-  const v = $('cardSel').value;
+  const v = pickedCard().name;
   $('cardRow').innerHTML = '<span class="ric">' + (v ? '💳' : '👛') + '</span>'
     + '<span class="rmid"><span class="rlab">paid with</span><span class="rval">' + esc(v || 'no card') + '</span></span>'
     + '<span class="chev">›</span>';
@@ -4329,12 +4239,12 @@ function openCardPicker(){
   // the payer's other active cards — not offered for this kind of expense, but there for the odd one-off
   const payer = segSel('segPayer') || payerNames()[0];
   const listed = new Set(items.map(i => i.id));
-  const more = cardOptions(payer, true).filter(c => !listed.has(c.name));
+  const more = cardOptions(payer, true).filter(c => !listed.has(c.id));
   if (more.length) items.push({ id: '__more__', name: 'More cards…', icon: '➕', cap: more.length + ' not shown for this kind of expense' });
   openPicker('Paid with', items, it => {
     if (it.id !== '__more__') { $('cardSel').value = it.id; renderCardRow(); return; }
-    openPicker('More cards', more.map(c => ({ id: c.name, name: c.name, icon: '💳', cap: c.currency ? curLabel(c.currency) : '' })), m => {
-      if (![...$('cardSel').options].some(o => o.value === m.id)) { const o = document.createElement('option'); o.textContent = m.id; $('cardSel').appendChild(o); }
+    openPicker('More cards', more.map(c => ({ id: c.id, name: c.name, icon: '💳', cap: c.currency ? curLabel(c.currency) : '' })), m => {
+      if (![...$('cardSel').options].some(o => o.value === m.id)) { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; $('cardSel').appendChild(o); }
       $('cardSel').value = m.id; renderCardRow();
     });
   });
@@ -4572,7 +4482,7 @@ function openForm(m){
   editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none'; $('lockNote').style.display = 'none';
   saveId = null;
   $('descInput').value = keep ? keep.desc : ''; $('commentsInput').value = keep ? keep.comments : ''; setRefund(!!(keep && keep.refund));
-  $('refundWrap').style.display = (m === 'daily' || m === 'trip' || m === 'fundexp') && refundOK ? 'flex' : 'none';
+  $('refundWrap').style.display = (m === 'daily' || m === 'trip' || m === 'fundexp') ? 'flex' : 'none';
   $('dateInput').value = isoDate(new Date()); updateDateVal();
   $('rowDetails').style.display = 'none';
   hideTake();
@@ -4789,8 +4699,9 @@ async function saveEntry(){
   if (!saveId && crypto.randomUUID) saveId = crypto.randomUUID();
   // stay locked after success — a tap during the close animation must not
   // write twice (QA-2); the form re-arms when it is next opened
+  // after a save: the screen showing now refreshes (one call); the others refetch when next opened (v2 sprint 3)
   const done = (ok, msg) => {
-    if (ok) { closeSheet(); toast(msg); loadHome(); if (budgetInit) selectBudgetMonth(budgetMonth); if (fundsInit) loadFunds(); if (atx) loadAllTx(true); }
+    if (ok) { closeSheet(); toast(msg); refreshAfterSave(); }
     else { saving = false; armSaveKey(); toast('couldn’t save: ' + msg); } };
 
   const date = $('dateInput').value || isoDate(new Date());
@@ -4811,12 +4722,11 @@ async function saveEntry(){
       const { error } = await sb.from('fund_transactions').insert(Object.assign({
         household_id: CTX.hh.id, fund_id: fundId, type: 'expense',
         date, amount: cost, remarks: desc, origin: 'manual',
-      }, saveId ? { id: saveId } : {}, kindOK ? { kind: 'movement' } : {}));
+      }, saveId ? { id: saveId } : {}, { kind: 'movement' }));
       if (error) throw error;
       localStorage.setItem('bh-fund', fundId);
       const f = fundById(fundId);
       done(true, 'money out — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
-      if (fundsInit) loadFunds();
       return;
     }
     if (mode === 'income') {
@@ -4836,12 +4746,11 @@ async function saveEntry(){
       const { error } = await sb.from('fund_transactions').insert(Object.assign({
         household_id: CTX.hh.id, fund_id: fundId, type: 'income',
         date, amount: cost, remarks: desc, origin: 'manual', income_source: desc,
-      }, saveId ? { id: saveId } : {}, kindOK ? { kind: 'movement' } : {}));   // income is income, whatever it's called
+      }, saveId ? { id: saveId } : {}, { kind: 'movement' }));   // income is income, whatever it's called
       if (error) throw error;
       localStorage.setItem('bh-incfund', fundId);
       const f = fundById(fundId);
       done(true, 'income in — ' + desc + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD') + ' → ' + (f ? f.name : 'fund'));
-      if (fundsInit) loadFunds();
       return;
     }
     if (mode === 'transfer') {
@@ -4861,29 +4770,12 @@ async function saveEntry(){
           return;
         }
       }
-      const note = desc ? ' · ' + desc : '';
-      const gid = saveId || (crypto.randomUUID ? crypto.randomUUID() : null);   // the two halves lock and unlock together
-      let error = null;
-      if (transferOK) {   // one server call writes both sides; a retap with the same id is the same transfer (v2 sprint 2)
-        ({ error } = await sb.rpc('record_transfer', { p_from: from.id, p_to: to.id, p_date: date, p_amount: cost,
-          p_received: crossCur ? received : null, p_note: desc || null, p_id: gid }));
-        if (error && /PGRST202|record_transfer|could not find the function/i.test((error.code || '') + ' ' + (error.message || ''))) { transferOK = false; error = null; }
-        else { if (error) throw error; done(true, fmtMoney(cost, from.currency) + ' moved: ' + from.name + ' → ' + to.name); if (fundsInit) loadFunds(); return; }
-      }
-      let rows = [
-        { household_id: CTX.hh.id, fund_id: from.id, type: 'expense', date,
-          amount: cost, remarks: 'Transfer → ' + to.name + note, origin: 'manual', transfer_group_id: gid },
-        { household_id: CTX.hh.id, fund_id: to.id, type: 'income', date,
-          amount: received, remarks: 'Transfer ← ' + from.name + note, origin: 'manual', transfer_group_id: gid },
-      ];
-      ({ error } = await sb.from('fund_transactions').insert(rows));
-      if (error && /transfer_group_id/.test(error.message || '')) {   // migration not landed yet
-        rows.forEach(r => delete r.transfer_group_id);
-        ({ error } = await sb.from('fund_transactions').insert(rows));
-      }
+      const gid = saveId || (crypto.randomUUID ? crypto.randomUUID() : null);   // a retap with the same id is the same transfer
+      // one server call writes both sides (v2 sprint 2); the database refuses a transfer that doesn't balance (sprint 3)
+      const { error } = await sb.rpc('record_transfer', { p_from: from.id, p_to: to.id, p_date: date, p_amount: cost,
+        p_received: crossCur ? received : null, p_note: desc || null, p_id: gid });
       if (error) throw error;
       done(true, fmtMoney(cost, from.currency) + ' moved: ' + from.name + ' → ' + to.name);
-      if (fundsInit) loadFunds();
       return;
     }
     if (mode === 'paycard') {
@@ -4903,7 +4795,6 @@ async function saveEntry(){
       localStorage.setItem('bh-paycard', c.id); localStorage.setItem('bh-paycard-fund', from.id);
       delete payCardOwed[c.id];
       done(true, 'paid ' + c.name + ' ' + fmtMoney(cost, from.currency) + ' from ' + from.name + ' — Available unchanged, it was spent when the charges happened');
-      if (fundsInit) loadFunds();
       return;
     }
     if (mode === 'editFund') {
@@ -4921,15 +4812,13 @@ async function saveEntry(){
       // one side of a group: only the note travels (amount, date, fund and direction are shared — v2 S1)
       if (moneyLocked()) { Object.keys(upd).forEach(k => { if (k !== 'remarks') delete upd[k]; }); }
       let q = sb.from('fund_transactions').update(upd).eq('id', editingExp.id);
-      const seen = fundUpdOK && editingExp.updated_at;   // v2 sprint 2: refuse to overwrite an edit made elsewhere
+      const seen = editingExp.updated_at;   // v2 sprint 2: refuse to overwrite an edit made elsewhere
       if (seen) q = q.eq('updated_at', editingExp.updated_at);
       const { data: upd1, error } = await q.select('id');
       if (error) throw error;
       if (seen && !(upd1 || []).length) { done(false, 'this was changed on another phone — close it and open it again'); return; }
       const f = fundById(fundId) || (editingExp.funds ? { currency: editingExp.funds.currency } : null);
       done(true, 'updated — ' + fmtMoney(cost, f ? f.currency : 'AUD'));
-      if (fundsInit) loadFunds();
-      if (atx) loadAllTx(true);
       return;
     }
     const fundExp = mode === 'fundexp' ? fundById(fundFromId) : null;
@@ -4940,13 +4829,16 @@ async function saveEntry(){
     if (!cat) { done(false, 'pick a category'); return; }
     const pid = (CTX.profiles.find(x => x.display_name === payer) || {}).id || null;
     // a row with no card can never sit on a statement — every new expense names one (cash counts)
-    if ((mode === 'daily' || mode === 'trip' || mode === 'fundexp') && !$('cardSel').value && cat !== 'Payment') {
+    const card = pickedCard();
+    const catKind = (mode === 'trip' || mode === 'edit') ? 'travel' : 'daily';
+    const catId = catIdOf(cat, catKind);   // sent by id; the name only if this phone doesn't know the id yet
+    if ((mode === 'daily' || mode === 'trip' || mode === 'fundexp') && !card.name && cat !== 'Payment') {
       if ($('rowDetails')) $('rowDetails').style.display = 'block';
       if ($('cardWrap')) $('cardWrap').style.display = 'block';
       done(false, 'pick the card you paid with (or Cash)'); return;
     }
     if ((mode === 'daily' || mode === 'fundexp') && !curMismatchOk) {
-      const cardRow = (CTX.cards || []).find(c => c.name === $('cardSel').value);
+      const cardRow = (CTX.cards || []).find(c => c.id === card.id);
       if (cardRow && cardRow.currency && cardRow.currency !== currency) {
         curMismatchOk = true; setTimeout(() => { curMismatchOk = false; }, 8000);
         done(false, cardRow.name + ' is a ' + curLabel(cardRow.currency) + ' card — enter the ' + curLabel(cardRow.currency) + ' amount from the statement so it can reconcile, or tap ✓ again to keep ' + curLabel(currency));
@@ -4964,55 +4856,30 @@ async function saveEntry(){
       }
     }
     bigOk = false;
-    if (mode === 'edit') {
-      // one server-side transaction: row + splits can never diverge (QA-5)
+    if (mode === 'edit' || mode === 'editDaily') {
+      // one server-side transaction: row + splits can never diverge (QA-5); the card and category go by id
+      const fundNow = mode === 'editDaily' ? (fundById(fundFromId) || null) : null;
+      if (fundNow && fundNow.currency !== currency) { done(false, fundNow.name + ' holds ' + curLabel(fundNow.currency) + ' — a ' + curLabel(currency) + ' purchase can’t count against it'); return; }
       const { error } = await sb.rpc('save_expense', Object.assign({
-        p_kind: 'travel', p_id: editingExp.id, p_date: date, p_description: desc,
-        p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
-        p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
-        p_seen_updated_at: editingExp.updated_at || null,
-      }, refundOK ? { p_is_refund: isRefund } : {}));
+        p_kind: mode === 'edit' ? 'travel' : 'daily', p_id: editingExp.id, p_date: date, p_description: desc,
+        p_category: cat, p_category_id: catId, p_amount: cost, p_currency: currency, p_payer: pid,
+        p_paid_with: card.name, p_payment_method_id: card.id, p_comments: $('commentsInput').value.trim(),
+        p_seen_updated_at: editingExp.updated_at || null, p_is_refund: isRefund,
+      }, mode === 'editDaily' ? { p_set_fund: true, p_fund_id: fundFromId || null } : {}));
       if (error) throw error;
       done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
-      if (travelInit) loadTravel(true);
-      if (atx) loadAllTx(true);
-      if (fundsInit) loadFunds();
       return;
     }
-    if (mode === 'editDaily') {
-      // one server-side transaction: row + splits can never diverge (QA-5)
-      const fundNow = fundIdOK ? (fundById(fundFromId) || null) : null;
-      if (fundIdOK && fundNow && fundNow.currency !== currency) { done(false, fundNow.name + ' holds ' + curLabel(fundNow.currency) + ' — a ' + curLabel(currency) + ' purchase can’t count against it'); return; }
-      const args = Object.assign({
-        p_kind: 'daily', p_id: editingExp.id, p_date: date, p_description: desc,
-        p_category: cat, p_amount: cost, p_currency: currency, p_payer: pid,
-        p_paid_with: $('cardSel').value, p_comments: $('commentsInput').value.trim(),
-        p_seen_updated_at: editingExp.updated_at || null,
-      }, refundOK ? { p_is_refund: isRefund } : {}, fundIdOK ? { p_set_fund: true, p_fund_id: fundFromId || null } : {});
-      let { error } = await sb.rpc('save_expense', args);
-      // the fund-aware save_expense may land a few minutes after the app — fall back to the old signature once
-      if (error && fundIdOK && /PGRST202|p_set_fund|could not find the function/i.test((error.code || '') + ' ' + (error.message || ''))) {
-        delete args.p_set_fund; delete args.p_fund_id;
-        if ((fundFromId || null) !== (editingExp.fund_id || null)) { done(false, 'the “counts against” change isn’t live yet — try again in a few minutes'); return; }
-        ({ error } = await sb.rpc('save_expense', args));
-      }
-      if (error) throw error;
-      done(true, 'updated — ' + desc + ' · ' + fmtMoney(cost, currency));
-      if (atx) loadAllTx(true);
-      if (budgetInit) selectBudgetMonth(budgetMonth);
-      if (fundsInit) loadFunds();
-      return;
-    }
-    const base = {
-      household_id: CTX.hh.id, date, description: desc, category: cat, amount: cost,
-      currency, payer_profile_id: pid, paid_with: $('cardSel').value, comments: $('commentsInput').value.trim(),
-    };
+    // ids, not names (v2 sprint 3): the database fills in the category and card names
+    const base = Object.assign({
+      household_id: CTX.hh.id, date, description: desc, amount: cost,
+      currency, payer_profile_id: pid, comments: $('commentsInput').value.trim(), is_refund: isRefund,
+    }, catId ? { category_id: catId } : { category: cat }, card.id ? { payment_method_id: card.id } : { paid_with: card.name });
     const table = mode === 'trip' ? 'travel_expenses' : 'daily_expenses';
     if (mode === 'trip') {
       if (!selectedTripId) { done(false, 'pick a trip first'); return; }
       base.trip_id = selectedTripId;
     }
-    if (refundOK) base.is_refund = isRefund;
     if (mode === 'fundexp') { base.fund_id = fundExp.id; localStorage.setItem('bh-fundexp', fundExp.id); }
     if (saveId) base.id = saveId;
     // the split rows (payer +, joint −) are derived by the database from payer + amount
@@ -5020,13 +4887,11 @@ async function saveEntry(){
     if (error) throw error;
     localStorage.setItem('bh-payer', payer);
     localStorage.setItem('bh-cur', segSel('segCurrency'));
-    if (mode === 'trip' && travelInit) loadTravel(true);
     const tripName = mode === 'trip' ? (tripById(selectedTripId) || {}).name : '';
     // a trip purchase on a card in another currency: a quiet note, not a warning — the Desk takes the card's amount from the statement
-    const cardNow = (CTX.cards || []).find(c => c.name === base.paid_with);
+    const cardNow = (CTX.cards || []).find(c => c.id === card.id);
     const fxNote = mode === 'trip' && cardNow && cardNow.currency && cardNow.currency !== currency ? ' · the ' + curLabel(cardNow.currency) + ' amount comes from the statement' : '';
-    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (base.paid_with ? ' · ' + base.paid_with : '') + (tripName ? ' · ' + tripName : '') + (fundExp ? ' · from ' + fundExp.name : '') + fxNote);
-    if (fundExp && fundsInit) loadFunds();
+    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (card.name ? ' · ' + card.name : '') + (tripName ? ' · ' + tripName : '') + (fundExp ? ' · from ' + fundExp.name : '') + fxNote);
   } catch (err) {
     // the row is already there under this form's id: an earlier tap saved it and only the reply was lost
     if (err && err.code === '23505' && saveId && /_pkey/.test(err.message || '')) { done(true, 'already saved ✓'); return; }
@@ -5047,7 +4912,7 @@ function openEditExpense(exp){
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
-  $('refundWrap').style.display = refundOK ? 'flex' : 'none'; setRefund(!!exp.is_refund);
+  $('refundWrap').style.display = 'flex'; setRefund(!!exp.is_refund);
   $('formTitle').textContent = 'Edit expense';
   $('rowMode').style.display = 'none';
   $('rowScope').style.display = 'none';
@@ -5081,10 +4946,7 @@ function openEditExpense(exp){
   const payer = payerFromSplits(exp);
   buildSeg('segPayer', payerNames(), Math.max(payerNames().indexOf(payer), 0), p => refreshCards(p));
   refreshCards(payer);
-  if (exp.paid_with && ![...$('cardSel').options].some(o => o.value === exp.paid_with || o.textContent === exp.paid_with)) {
-    const o = document.createElement('option'); o.textContent = exp.paid_with; $('cardSel').appendChild(o);
-  }
-  $('cardSel').value = exp.paid_with || '';
+  selectRowCard(exp);
   renderCardRow();
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   applyLockState(editingExp);
@@ -5103,7 +4965,7 @@ function openEditDaily(exp){
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
-  $('refundWrap').style.display = refundOK ? 'flex' : 'none'; setRefund(!!exp.is_refund);
+  $('refundWrap').style.display = 'flex'; setRefund(!!exp.is_refund);
   $('formTitle').textContent = 'Edit expense';
   $('rowMode').style.display = 'none';
   $('rowScope').style.display = 'none';
@@ -5113,10 +4975,10 @@ function openEditDaily(exp){
   $('commentsInput').value = exp.comments || '';
   $('rowTrip').style.display = 'none';
   // which fund this purchase counts against (nothing = the month's budget, via its category's pot)
-  fundFromId = fundIdOK ? (exp.fund_id || null) : null;
-  $('rowFundFrom').style.display = fundIdOK ? 'block' : 'none';
+  fundFromId = exp.fund_id || null;
+  $('rowFundFrom').style.display = 'block';
   $('fundHint').style.display = 'none';
-  if (fundIdOK) renderFundRow('from');
+  renderFundRow('from');
   $('rowFundTo').style.display = 'none';
   $('rowType').style.display = 'none';
   $('rowCategory').style.display = 'block';
@@ -5140,10 +5002,7 @@ function openEditDaily(exp){
   $('rowPayer').style.display = payerNames().length < 2 ? 'none' : 'block';
   buildSeg('segPayer', payerNames(), Math.max(payerNames().indexOf(payer), 0), p => refreshCards(p));
   refreshCards(payer);
-  if (exp.paid_with && ![...$('cardSel').options].some(o => o.value === exp.paid_with || o.textContent === exp.paid_with)) {
-    const o = document.createElement('option'); o.textContent = exp.paid_with; $('cardSel').appendChild(o);
-  }
-  $('cardSel').value = exp.paid_with || '';
+  selectRowCard(exp);
   renderCardRow();
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   applyLockState(editingExp);
@@ -5217,10 +5076,10 @@ function applyLockState(exp){
   const locked = !!(exp && exp.reconciled_at);
   $('lockNote').style.display = locked ? 'block' : 'none'; $('lockUnlockBtn').style.display = '';
   if (locked) {
-    $('deleteBtn').style.display = (refundOK && exp.reconciled_by === 'auto' && !exp.reconciled_statement_id) ? 'block' : 'none';
+    $('deleteBtn').style.display = (exp.reconciled_by === 'auto' && !exp.reconciled_statement_id) ? 'block' : 'none';
     $('lockNoteText').textContent = exp.reconciled_by === 'auto' && !exp.reconciled_statement_id
-      ? '🔒 cash rows check themselves off, so this one is locked. Description, category, comments' + (fundIdOK && mode === 'editDaily' ? ', counts-against' : '') + ' can still change — unlock it to change the amount, date, card or payer.'
-      : '🔒 this row is locked — it’s been checked off against a statement. Description, category, comments' + (fundIdOK && mode === 'editDaily' ? ' and counts-against' : '') + ' can still change.';
+      ? '🔒 cash rows check themselves off, so this one is locked. Description, category, comments' + (mode === 'editDaily' ? ', counts-against' : '') + ' can still change — unlock it to change the amount, date, card or payer.'
+      : '🔒 this row is locked — it’s been checked off against a statement. Description, category, comments' + (mode === 'editDaily' ? ' and counts-against' : '') + ' can still change.';
   }
 }
 // un-reconcile the row being edited, right here in the sheet (QA round 1, A-B2)
@@ -5246,20 +5105,12 @@ async function deleteExpense(){
   if (saving) return;
   saving = true;
   delArm = false; btn.textContent = 'Delete';
-  const table = mode === 'editFund' ? 'fund_transactions'
-              : mode === 'editDaily' ? 'daily_expenses'
-              : 'travel_expenses';
-  // soft delete: the row sits in Settings → Recently deleted for 30 days (falls back to a hard delete on an older database)
-  let { error } = refundOK ? await sb.rpc('soft_delete_rows', { p_kind: mode === 'editFund' ? 'fund' : mode === 'editDaily' ? 'daily' : 'travel', p_ids: [editingExp.id] })
-                           : await sb.from(table).delete().eq('id', editingExp.id);
+  // soft delete: the row sits in Settings → Recently deleted for 30 days (the hard-delete fallback went in v2 sprint 3)
+  const { error } = await sb.rpc('soft_delete_rows', { p_kind: mode === 'editFund' ? 'fund' : mode === 'editDaily' ? 'daily' : 'travel', p_ids: [editingExp.id] });
   if (error) { saving = false; toast('couldn’t delete: ' + error.message); return; }
   const wasXfer = mode === 'editFund' && /^Transfer [→←]/.test((editingExp.remarks) || '');
-  closeSheet(); toast(refundOK ? (wasXfer ? 'both sides deleted — the transfer is in Settings → Recently deleted for 30 days' : 'deleted — it’s in Settings → Recently deleted for 30 days') : 'deleted 🐻');
-  if (mode === 'edit') { loadTravel(true); if (atx) loadAllTx(true); return; }
-  loadHome();
-  if (atx) loadAllTx(true);
-  if (fundsInit) loadFunds();   // a daily row counts a pot down, so Funds moves too
-  if (mode === 'editDaily' && budgetInit) selectBudgetMonth(budgetMonth);
+  closeSheet(); toast(wasXfer ? 'both sides deleted — the transfer is in Settings → Recently deleted for 30 days' : 'deleted — it’s in Settings → Recently deleted for 30 days');
+  refreshAfterSave();
 }
 
 // ══ FIRST-RUN TUTORIAL ══════════════════════

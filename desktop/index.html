@@ -565,7 +565,6 @@ function cardOptions(sel, withNone, withArchived){
 
 // ── statements ──────────────────────────────────────────────
 const st = { card: null, periods: [], period: null, rows: [], statement: null, margin: true, carry: false, sel: new Set() };
-let settledOK = null;   // does the database carry expenses.settled_amount yet? (v2 sprint 2; probed once)
 // what a row costs on this card: its own amount in the card's currency, else what the card charged (null = not typed yet)
 const cardAmt = (r, cur) => r.currency === cur ? Number(r.amount) : (r.settled_amount != null ? Number(r.settled_amount) : null);
 async function refreshCardList(){
@@ -685,8 +684,7 @@ async function loadStatement(){
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
   // the margin reaches back only: a purchase can post a few days after it was made, never before (v2 S1)
   const from = st.margin ? addDays(p.start, -5) : p.start, to = p.end;
-  if (settledOK === null) { const pr = await sb.from('daily_expenses').select('settled_amount').limit(1); settledOK = !pr.error; }
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, fund_id, is_refund' + (settledOK ? ', settled_amount' : '');
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, fund_id, is_refund, settled_amount';
   // the statement record first: a CLOSED statement shows exactly the rows ticked on it, whatever their date
   const s0 = await sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle();
   const closed = !!(s0.data && s0.data.closed_at);
@@ -763,7 +761,7 @@ function renderStatement(){
     const checked = st.sel.has(r.key);
     const foreign = cur && r.currency !== cur;
     const curTag = foreign ? ' <span class="tag warn" title="a different currency from the card — the statement will show it converted">' + esc(r.currency) + '</span>' : '';
-    const settleBox = foreign && settledOK && r.kind !== 'fund'
+    const settleBox = foreign && r.kind !== 'fund'
       ? (closedSt ? (r.settled_amount != null ? '<div class="cap">' + fmtMoney(r.settled_amount, cur) + ' on the card</div>' : '')
                   : '<div><input class="settle" type="number" step="0.01" min="0" inputmode="decimal" data-key="' + r.key + '" value="' + (r.settled_amount != null ? Number(r.settled_amount).toFixed(2) : '') + '" placeholder="' + esc(cur) + ' charged" title="what ' + esc(c.name) + ' charged, from the statement" style="width:104px;margin-top:4px;text-align:right"></div>')
       : '';
@@ -1182,8 +1180,7 @@ async function saveStatementTotalNow(){
   if (st.statement && st.statement.statement_total === v && st.statement.opening_balance == upd.opening_balance && st.statement.closing_balance == upd.closing_balance && (st.statement.payment_due || null) === upd.payment_due) return;
   try {
     const s = await ensureStatement();
-    let { error } = await sb.from('statements').update(upd).eq('id', s.id);
-    if (error && /opening_balance|closing_balance|payment_due/.test(error.message || '')) ({ error } = await sb.from('statements').update({ statement_total: v }).eq('id', s.id));
+    const { error } = await sb.from('statements').update(upd).eq('id', s.id);
     if (error) throw error;
     Object.assign(st.statement, upd); toast('statement saved'); st.legs = null; await refreshPay(); updateStatementKpis();
   } catch (err) { toast('couldn’t save: ' + (err.message || err)); }
@@ -1294,7 +1291,7 @@ function openBulk(src){
   const kinds = [...new Set(rows.map(r => r.kind))];
   const cats = CTX.cats.filter(c => kinds.includes(c.kind));
   const groups = [...new Set(cats.map(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other')))];
-  $('bkCat').innerHTML = keep + groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other') === g).map(c => '<option value="' + esc(c.name) + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
+  $('bkCat').innerHTML = keep + groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.kind === 'travel' ? '✈️ ' : '') + (c.group_name || 'Other') === g).map(c => '<option value="' + c.id + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
   $('bkWho').innerHTML = keep + '<option value="owner">whoever owns the card</option>' + CTX.profiles.map(p => '<option value="' + p.id + '">' + esc(p.display_name) + '</option>').join('') + '<option value="joint">' + esc(CTX.hh.joint_label || 'Joint') + '</option>';
   ['bkCard', 'bkCat', 'bkWho'].forEach(id => { $(id).value = NOCHG; $(id).classList.remove('changed'); $(id).onchange = () => $(id).classList.toggle('changed', $(id).value !== NOCHG); });
   // a personal card names its owner as the payer (the database enforces it) — say so when a card is picked
@@ -1342,7 +1339,7 @@ async function applyBulk(){
     else { cardObj = cardV === 'cash' ? CTX.cards.find(c => c.kind === 'cash') : cardById(cardV); if (!cardObj) { toast('no Cash card in Settings yet'); return; } full.payment_method_id = cardObj.id; full.paid_with = cardObj.name; }
   }
   if (whoV !== NOCHG && whoV !== 'owner') full.payer_profile_id = whoV === 'joint' ? null : whoV;
-  if (catV !== NOCHG) soft.category = catV;
+  if (catV !== NOCHG) soft.category_id = catV;   // by id (a trip row takes the trip category of the same name)
   if (cmV) soft.comments = cmV;
   const fundV = $('bkFundWrap').style.display === 'none' ? NOCHG : $('bkFund').value;
   if (fundV !== NOCHG) {
@@ -1379,7 +1376,8 @@ async function applyBulk(){
         if (Object.keys(full).length || whoV === 'owner') skipped += lockedIds.length;
       }
     }
-    rows.forEach(r => { Object.assign(r, soft); if (!r.reconciled_at) { Object.assign(r, full); if (cardObj && cardObj.profile_id) r.payer_profile_id = cardObj.profile_id; if (cardObj && cardObj.kind === 'cash') { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'auto'; } } });
+    const newCat = soft.category_id ? (CTX.cats.find(x => x.id === soft.category_id) || {}).name : null;
+    rows.forEach(r => { Object.assign(r, soft); if (newCat) r.category = newCat; if (!r.reconciled_at) { Object.assign(r, full); if (cardObj && cardObj.profile_id) r.payer_profile_id = cardObj.profile_id; if (cardObj && cardObj.kind === 'cash') { r.reconciled_at = new Date().toISOString(); r.reconciled_by = 'auto'; } } });
     toast(done + ' updated' + (skipped ? ' · ' + skipped + ' reconciled rows kept their card/payer' : '') + (cardObj && cardObj.kind === 'cash' ? ' · cash rows reconcile automatically' : '') + (fundV !== NOCHG ? (soft.fund_id ? ' · now count against ' + fundName(soft.fund_id) : ' · back on the month’s budget') : ''));
     closeBulk();
     if (bk.src === 'st') { st.sel.clear(); loadStatement(); }
@@ -1572,7 +1570,7 @@ function setAxKind(k){
   $('axFundWrap').style.display = k === 'daily' ? '' : 'none';   // a trip's purchases already count against the trip
   const cats = CTX.cats.filter(c => c.kind === k);
   const groups = [...new Set(cats.map(c => c.group_name || 'Other'))];
-  $('axCat').innerHTML = groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.group_name || 'Other') === g).map(c => '<option value="' + esc(c.name) + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
+  $('axCat').innerHTML = groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.group_name || 'Other') === g).map(c => '<option value="' + c.id + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
 }
 function axWhoFromCard(){
   const v = $('axCard').value; const c = v === 'cash' ? CTX.cards.find(x => x.kind === 'cash') : cardById(v);
@@ -1591,7 +1589,8 @@ async function saveAddTx(){
   const card = cardV === 'cash' ? CTX.cards.find(x => x.kind === 'cash') : cardById(cardV);
   if (!card) return err('no Cash card in Settings yet');
   const whoV = $('axWho').value, pid = whoV === 'joint' ? null : whoV;
-  const row = { household_id: CTX.hh.id, date, description: desc, category: $('axCat').value, amount, currency: $('axCur').value, payer_profile_id: pid, payment_method_id: card.id, paid_with: card.name, comments: $('axComments').value.trim() };
+  // ids, not names: the database fills in the category and card names (v2 sprint 3)
+  const row = { household_id: CTX.hh.id, date, description: desc, category_id: $('axCat').value, amount, currency: $('axCur').value, payer_profile_id: pid, payment_method_id: card.id, comments: $('axComments').value.trim() };
   if (ax.kind === 'travel') row.trip_id = $('axTrip').value;
   else if ($('axFund').value) row.fund_id = $('axFund').value;
   $('axSave').disabled = true;
@@ -1612,15 +1611,14 @@ async function saveAddTx(){
 // ── pots ────────────────────────────────────────────────────
 async function loadPots(){
   const box = $('potCards'); box.innerHTML = '<p class="cap"><span class="spin"></span></p>';
-  const [b, c, k, cb] = await Promise.all([
-    sb.from('fund_balances').select('fund_id, name, country, currency, balance, is_spend_pot, sort_order').eq('is_active', true).order('sort_order'),
-    sb.from('fund_balances_cleared').select('fund_id, cleared_balance, pending_spend'),
-    sb.from('fund_cash').select('fund_id, cash_balance, owed_on_cards'),
+  // every fund's numbers in one pass (household_money, v2 sprint 3) + the cards
+  const [m, cb] = await Promise.all([
+    sb.rpc('household_money'),
     sb.from('card_balances').select('payment_method_id, name, currency, charges, credits, fund_charges, payments, owed, last_paid').eq('is_archived', false),
   ]);
-  if (b.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(b.error.message) + '</p>'; return; }
-  const cl = {}; (c.error ? [] : c.data || []).forEach(r => cl[r.fund_id] = r);
-  const ca = {}; (k.error ? [] : k.data || []).forEach(r => ca[r.fund_id] = r);
+  if (m.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(m.error.message) + '</p>'; return; }
+  const b = { data: (m.data || []).filter(f => f.is_active) };
+  const cl = {}, ca = {}; b.data.forEach(r => { cl[r.fund_id] = r; ca[r.fund_id] = r; });
   const pots = (b.data || []).filter(f => f.is_spend_pot);
   if (!pots.length) { box.innerHTML = '<p class="cap">no spending pots marked — Settings → Funds in the app</p>'; return; }
   const countries = [...new Set(pots.map(p => p.country))];
@@ -1654,7 +1652,6 @@ async function loadPots(){
         + '<td class="cap">' + (x.last_paid ? fmtD(x.last_paid) : '—') + '</td>'
         + '<td style="text-align:right"><button class="btn-tert" onclick="go(\'statements\');$(\'stCard\').value=\'' + x.payment_method_id + '\';$(\'stCard\').onchange()">statements ›</button></td></tr>').join('')
       + '</tbody></table></div>' : '')
-    + (c.error || k.error ? '<p class="cap">some columns need the latest database update (' + esc((c.error || k.error).message) + ')</p>' : '')
     + '<p class="cap">Paying a card never changes Available — the charges already took it the day they happened. It lowers Owed on cards and In the bank by the same amount. Cleared only counts reconciled rows, so it catches up as statements are closed.</p>';
 }
 // ── sort fund spending (temporary page) ─────────────────────
@@ -1787,7 +1784,8 @@ async function loadActivity(reset){
     ac.members = m.error ? [] : (m.data || []);
     $('acWho').innerHTML = '<option value="">anyone</option>' + ac.members.map(x => '<option value="' + x.user_id + '">' + esc(x.profile_id ? who(x.profile_id) : (x.role === 'owner' ? 'owner' : x.role + ' login')) + '</option>').join('');
   }
-  let q = sb.from('audit_log').select('id, table_name, row_id, op, at, by_user, label, changed, before, after').order('id', { ascending: false }).range(ac.off, ac.off + AC_PAGE - 1);
+  // naming the household lets the database read the newest lines straight from its index (v2 sprint 3)
+  let q = sb.from('audit_log').select('id, table_name, row_id, op, at, by_user, label, changed, before, after').eq('household_id', CTX.hh.id).order('id', { ascending: false }).range(ac.off, ac.off + AC_PAGE - 1);
   const t = $('acTable').value; if (t) q = q.in('table_name', t.split(','));
   const w = $('acWho').value; if (w) q = q.eq('by_user', w);
   const { data, error } = await q;
