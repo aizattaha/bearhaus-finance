@@ -56,17 +56,19 @@ begin
   assert ok, 'a transfer to the same fund was saved';
 end $$;
 
--- the commit-time check notes a group that stops balancing (log-only this release)
+-- the commit-time check refuses a group that stops balancing (v2 sprint 3; sprint 2 only noted it)
 reset role;
 set constraints public.zz_fund_group_check immediate;   -- check at each statement: this test never commits
-update public.fund_transactions_all set amount = 99 where transfer_group_id = :'g1' and type = 'income';
 do $$
-declare s text;
+declare ok boolean := false;
 begin
-  select detail into s from public.integrity_issues where ref_id = current_setting('ci.g1')::uuid;
-  assert s = 'transfer sides differ', 'the broken transfer was noted, got ' || coalesce(s, 'nothing');
+  begin
+    update public.fund_transactions_all set amount = 99 where transfer_group_id = current_setting('ci.g1')::uuid and type = 'income';
+  exception when check_violation then ok := true; end;
+  assert ok, 'one side of a transfer was changed on its own';
+  assert (select count(*) from public.fund_transactions_all where transfer_group_id = current_setting('ci.g1')::uuid and amount = 100) = 2,
+         'the refused change left the transfer as it was';
 end $$;
-update public.fund_transactions_all set amount = 100 where transfer_group_id = :'g1' and type = 'income';
 set constraints public.zz_fund_group_check deferred;
 set local role authenticated;
 

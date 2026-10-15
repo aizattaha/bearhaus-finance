@@ -33,7 +33,7 @@ begin
    where n.nspname = 'public' and c.relkind = 'v' and not coalesce(c.reloptions @> array['security_invoker=true'], false);
   assert v is null, 'views that bypass RLS: ' || coalesce(v, '');
   -- internal helpers are not callable by a signed-in login
-  assert not has_function_privilege('authenticated', 'public.restamp_pots(uuid, date, date)', 'execute'), 'restamp_pots is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.restamp_pots(uuid, date, date, text)', 'execute'), 'restamp_pots is callable by a login';
   assert not has_function_privilege('authenticated', 'public.seed_default_categories(uuid)', 'execute'), 'seed_default_categories is callable by a login';
 end $$;
 
@@ -46,7 +46,8 @@ begin
     'join_household','keep_fund_spend','link_my_profile','move_expense_to_fund_spend','move_fund_spend_to_expenses',
     'pot_month_spend','purge_deleted','reconcile_rows','record_card_payment','record_pot_swap','remove_member','restore_rows',
     'revoke_member_invite','save_expense','save_month_plan','send_foreign_to_fund','send_trip_to_fund','soft_delete_rows',
-    'unreconcile_rows','update_pot_swap_rate','desk_add_expense','desk_set_card','record_transfer','apply_month_plan','plan_status','set_settled_amount']) f
+    'unreconcile_rows','update_pot_swap_rate','desk_add_expense','desk_set_card','record_transfer','apply_month_plan','plan_status','set_settled_amount',
+    'app_bootstrap','home_summary','budget_summary','household_money','trip_summary']) f
    where not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                       where n.nspname = 'public' and p.proname = f and has_function_privilege('authenticated', p.oid, 'execute'));
   assert v is null, 'a login can no longer run: ' || coalesce(v, '');
@@ -54,7 +55,7 @@ begin
     'audit_log','card_balances','categories','category_budgets','category_groups','daily_expenses','fund_balances',
     'fund_balances_cleared','fund_budgets','fund_cash','fund_spend_sort','fund_transactions','funds','household_members',
     'households','income_budgets','member_invites','payment_methods','pot_swaps','profiles','recently_deleted',
-    'statement_balances','statements','travel_expenses','trips','card_openings','card_defaults','plan_applications']) t
+    'statement_balances','statements','travel_expenses','trips','card_openings','card_defaults','plan_applications','fund_money']) t
    where not has_table_privilege('authenticated', 'public.' || t, 'select');
   assert v is null, 'a login can no longer read: ' || coalesce(v, '');
 end $$;

@@ -1,6 +1,8 @@
 -- Synthetic household for the local stack (tools/dev/seed.sh). Made-up names and amounts only.
 -- A two-country couple shaped like the real one: AU + SG funds, personal and shared cards, a travel-only SG
--- card, an archived card, a transfer, a trip, purchases either side of the start date.
+-- card, an archived card, a transfer, a trip, purchases either side of the start date — and, since v2 sprint 3,
+-- six months of everyday purchases (well over 1,000 rows: the screens must not lose any to the row cap) and a
+-- saved, applied plan for this month.
 begin;
 insert into public.beta_invites (code, max_uses, used_count) values ('LOCAL-SEED', 50, 0) on conflict do nothing;
 set local role authenticated;
@@ -55,4 +57,29 @@ select :'hh'::uuid, t.id, current_date - 18, 'Ramen', 'Dining out', 1800, 'JPY',
        (select id from public.profiles where household_id = :'hh'::uuid and display_name = 'Alex'),
        (select id from public.payment_methods where household_id = :'hh'::uuid and name = 'UOB PPV'), 'UOB PPV'
 from public.trips t where t.household_id = :'hh'::uuid and t.name = 'Test trip';
+
+-- six months of everyday purchases, ~1,200 rows: several categories and cards, a few refunds, a few paid from the
+-- Car Fund, a few dated later this month (scheduled)
+insert into public.expenses (household_id, date, description, category, amount, currency, payer_profile_id, payment_method_id, paid_with, is_refund, fund_id)
+select :'hh'::uuid, (date_trunc('month', current_date) - make_interval(months => i % 6))::date + (i * 7) % 28,
+       (array['Grocer', 'Cafe', 'Train fare', 'Power bill', 'Chemist', 'Bakery', 'Hardware', 'Takeaway'])[i % 8 + 1] || ' #' || i,
+       (array['Groceries', 'Dining out', 'Bus/train', 'Electricity', 'Health', 'Groceries', 'Home - Other', 'Dining out'])[i % 8 + 1],
+       round(((i * 37) % 6000) / 100.0 + 2, 2), 'AUD',
+       (select id from public.profiles where household_id = :'hh'::uuid and display_name = (case when i % 3 = 0 then 'Jo' else 'Alex' end)),
+       pm.id, pm.name, i % 29 = 0, case when i % 31 = 0 then (select id from public.funds where household_id = :'hh'::uuid and name = 'Car Fund') end
+  from generate_series(1, 1200) i
+  join public.payment_methods pm on pm.household_id = :'hh'::uuid
+   and pm.name = (array['Macquarie - Alex', 'Macquarie - Alex', 'HSBC Star - Jo', 'Bank - Joint'])[i % 4 + 1];
+commit;
+
+-- this month's plan, saved and applied (as Alex)
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', :'uid', true) \gset seedtmp_
+select public.save_month_plan(date_trunc('month', current_date)::date,
+  '[{"source_name": "Salary (synthetic)", "currency": "AUD", "amount": 7000}]',
+  '[{"category_group": "Daily Expenses", "currency": "AUD", "amount": 1500}, {"category_group": "Transportation", "currency": "AUD", "amount": 300}, {"category_group": "Utilities", "currency": "AUD", "amount": 250}]',
+  jsonb_build_array(jsonb_build_object('fund_id', (select id from public.funds where household_id = :'hh'::uuid and name = 'Car Fund'), 'amount', 200)),
+  null) \gset seedtmp_
+select public.apply_month_plan(date_trunc('month', current_date)::date) \gset seedtmp_
 commit;
