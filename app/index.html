@@ -760,7 +760,8 @@ $('loginForm').addEventListener('submit', async e => {
     const chk = await sb.rpc('check_invite', { p_code: code });
     if (chk.error) { done(); fail('couldn’t check the invite code: ' + chk.error.message); return; }
     if (!chk.data) { done(); fail('that invite code isn’t valid — or it’s already been used'); return; }
-    const { data, error } = await sb.auth.signUp({ email, password });
+    // the code travels with the sign-up: the server checks it too, once the sign-up hook is on (v2 sprint 2)
+    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { invite: code } } });
     done();
     if (error) { fail(/already registered/i.test(error.message) ? 'that email already has an account — sign in, or use “forgot password?”' : 'couldn’t create the account: ' + error.message); return; }
     localStorage.setItem('bh-invite', code);
@@ -5021,7 +5022,10 @@ async function saveEntry(){
     localStorage.setItem('bh-cur', segSel('segCurrency'));
     if (mode === 'trip' && travelInit) loadTravel(true);
     const tripName = mode === 'trip' ? (tripById(selectedTripId) || {}).name : '';
-    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (base.paid_with ? ' · ' + base.paid_with : '') + (tripName ? ' · ' + tripName : '') + (fundExp ? ' · from ' + fundExp.name : ''));
+    // a trip purchase on a card in another currency: a quiet note, not a warning — the Desk takes the card's amount from the statement
+    const cardNow = (CTX.cards || []).find(c => c.name === base.paid_with);
+    const fxNote = mode === 'trip' && cardNow && cardNow.currency && cardNow.currency !== currency ? ' · the ' + curLabel(cardNow.currency) + ' amount comes from the statement' : '';
+    done(true, 'saved — ' + desc + ' · ' + fmtMoney(cost, currency) + ' · ' + payer + (base.paid_with ? ' · ' + base.paid_with : '') + (tripName ? ' · ' + tripName : '') + (fundExp ? ' · from ' + fundExp.name : '') + fxNote);
     if (fundExp && fundsInit) loadFunds();
   } catch (err) {
     // the row is already there under this form's id: an earlier tap saved it and only the reply was lost

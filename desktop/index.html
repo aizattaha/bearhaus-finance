@@ -565,6 +565,9 @@ function cardOptions(sel, withNone, withArchived){
 
 // ── statements ──────────────────────────────────────────────
 const st = { card: null, periods: [], period: null, rows: [], statement: null, margin: true, carry: false, sel: new Set() };
+let settledOK = null;   // does the database carry expenses.settled_amount yet? (v2 sprint 2; probed once)
+// what a row costs on this card: its own amount in the card's currency, else what the card charged (null = not typed yet)
+const cardAmt = (r, cur) => r.currency === cur ? Number(r.amount) : (r.settled_amount != null ? Number(r.settled_amount) : null);
 async function refreshCardList(){
   const r = await sb.from('payment_methods').select('id, name, profile_id, kind, closing_day, currency, travel_only, is_archived, sort_order').order('sort_order');
   if (r.error || !r.data) return;
@@ -682,7 +685,8 @@ async function loadStatement(){
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
   // the margin reaches back only: a purchase can post a few days after it was made, never before (v2 S1)
   const from = st.margin ? addDays(p.start, -5) : p.start, to = p.end;
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, fund_id, is_refund';
+  if (settledOK === null) { const pr = await sb.from('daily_expenses').select('settled_amount').limit(1); settledOK = !pr.error; }
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, fund_id, is_refund' + (settledOK ? ', settled_amount' : '');
   // the statement record first: a CLOSED statement shows exactly the rows ticked on it, whatever their date
   const s0 = await sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle();
   const closed = !!(s0.data && s0.data.closed_at);
@@ -757,7 +761,12 @@ function renderStatement(){
     const locked = !!r.reconciled_at;
     const other = locked && st.statement && r.reconciled_statement_id && r.reconciled_statement_id !== st.statement.id;
     const checked = st.sel.has(r.key);
-    const curTag = cur && r.currency !== cur ? ' <span class="tag warn" title="a different currency from the card — the statement will show it converted">' + esc(r.currency) + '</span>' : '';
+    const foreign = cur && r.currency !== cur;
+    const curTag = foreign ? ' <span class="tag warn" title="a different currency from the card — the statement will show it converted">' + esc(r.currency) + '</span>' : '';
+    const settleBox = foreign && settledOK && r.kind !== 'fund'
+      ? (closedSt ? (r.settled_amount != null ? '<div class="cap">' + fmtMoney(r.settled_amount, cur) + ' on the card</div>' : '')
+                  : '<div><input class="settle" type="number" step="0.01" min="0" inputmode="decimal" data-key="' + r.key + '" value="' + (r.settled_amount != null ? Number(r.settled_amount).toFixed(2) : '') + '" placeholder="' + esc(cur) + ' charged" title="what ' + esc(c.name) + ' charged, from the statement" style="width:104px;margin-top:4px;text-align:right"></div>')
+      : '';
     // outside the exact period: − before it (incl. carried-over earlier rows), + after it
     const posTag = r.carry ? ' <span class="pos" title="earlier than this period — never reconciled">−</span>'
                  : !r.inPeriod ? (r.date > p.end ? ' <span class="pos" title="after the period">+</span>' : ' <span class="pos" title="before the period (within the 5 days before)">−</span>') : '';
@@ -768,7 +777,7 @@ function renderStatement(){
       + '<td class="ell">' + esc(r.category) + '</td>'
       + '<td class="ell c-who">' + (r.kind === 'fund' ? '<span class="cap">—</span>' : esc(who(r.payer_profile_id))) + '</td>'
       + '<td class="c-src" style="white-space:nowrap"><span class="tag">' + (r.kind === 'travel' ? 'trip' : r.kind === 'fund' ? 'fund' : 'daily') + '</span>' + (r._matched ? ' <span class="tag good" title="matched a statement line">✓</span>' : (st.imp && !locked && r.inPeriod && !r._foreign ? ' <span class="tag warn" title="no statement line matched this row">?</span>' : '')) + '</td>'
-      + '<td class="amt"' + (r.credit ? ' style="color:var(--good)"' : '') + '>' + (r.credit ? '+' : '−') + fmtMoney(r.amount, r.currency) + curTag + '</td>'
+      + '<td class="amt"' + (r.credit ? ' style="color:var(--good)"' : '') + '>' + (r.credit ? '+' : '−') + fmtMoney(r.amount, r.currency) + curTag + settleBox + '</td>'
       + '<td>' + (locked ? (closedSt ? '<span class="lock muted" title="on a closed statement — reopen it to change anything">🔒</span>' : '<button class="lock" title="' + (other ? 'reconciled against another statement' : r.reconciled_by === 'auto' ? 'reconciled automatically' : 'reconciled') + ' · click to un-reconcile" data-key="' + r.key + '">🔒</button>') : (r._wasLocked ? '<span class="lock open" title="un-reconciled just now">🔓</span>' : '')) + '</td>'
       + '</tr>';
   }).join('');
@@ -777,6 +786,14 @@ function renderStatement(){
     if (ev.target.checked) st.sel.add(key); else st.sel.delete(key);
     ev.target.closest('tr').classList.toggle('sel', ev.target.checked);
     updateStatementKpis();
+  });
+  body.querySelectorAll('input.settle').forEach(inp => inp.onchange = async () => {
+    const r = st.rows.find(x => x.key === inp.dataset.key); if (!r) return;
+    const v = inp.value.trim() === '' ? null : Math.round(parseFloat(inp.value) * 100) / 100;
+    if (v !== null && !(v >= 0)) { toast('type what the card charged'); return; }
+    const { error } = await sb.rpc('set_settled_amount', { p_id: r.id, p_amount: v });
+    if (error) { toast('couldn’t save: ' + error.message); inp.value = r.settled_amount != null ? Number(r.settled_amount).toFixed(2) : ''; return; }
+    r.settled_amount = v; toast(v === null ? 'cleared' : 'saved — ' + fmtMoney(v, c.currency) + ' on the card'); updateStatementKpis();
   });
   body.querySelectorAll('button.lock').forEach(b => b.onclick = async () => {
     const r = st.rows.find(x => x.key === b.dataset.key); if (!r) return;
@@ -789,22 +806,22 @@ function renderStatement(){
 }
 function updateStatementKpis(){
   const c = st.card, p = st.period, cur = c ? (c.currency || (st.rows[0] || {}).currency || 'AUD') : 'AUD';
-  const signed = r => Number(r.amount) * (r.credit ? -1 : 1);   // spend positive, money in negative
-  const inP = st.rows.filter(r => r.inPeriod && r.currency === cur);
+  const signed = r => cardAmt(r, cur) * (r.credit ? -1 : 1);   // spend positive, money in negative — in the card's currency
+  const inP = st.rows.filter(r => r.inPeriod && cardAmt(r, cur) !== null);
   const appTotal = inP.reduce((s, r) => s + signed(r), 0);
   const tickedAll = st.rows.filter(r => r.reconciled_at && (!st.statement || !r.reconciled_statement_id || r.reconciled_statement_id === st.statement.id));
-  const ticked = tickedAll.filter(r => r.currency === cur);
+  const ticked = tickedAll.filter(r => cardAmt(r, cur) !== null);
   const tickedTotal = ticked.reduce((s, r) => s + signed(r), 0);
-  const otherCur = st.rows.filter(r => r.inPeriod && r.currency !== cur).length;
+  const otherCur = st.rows.filter(r => r.inPeriod && cardAmt(r, cur) === null).length;
   const credits = inP.filter(r => r.credit).length;
-  const outT = inP.filter(r => !r.credit).reduce((s, r) => s + Number(r.amount), 0), inT = inP.filter(r => r.credit).reduce((s, r) => s + Number(r.amount), 0);
+  const outT = inP.filter(r => !r.credit).reduce((s, r) => s + cardAmt(r, cur), 0), inT = inP.filter(r => r.credit).reduce((s, r) => s + cardAmt(r, cur), 0);
   // a bank account reads in − out (money arriving is good); a card reads new spend, with payments shown beside it
   const isBankK = c && c.kind === 'bank';
   $('kApp').textContent = c ? (isBankK ? (inT - outT >= 0 ? '+' : '−') + fmtMoney(Math.abs(inT - outT), cur) : fmtMoney(outT, cur)) : '—';
   $('kApp').style.color = isBankK && inT - outT >= 0 ? 'var(--good)' : '';
-  $('kAppSub').textContent = c ? inP.length + ' rows' + (isBankK ? ' · in ' + fmtMoney(inT, cur) + ' · out ' + fmtMoney(outT, cur) : (credits ? ' · spend ' + fmtMoney(outT, cur) + ' · payments & credits ' + fmtMoney(inT, cur) : '')) + (otherCur ? ' · +' + otherCur + ' in another currency' : '') : '';
+  $('kAppSub').textContent = c ? inP.length + ' rows' + (isBankK ? ' · in ' + fmtMoney(inT, cur) + ' · out ' + fmtMoney(outT, cur) : (credits ? ' · spend ' + fmtMoney(outT, cur) + ' · payments & credits ' + fmtMoney(inT, cur) : '')) + (otherCur ? ' · +' + otherCur + ' in another currency — type what the card charged' : '') : '';
   $('kTicked').textContent = c ? fmtMoney(tickedTotal, cur) : '—';
-  $('kTickedSub').textContent = c ? tickedAll.length + ' of ' + st.rows.length + ' rows shown' + (tickedAll.length > ticked.length ? ' · ' + (tickedAll.length - ticked.length) + ' in another currency, not in the total' : '') + (st.hiddenOther ? ' · ' + st.hiddenOther + ' on other statements, hidden' : '') : '';
+  $('kTickedSub').textContent = c ? tickedAll.length + ' of ' + st.rows.length + ' rows shown' + (tickedAll.length > ticked.length ? ' · ' + (tickedAll.length - ticked.length) + ' in another currency, not in the total until the charged amount is typed' : '') + (st.hiddenOther ? ' · ' + st.hiddenOther + ' on other statements, hidden' : '') : '';
   // "new spend" leaves card payments out, so the check does too (the opening → closing chain below keeps them)
   const isCardPayment = r => (r.kind === 'fund' && r.tx_kind === 'card_payment') || r.category === 'Payment';
   const tickedSpend = ticked.filter(r => !isCardPayment(r)).reduce((s, r) => s + signed(r), 0);
@@ -866,11 +883,13 @@ function defaultLegs(){
   const travel = CTX.hh.travel_fund_id && funds.some(f => f.id === CTX.hh.travel_fund_id) ? CTX.hh.travel_fund_id : defPot;
   const by = {};
   if (paid <= 0) {
-    st.rows.filter(r => r.reconciled_statement_id === s.id && (!cur || r.currency === cur)).forEach(r => {
+    // a purchase in another currency counts at what the card charged (v2 sprint 2)
+    st.rows.filter(r => r.reconciled_statement_id === s.id && (!cur || cardAmt(r, cur) !== null)).forEach(r => {
       if (r.kind === 'fund' && r.tx_kind === 'card_payment') return;
+      const a = (cur ? cardAmt(r, cur) : Number(r.amount)) * (r.credit ? -1 : 1);
       const fid = r.kind === 'fund' ? (r.settles_payment_method_id ? null : r.fund_id) : r.kind === 'travel' ? travel : (r.pot_fund_id || defPot);
-      if (!fid || !funds.some(f => f.id === fid)) { by[defPot] = (by[defPot] || 0) + Number(r.amount) * (r.credit ? -1 : 1); return; }
-      by[fid] = (by[fid] || 0) + Number(r.amount) * (r.credit ? -1 : 1);
+      if (!fid || !funds.some(f => f.id === fid)) { by[defPot] = (by[defPot] || 0) + a; return; }
+      by[fid] = (by[fid] || 0) + a;
     });
   }
   let legs = Object.entries(by).map(([fund_id, amount]) => ({ fund_id, amount: Math.round(amount * 100) / 100 })).filter(l => l.amount > 0).sort((a, b) => b.amount - a.amount);
