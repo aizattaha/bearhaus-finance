@@ -36,6 +36,7 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 7. New habit: anything bought with a fund's money → **Expense → From a fund**, never a movement.
 
 ## 5 · Open questions for Aizat (not decided)
+- **Turn off the Supabase GitHub integration's production deploy** (Supabase → Project Settings → Integrations → GitHub → "Deploy to production" off, or disconnect it). It applies migrations from `main` before our tested Action does, so production doesn't wait for the tests, and it races the Action. The Action alone should deploy.
 - Should **only the owner** be able to invite logins? (Today any writer can — DECISIONS C6.)
 - Supabase **PITR** add-on (paid) vs. the weekly encrypted dump — currently dump only.
 - Phase 4 (bank balances per real account) — decide after a month.

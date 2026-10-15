@@ -41,7 +41,8 @@ The working copy is a git clone at `~/Code/bearhaus-finance` (outside Drive). Co
 - Known expected noise in suites: a handful of deliberate 400/406 responses from refusal tests.
 
 ## Deploy
-- Push to `main`. Pages redeploys the HTML in ~1 min. The DB Action runs on migration/test changes only. A known flake: `supabase db push` sometimes fails on its own history insert *after* the SQL applied — rerun the failed job; it reports "up to date". The workflow echoes the push log tail as an annotation.
+- Push to `main`. Pages redeploys the HTML in ~1 min. The DB Action runs on migration/test changes only.
+- **Two deployers (found 15 Oct 2026):** the Supabase GitHub integration (check run "Supabase Preview") *also* applies new migrations from `main` to production, ~2 minutes before the Action's tested push — so the Action usually reports "Remote database is up to date", and production does not wait for our tests. It is also the likely cause of the old "history insert" flake (both racing). Until Aizat turns the integration's production deploy off (Supabase → Project Settings → Integrations → GitHub), treat every push to `main` with a migration as going live immediately: **run the full local suite on Postgres 17 and the local Supabase stack before pushing**, never after.
 - Secrets in GitHub: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, `SUPABASE_DB_PASSWORD`, `BACKUP_PASSPHRASE` (set 13 Oct; the deploy refuses to run without it because it snapshots first).
 
 ## Mirror
