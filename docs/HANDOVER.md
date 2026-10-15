@@ -1,4 +1,4 @@
-# BearHaus — handover (16 Oct 2026, updated after v2 sprint 3)
+# BearHaus — handover (16 Oct 2026, updated after v2 sprint 3 and its client-security item)
 
 Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` first, then this, then `DECISIONS.md`.
 
@@ -11,6 +11,7 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 - **v2 is under way.** The review panel's plan (2 phases × 4 sprints, QA gate per sprint) is in Aizat's Drive: `Reports/2026-10 v2 review/00-CTO-v2-plan.md`. Sprint 1 shipped: data-leak containment, fail-fast CI, privilege lockdown, transfer guard, statement-import and select-all fixes, card opening positions, SG cards for fund purchases. See DECISIONS §E.
 - **Sprint 2 shipped** ("every number right"): card rules (where each card is offered, default card per person per context, archived cards locked except Desk overrides); one "today" per household; a trip or pot swap on a card leaves the bank once; statement sign and scheduled payments; transfers and the month plan written by the server (plan applied once); past months protected; "Payment" locked as the settle-up category; what the card charged for foreign-currency purchases; a nightly money check; a server-side sign-up check waiting to be switched on. DECISIONS E12–E19.
 - **Sprint 3 shipped** ("the database does the sums"): every fund number from one rule (`fund_money`); the phone launches with two calls (`app_bootstrap`, `home_summary`) instead of ~28, a save costs two; Budget, Funds, Travel and the Desk's Pots read SQL read models (no 1,000-row cap, grouped by category id); the transfer/card-payment group check refuses; array-form RLS + covering indexes (speed budgets met at 100 households × 50,000 purchases); calmer re-filing with no Activity noise; ids instead of names; the migration probes and old fallbacks are gone. DECISIONS E20–E26.
+- **Sprint 3 item 4 shipped** (client security, app only, no migration): supabase-js pinned to 2.117.3 in `app/vendor/` (checked against npm; `integrity` hash on the tag); a Content Security Policy on both pages (scripts from this site only; network to the Supabase project and the exchange-rate API only); every cached number and pick is kept per login and forgotten on every sign-out, expired or revoked login, sign-out in another tab and removed access (`store` / `endSession()` in `app/common.js`). DECISIONS E27.
 - Schema: baseline + 38 migrations, last `20261017040000_ids_not_names`. The Action's `test` job applies the chain from scratch on Postgres 17 (as production).
 - The October architecture review is **fully implemented** (items 1–6); the ledger plan **phases 1–3 are shipped**; phase 4 deferred.
 - QA round 2 (three testers) — every finding fixed and verified; summary in `docs/qa/2026-10-14-round-2.md`.
@@ -47,12 +48,15 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 - Whether to keep the **Sort fund spending** page after the backlog is empty (it hides itself when the list is empty; code can then be removed).
 
 ## 6 · Known limitations / things that look like bugs but aren't
+- **The pages carry a Content Security Policy** (sprint 3). A new outside service — a CDN script, another API, a font host — is blocked until it is added to the meta tag in *both* `app/index.html` and `desktop/index.html`; `tools/ci/check-js.mjs` refuses scripts from another site. Live partner updates (phase 2) will need `wss://<project>.supabase.co` in `connect-src`.
+- **supabase-js is pinned** (2.117.3). Upgrading is a deliberate change: `app/vendor/README.md`.
+- **Signing out forgets everything on the device** — cached screens and last-used picks (payer, card, fund, trip). Only the keyboard height and an unused sign-up code stay. A login the server has refused (revoked, password reset elsewhere) is signed out on the next launch, or within a minute of its access token expiring while the app is open; the sign-in card then says why.
+- Exchange rates: the old `api.frankfurter.app` host now redirects without a CORS header, so browsers refuse it; the Desk asks `api.frankfurter.dev` first.
 - No probes any more (sprint 3): a change that needs a new column or function ships **database first** (push, wait for both deploy jobs), app second. Both deploys are independent; an app pushed before its migration breaks for those minutes.
 - `supabase db push` has twice failed on its own history insert after the SQL applied (passes 3 and phase 2). Rerun the failed job → "Remote database is up to date". The workflow prints the push log tail as an annotation.
 - Deleting one side of a transfer deletes both (said plainly in the sheet).
 - Activity shows a Sort move as "expense deleted + fund row added" (same id).
 - No realtime: a partner's new rows appear on save/refetch (≥ 60 s away) or reload.
-- Exchange rates: the app fetches frankfurter.app for pot swaps; blocked in the sandbox, fine in production.
 - A view-only or member login can no longer change the household's owner or delete it; the public app key can run only the two sign-up checks (v2 sprint 1). One side of a transfer (or a card-payment leg) can't be edited on its own — the phone shows those fields dimmed.
 - Desk `Pots` lists spending pots plus any other fund with money on cards.
 - A purchase in another currency on a card shows on the card as *waiting* until its charged amount is typed on the Desk; card owed leaves it out until then (sprint 2).
@@ -62,7 +66,7 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 
 ## 7 · Local development & QA
 - **Since v2 sprint 1: `tools/dev/README.md`** — the real Supabase stack on this Mac (Docker + `supabase start` from `~/Code/bh-local`), migrations by `run.sh`, apps via `tools/dev/serve.mjs`, synthetic data only. The working git clone is `~/Code/bearhaus-finance`. The notes below describe the older cloud-sandbox harness.
-- **Scratch CI run** (what the Action does): `createdb bh_ci2 && tools/sql-tests/run.sh "postgresql://…/bh_ci2"` — expect every `test_*.sql` ✓ (eight since sprint 2). Postgres 17 (`bh-ci` container, port 55432). `tools/dev/seed.sh` rebuilds the local Supabase stack, runs the suite there and loads the synthetic household.
+- **Scratch CI run** (what the Action does): `createdb bh_ci2 && tools/sql-tests/run.sh "postgresql://…/bh_ci2"` — expect every `test_*.sql` ✓ (eight since sprint 2). Postgres 17 (`bh-ci` container, port 55432). `tools/dev/seed.sh` rebuilds the local Supabase stack, runs the suite there and loads the synthetic household — plus, since sprint 3, a second login with its own small household (`tools/dev/seed-second.sql`; logins in the script's header) for switching-login checks.
 - **Whole product locally**: `tools/qa-local/README.md`. Requires a Postgres copy of the schema (restore the latest Drive backup, then apply any newer migrations), `setup.sql`, `start.sh` → `http://127.0.0.1:54321/app/` and `/desktop/`. The shim emulates PostgREST/GoTrue; `VIEW_BASE` inside it maps writes to compat views onto their base tables — extend it if you add a view the apps write to.
 - **Browser verification scripts** (Playwright): Drive `QA/tools/browser/` (`phase2.mjs`, `phase3.mjs`, `round2fix.mjs`, plus the round-1/2 batch and feature scripts). **Smoke harness** (no DB — a mock Supabase client fed by a JSON snapshot of the real data, so it stays in Drive): `QA/tools/smoke/` — `run.mjs` (phone) and `desk.mjs` (Desk) inline `common.js`, write `serve/app.html` / `serve/desk.html`, expect `python3 -m http.server 8766 --directory serve`, and print a long log ending in `ERRORS (0)` / `no console/page errors`. Both suites take ~2 min and are the fastest regression check for UI changes.
 - **QA rounds**: three persona agents, briefs in `tools/qa-local/BRIEF.md` + `ROUND2.md`; summaries in `docs/qa/`; raw round-2 reports in Drive `QA/round-2/` (they quote real balances).

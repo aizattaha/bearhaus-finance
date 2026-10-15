@@ -3,6 +3,7 @@
 # hosted database. Every name and amount here is made up.
 #   tools/dev/seed.sh            (needs the local stack running: see tools/dev/README.md)
 # Sign in at http://127.0.0.1:8790/app/ as  owner@bh-local.test / local-test-pass-2026  (test credentials, local only)
+# A second login with its own household (switching logins, v2 sprint 3): second@bh-local.test, same password.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 WORKDIR="${BH_LOCAL:-$HOME/Code/bh-local}"
@@ -24,4 +25,9 @@ UID_="$(curl -s -X POST "$API/auth/v1/admin/users" -H "apikey: $SERVICE" -H "Aut
 
 echo "▶ synthetic household"
 psql "$DB" -v ON_ERROR_STOP=1 -q -v uid="$UID_" -f tools/dev/seed.sql
-echo "✓ seeded — sign in as owner@bh-local.test / local-test-pass-2026"
+
+echo "▶ a second login with its own household"
+UID2_="$(curl -s -X POST "$API/auth/v1/admin/users" -H "apikey: $SERVICE" -H "Authorization: Bearer $SERVICE" -H "Content-Type: application/json" \
+  -d '{"email":"second@bh-local.test","password":"local-test-pass-2026","email_confirm":true}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')"
+psql "$DB" -v ON_ERROR_STOP=1 -q -v uid="$UID2_" -f tools/dev/seed-second.sql
+echo "✓ seeded — sign in as owner@bh-local.test (or second@bh-local.test) / local-test-pass-2026"

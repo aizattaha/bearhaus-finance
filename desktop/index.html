@@ -2,14 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<!-- Content Security Policy (v2 sprint 3): scripts only from this site, network only to our Supabase project and the
+     exchange-rate API, fonts from Google. 'unsafe-inline' stays until the inline onclick handlers are gone (DECISIONS E27). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://diqaezhdxloqhglndqrq.supabase.co https://api.frankfurter.app https://api.frankfurter.dev; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none'; worker-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BearHaus · Desk</title>
 <meta name="theme-color" content="#004A98">
 <link rel="icon" type="image/png" sizes="192x192" href="../app/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../app/common.js?v=20261014"></script>
+<script src="../app/vendor/supabase-js-2.117.3.min.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R"></script>
+<script src="../app/common.js?v=20261016"></script>
 <style>
 :root{
   --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
@@ -503,19 +506,29 @@ async function signIn(){
   $('signinBtn').disabled = false;
   if (error) { $('loginError').textContent = error.message; return; }
 }
-async function signOut(){ await sb.auth.signOut(); location.reload(); }
+// signing out (or a login that expired, or a sign-out on the phone in this browser) goes through endSession
+// (common.js): server sign-out, every cached key forgotten, a fresh page (v2 sprint 3)
+async function signOut(){ await endSession(); }
 let booted = false;
-async function boot(){
-  if (booted) return; booted = true;
+async function boot(session){
+  if (booted || !session || !session.user) return; booted = true;
+  store.use(session.user.id);   // this login's remembered picks only
   $('login').style.display = 'none'; $('app').style.display = 'grid';
   await loadContext();
   initStatements();
 }
 if (sb) {
-  sb.auth.onAuthStateChange((evt, session) => { if (session && evt !== 'SIGNED_OUT') boot(); });
+  { const n = takeSignInNote(); if (n) $('loginError').textContent = n; }
+  sb.auth.onAuthStateChange((evt, session) => {
+    // deferred: auth calls made inside this callback would wait on the lock the callback runs under
+    if (evt === 'SIGNED_OUT') { if (booted) setTimeout(() => endSession('you were signed out — sign in again'), 0); else store.clear(); return; }
+    if (booted && session && session.user && store.uid && session.user.id !== store.uid) { location.reload(); return; }   // another login took over
+    if (session) boot(session);
+  });
   (async () => {
     const { data } = await sb.auth.getSession();
-    if (data && data.session) boot(); else $('login').style.display = 'flex';
+    if (data && data.session) boot(data.session);
+    else { if (!hasStoredLogin()) store.clear(); $('login').style.display = 'flex'; }
   })();
 } else { document.body.innerHTML = '<p class="empty">couldn’t load — check your connection, then reload</p>'; }
 
@@ -533,7 +546,7 @@ async function loadContext(){
   CTX = { hh: hh.data, profiles: profiles.data || [], cards: cards.data || [], funds: funds.data || [], cats: cats.data || [] };
   $('hhLabel').textContent = CTX.hh.name + ' household';
   // a view-only login sees everything and changes nothing — say so up front instead of failing per click
-  const me = await sb.from('household_members').select('role').eq('user_id', (await sb.auth.getUser()).data.user.id).maybeSingle();
+  const me = await sb.from('household_members').select('role').eq('user_id', store.uid).maybeSingle();
   CTX.role = me.data ? me.data.role : 'member';
   if (CTX.role === 'viewer') { document.body.classList.add('viewer'); const bn = document.createElement('div'); bn.className = 'card'; bn.style.cssText = 'margin:0 0 12px;padding:10px 14px;background:#fff7e6;border-color:#f3d9a4'; bn.innerHTML = '<span class="tag warn">view-only login</span> you can see everything in this household, but not change it — ask the owner for a full login if you need to.'; document.querySelector('main').prepend(bn); }
   const nSwapCur = [...new Set(CTX.funds.map(f => f.currency))].length;
@@ -1437,7 +1450,7 @@ function pickSwapRow(key){
   const dstCur = (other.find(f => f.currency === 'AUD') || other[0] || {}).currency || 'AUD';
   const aud = other.filter(f => f.currency === dstCur);
   // defaults come from the household's own funds — remembered choices first, then flags, then names that read right
-  const mem = k => { try { const v = localStorage.getItem('bh-swap-' + k); return v && CTX.funds.some(f => f.id === v) ? v : null; } catch (e) { return null; } };
+  const mem = k => { const v = store.get('swap-' + k); return v && CTX.funds.some(f => f.id === v) ? v : null; };
   // first regex that matches wins; within a match, a shared fund (no "(Name)") beats a personal one
   const byName = (list, ...res) => { for (const re of res) { const hits = list.filter(f => re.test(f.name)); if (hits.length) return hits.find(f => !/\(.+\)/.test(f.name)) || hits[0]; } return null; };
   const travelFund = CTX.funds.find(f => f.id === CTX.hh.travel_fund_id);
@@ -1467,7 +1480,8 @@ async function fetchRate(){
   const src = r.currency, dst = ($('swRateLbl').textContent.split(' ')[0]) || 'AUD';
   const date = r.date > todayIso() ? todayIso() : r.date;
   $('swFetch').disabled = true; $('swRateSrc').innerHTML = '<span class="spin"></span> fetching the ' + fmtDs(date) + ' rate…';
-  const urls = ['https://api.frankfurter.app/' + date + '?from=' + src + '&to=' + dst, 'https://api.frankfurter.dev/v1/' + date + '?base=' + src + '&symbols=' + dst];
+  // the .dev host first: the old .app host now answers with a redirect browsers refuse (no CORS header) — kept as a fallback
+  const urls = ['https://api.frankfurter.dev/v1/' + date + '?base=' + src + '&symbols=' + dst, 'https://api.frankfurter.app/' + date + '?from=' + src + '&to=' + dst];
   let got = null;
   for (const u of urls) { try { const res = await fetch(u); if (!res.ok) continue; const j = await res.json(); if (j && j.rates && j.rates[dst]) { got = { rate: j.rates[dst], date: j.date || date }; break; } } catch (e) {} }
   $('swFetch').disabled = false;
@@ -1497,7 +1511,7 @@ async function recordSwap(){
   $('swGo').disabled = true;
   const { data, error } = await sb.rpc('record_pot_swap', { p_kind: r.kind, p_expense: r.id, p_rate: rate, p_cover: $('swCover').value, p_land: $('swLand').value, p_bank_from: $('swFrom').value, p_bank_to: $('swTo').value, p_rate_source: sw.rateSrc, p_note: $('swNote').value || null });
   if (error) { toast('couldn’t record: ' + error.message); $('swGo').disabled = false; return; }
-  try { localStorage.setItem('bh-swap-cover-' + r.kind, $('swCover').value); localStorage.setItem('bh-swap-land', $('swLand').value); localStorage.setItem('bh-swap-from', $('swFrom').value); localStorage.setItem('bh-swap-to', $('swTo').value); } catch (e) {}
+  store.set('swap-cover-' + r.kind, $('swCover').value); store.set('swap-land', $('swLand').value); store.set('swap-from', $('swFrom').value); store.set('swap-to', $('swTo').value);
   toast('swap recorded ⇄');
   sw.rows = sw.rows.filter(x => x.key !== r.key); sw.pick = null; renderSwapRows();
   $('swDate').value = ''; $('swSrc').value = ''; $('swRate').value = ''; $('swDst').value = ''; $('swPick').textContent = '← pick a purchase first'; $('swPreview').textContent = ''; $('swRateSrc').textContent = '';

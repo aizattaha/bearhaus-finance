@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<!-- Content Security Policy (v2 sprint 3): scripts only from this site, network only to our Supabase project and the
+     exchange-rate API, fonts from Google. 'unsafe-inline' stays until the inline onclick handlers are gone (DECISIONS E27). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://diqaezhdxloqhglndqrq.supabase.co https://api.frankfurter.app https://api.frankfurter.dev; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none'; worker-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BearHaus</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,8 +16,8 @@
 <meta name="apple-mobile-web-app-title" content="BearHaus">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="common.js?v=20261014"></script>
+<script src="vendor/supabase-js-2.117.3.min.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R"></script>
+<script src="common.js?v=20261016"></script>
 <style>
 :root{
   --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
@@ -766,13 +769,13 @@ $('loginForm').addEventListener('submit', async e => {
     done();
     if (error) { fail(/already registered/i.test(error.message) ? 'that email already has an account — sign in, or use “forgot password?”' : 'couldn’t create the account: ' + error.message); return; }
     localStorage.setItem('bh-invite', code);
-    if (data.session) { if (!booted) boot(); return; }   // the auth listener may have started it already
+    if (data.session) { tryBoot(data.session); return; }   // the auth listener may have started it already
     errEl.style.color = 'var(--good)';
     errEl.textContent = 'account created — confirm it via the email we just sent, then sign in here';
     return;
   }
 
-  const { error } = await sb.auth.signInWithPassword({ email, password });
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
   done();
   if (error) {
     fail(error.message === 'Invalid login credentials'
@@ -780,7 +783,7 @@ $('loginForm').addEventListener('submit', async e => {
       : 'couldn’t sign in: ' + error.message);
     return;
   }
-  if (!booted) boot();   // the auth listener usually got here first — start the app once
+  tryBoot(data.session);   // the auth listener usually got here first — start the app once
 });
 
 let outArm = false;
@@ -792,17 +795,16 @@ async function signOut(){
     setTimeout(() => { outArm = false; document.querySelectorAll('[onclick="signOut()"]').forEach((b, i) => b.textContent = i ? 'Sign out' : 'sign out'); }, 8000);
     return;
   }
-  await sb.auth.signOut();
-  // this device may be handed to someone else — leave no cached numbers behind
-  ['bh-home','bh-budget','bh-funds','bh-travel','bh-home2','bh-budget2','bh-travel2','bh-purged','bh-ctx','bh-trip','bh-fund','bh-payer','bh-cur','bh-invite','bh-tut-done'].forEach(k => localStorage.removeItem(k));
-  location.reload();
+  // this device may be handed to someone else — leave no cached numbers behind (endSession, common.js)
+  await endSession();
 }
 
 // signed in, but which door? existing household → app, none yet → setup wizard
-async function boot(){
+async function boot(session){
   booted = true;   // whichever path got here first wins — no double boots
-  let cached = null;
-  try { cached = JSON.parse(localStorage.getItem('bh-ctx')); } catch(e){}
+  // this login's cache only: every key is per login, and another login's keys go now (v2 sprint 3)
+  store.use(session.user.id);
+  const cached = store.json('ctx');
   if (cached && cached.hh) { enterApp(); return; }   // known household: paint instantly
   const { data, error } = await sb.from('households').select('id').maybeSingle();
   if (error) { enterApp(); return; }   // a blip isn't "no household" — Home shows a retry card (QA-11)
@@ -829,7 +831,7 @@ function showOnboard(){
   $('onboard').style.display = 'flex';
   $('obCode').value = localStorage.getItem('bh-invite') || '';
   // a login whose household access was removed lands here — say so instead of a blank setup form (QA2 A-B3)
-  const lost = localStorage.getItem('bh-lost');
+  const lost = store.get('lost');
   $('obLost').style.display = lost ? 'block' : 'none';
   if (lost) { $('obLostText').textContent = 'your login no longer has access to ' + lost + ' — the owner removed it. Ask them for a new JOIN code, or set up a household of your own below.'; $('obTitle').textContent = 'No household attached'; $('obSub').textContent = 'join one with a code, or start your own'; }
   obRenderCountries(false);
@@ -841,7 +843,7 @@ function obCodeChanged(){
   clearTimeout(obCodeT);
   const code = $('obCode').value.trim();
   obJoinInfo = null; $('obJoinCard').style.display = 'none'; $('obCreate').style.display = 'contents'; $('obCodeNote').textContent = '';
-  if (!localStorage.getItem('bh-lost')) { $('obTitle').textContent = 'Set up your household'; $('obSub').textContent = 'a minute of setup, then you’re in'; }
+  if (!store.get('lost')) { $('obTitle').textContent = 'Set up your household'; $('obSub').textContent = 'a minute of setup, then you’re in'; }
   if (!code) return;
   obCodeT = setTimeout(async () => {
     const r = await sb.rpc('invite_info', { p_code: code });
@@ -927,14 +929,14 @@ const CAT_ICON = {
 async function enterApp(){
   $('login').style.display = 'none'; $('onboard').style.display = 'none';
   $('app').style.display = 'flex';
-  localStorage.removeItem('bh-lost');
+  store.remove('lost');
 
   const now = new Date();
   $('todayLabel').textContent = now.toLocaleDateString('en-AU', {weekday:'long', day:'numeric', month:'long'});
   $('monthLabel').textContent = now.toLocaleDateString('en-AU', {month:'long'});
 
   // instant paint from the last visit, then refresh live: launch is two calls, app_bootstrap + home_summary (v2 sprint 3)
-  const cached = localStorage.getItem('bh-home2');
+  const cached = store.get('home2');
   if (cached) { try { renderHome(JSON.parse(cached)); } catch(e){} }
   loadHome();
   loadContext().then(() => {
@@ -942,7 +944,7 @@ async function enterApp(){
     applyRole();
     checkPlanNudge(CTX.plan);
     // the first paint guessed the home currency — repaint with the real one
-    const c = localStorage.getItem('bh-home2');
+    const c = store.get('home2');
     if (c) { try { renderHome(JSON.parse(c)); } catch(e){} }
   }).catch(e => { if (!/access removed|session invalid/.test(String(e && e.message))) showError('couldn’t load your household: ' + (e.message || e)); });
 }
@@ -1022,25 +1024,24 @@ window.addEventListener('unhandledrejection', e =>
 let homeRetried = false;
 async function loadHome(){
   try {
-    const { data: state, error } = await sb.rpc('home_summary');
-    if (error) throw error;
+    const { data: state, error, status } = await sb.rpc('home_summary');
+    if (error) throw Object.assign(error, { status });
     if (!state) return;   // no household (yet) — loadContext sends this login to the join screen
-    localStorage.setItem('bh-home2', JSON.stringify(state));
+    store.set('home2', JSON.stringify(state));
     $('errorCard').style.display = 'none';
     homeRetried = false;   // a success re-arms the one-shot token refresh (QA-34)
     renderHome(state);
   } catch (err) {
     const msg = String(err.message || err);
-    // expired login token? refresh it once and retry automatically
-    if (!homeRetried && /jwt|token|expired|401/i.test(msg)) {
+    // expired login token? refresh it once and retry automatically (a 401 means the call went out without a login)
+    if (!homeRetried && (err.status === 401 || /jwt|token|expired|401/i.test(msg))) {
       homeRetried = true;
       const { error } = await sb.auth.refreshSession();
       if (!error) return loadHome();
       // only a DEFINITIVELY dead session earns a sign-out — a network blip must
       // never wipe the stored login (that was the "always at the login page" bug)
-      if (/invalid|revoked|not.?found|already.?used/i.test(String(error.message || ''))) {
-        await sb.auth.signOut();
-        location.reload();
+      if (/invalid|revoked|not.?found|already.?used|session missing/i.test(String(error.message || ''))) {
+        await endSession('your session expired — sign in again');
         return;
       }
       showError('couldn’t reach the server — tap to retry');
@@ -1290,7 +1291,7 @@ function initBudget(){
   $('mrPrev').onclick = $('mrPrevLabel').onclick = step(-1);
   $('mrNext').onclick = $('mrNextLabel').onclick = step(1);
   renderBudgetLens();
-  const cached = localStorage.getItem('bh-budget2');
+  const cached = store.get('budget2');
   if (cached) { try { renderBudget(JSON.parse(cached)); } catch(e){} }
   selectBudgetMonth(budgetMonth);
 }
@@ -1307,7 +1308,7 @@ async function selectBudgetMonth(m){
     if (error) throw error;
     if (mySeq !== budSeq || !data) return;
     const state = Object.assign(data, { cur: LC });
-    localStorage.setItem('bh-budget2', JSON.stringify(state));
+    store.set('budget2', JSON.stringify(state));
     renderBudget(state);
   } catch (err) { toast('couldn’t load budget: ' + err.message); }
 }
@@ -1515,7 +1516,7 @@ function fundIcon(name){
 }
 function initFunds(){
   fundsInit = true;
-  const cached = localStorage.getItem('bh-funds');
+  const cached = store.get('funds');
   if (cached) { try { fundsState = JSON.parse(cached); renderFunds(fundsState); } catch(e){} }
   loadFunds();
 }
@@ -1535,7 +1536,7 @@ async function loadFunds(){
     const cashBy = {}; live.forEach(r => cashBy[r.fund_id] = r);   // what's still on cards vs in the bank
     fundsState = { month: m, bal: live, inc: inc.data, cat: cat.data, fb: fb.data, cash: cashBy,
                    appliedOn: applied.data.length ? applied.data[0].date : null };
-    localStorage.setItem('bh-funds', JSON.stringify(fundsState));
+    store.set('funds', JSON.stringify(fundsState));
     renderFunds(fundsState);
   } catch (err) { toast('couldn’t load funds: ' + err.message); }
 }
@@ -1791,7 +1792,7 @@ function attachDrag(handle, fund, country){
         .eq('id', fund.fund_id);
       if (error) { toast('couldn’t move: ' + error.message); return; }
       fund.group_name = target === 'Other' ? '' : target;
-      localStorage.setItem('bh-funds', JSON.stringify(fundsState));
+      store.set('funds', JSON.stringify(fundsState));
       renderFundList(country, fundsState);
       toast(fund.name + ' → ' + target + ' 🐻');
     };
@@ -3365,7 +3366,7 @@ async function renderSetCategories(box){
     const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
     const gs = [...new Set(cats.filter(c => c.kind === kind).map(c => c.group_name).concat(allGroups.filter(g => g.kind === kind).map(g => g.name)))];
     $('acatGroup').innerHTML = gs.map(g => '<option>' + esc(g) + '</option>').join('') + '<option value="__new__">+ new group…</option>';
-    const last = localStorage.getItem('bh-acat-group-' + kind); if (last && gs.includes(last)) $('acatGroup').value = last;
+    const last = store.get('acat-group-' + kind); if (last && gs.includes(last)) $('acatGroup').value = last;
     $('acatNewGroup').style.display = 'none';
   };
   buildSeg('acatKind', ['Daily', 'Travel'], 0, refreshGroups);
@@ -3378,7 +3379,7 @@ async function renderSetCategories(box){
     const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
     const grp = $('acatGroup').value === '__new__' ? $('acatNewGroup').value.trim() : $('acatGroup').value;
     if (!grp) { toast('pick or name a group'); return; }
-    localStorage.setItem('bh-acat-group-' + kind, grp);
+    store.set('acat-group-' + kind, grp);
     const same = cats.filter(c => c.kind === kind);
     const i = await sb.from('categories').insert({
       household_id: CTX.hh.id, kind, name, group_name: grp,
@@ -3431,7 +3432,7 @@ async function fullBackup(btn){
     a.click();
     URL.revokeObjectURL(a.href);
     btn.querySelector('.lbl').textContent = 'Full backup (everything)';
-    localStorage.setItem('bh-last-backup', isoDate(new Date()));
+    store.set('last-backup', isoDate(new Date()));
     toast(total.toLocaleString() + ' rows saved — keep this file somewhere safe 🐻');
   } catch (err) {
     btn.querySelector('.lbl').textContent = 'Full backup (everything)';
@@ -3446,7 +3447,7 @@ async function renderSetExport(box){
   fb.onclick = () => fullBackup(fb);
   box.appendChild(fb);
   box.appendChild(capEl('one file with everything in it — keep a copy somewhere safe'));
-  const lb = localStorage.getItem('bh-last-backup');
+  const lb = store.get('last-backup');
   const days = lb ? Math.round((new Date() - new Date(lb + 'T00:00:00')) / 86400000) : null;
   box.appendChild(capEl(days === null ? 'no backup taken on this device yet'
     : 'last backup: ' + (days === 0 ? 'today' : days + ' day' + (days === 1 ? '' : 's') + ' ago') + (days > 30 ? ' — time for a fresh one' : '')));
@@ -3540,7 +3541,7 @@ function owedByPerson(exps){
 async function initTravel(){
   travelInit = true;
   if (!CTX.trips.length) await loadContext();
-  const cached = localStorage.getItem('bh-travel2');
+  const cached = store.get('travel2');
   if (cached) { try { travelState = JSON.parse(cached); renderTravel(); } catch(e){} }
   loadTravel();
 }
@@ -3565,7 +3566,7 @@ async function loadTravel(keepDetail){
     const { data, error } = await sb.rpc('trip_summary');
     if (error) throw error;
     travelState = { sum: data || [] };
-    localStorage.setItem('bh-travel2', JSON.stringify(travelState));
+    store.set('travel2', JSON.stringify(travelState));
     renderTravel();
     if (keepDetail && curTripId) { await loadTripRows(curTripId); renderTripDetail(); }
   } catch (err) { toast('couldn’t load trips: ' + err.message); }
@@ -3832,8 +3833,8 @@ async function createTrip(){
 // household context: who we are, our funds, our trips
 let CTX = { hh: null, profiles: [], funds: [], trips: [], cards: [] };
 async function loadContext(){
-  const cached = localStorage.getItem('bh-ctx');
-  if (cached) { try { CTX = JSON.parse(cached); } catch(e){} }
+  const cached = store.json('ctx');   // this login's, from its last visit (boot set the login)
+  if (cached) CTX = cached;
   if (CTX.cats) applyCategories(CTX.cats);   // instant catalogue from the last visit
   if (CTX.firstMonth) BUD_MIN = CTX.firstMonth;
   // everything the app needs to start, in one call: household, role, people, funds, cards, categories (with ids),
@@ -3842,19 +3843,18 @@ async function loadContext(){
   if (error || !b || !b.household) {
     const hadHh = CTX && CTX.hh && CTX.hh.name;
     if (!error && b && !b.household) {
-      // the session is fine but this login has no household: the owner removed it, or it never had one
-      localStorage.removeItem('bh-ctx');
-      if (hadHh) localStorage.setItem('bh-lost', hadHh);
+      // the session is fine but this login has no household: the owner removed it, or it never had one.
+      // Forget the household's cached numbers; if they were on screen, start the page afresh so none stay in
+      // memory either (after the reload there is no cached household, so this happens once)
+      store.clear();
       CTX = { profiles: [], funds: [], trips: [], cards: [] };
-      showOnboard();
+      if (hadHh) { store.set('lost', hadHh); location.reload(); }
+      else showOnboard();
       throw new Error('access removed');
     }
     if (status === 401 || status === 403 || /JWT|token/i.test((error && error.message) || '')) {
       // an expired or garbled session — never run on cached numbers as if nothing happened
-      localStorage.removeItem('bh-ctx');
-      await sb.auth.signOut().catch(() => {});
-      $('app').style.display = 'none'; $('onboard').style.display = 'none'; $('login').style.display = 'flex';
-      const el = $('loginError'); if (el) el.textContent = 'your session expired — sign in again';
+      endSession('your session expired — sign in again');
       throw new Error('session invalid');
     }
     throw error || new Error('couldn’t load your household');   // a network blip: the cached context stays
@@ -3870,10 +3870,10 @@ async function loadContext(){
           firstMonth: b.first_month || curMonthIso() };
   BUD_MIN = CTX.firstMonth;
   // the bin empties itself after 30 days — once a day from this device is plenty
-  if (CTX.role !== 'viewer' && localStorage.getItem('bh-purged') !== todayIso()) {
-    sb.rpc('purge_deleted').then(r => { if (!r.error) localStorage.setItem('bh-purged', todayIso()); });
+  if (CTX.role !== 'viewer' && store.get('purged') !== todayIso()) {
+    sb.rpc('purge_deleted').then(r => { if (!r.error) store.set('purged', todayIso()); });
   }
-  localStorage.setItem('bh-ctx', JSON.stringify(CTX));
+  store.set('ctx', JSON.stringify(CTX));
 }
 // a category's id from its name, in the kind of expense being entered (the picker works in names)
 function catIdOf(name, kind){
@@ -4383,7 +4383,7 @@ function usePayCardOwed(){ const o = payCardOwed[payCardId]; if (o && Number(o.o
 function payCardDefaults(first){
   const c = (CTX.cards || []).find(x => x.id === payCardId);
   const cur = c && c.currency;
-  const remembered = localStorage.getItem('bh-paycard-fund');
+  const remembered = store.get('paycard-fund');
   const pots = CTX.funds.filter(f => (!cur || f.currency === cur));
   const pick = (remembered && pots.some(f => f.id === remembered)) ? remembered
     : ((pots.find(f => f.is_spend_pot) || pots[0] || {}).id || null);
@@ -4401,7 +4401,7 @@ function openPayCardPicker(){
   if (!ccs.length) { toast('no credit cards yet — add one in Settings → Payment cards'); return; }
   openPicker('Which card?', ccs.map(c => { const o = payCardOwed[c.id]; return { id: c.id, name: c.name, icon: '💳',
     cap: (c.currency ? curLabel(c.currency) : '') + (o && Number(o.owed) > 0 ? ' · owes ' + fmtMoney(o.owed, o.currency || c.currency || primaryCur()) : ''), sel: c.id === payCardId }; }),
-    it => { payCardId = it.id; localStorage.setItem('bh-paycard', it.id); payCardDefaults(false); });
+    it => { payCardId = it.id; store.set('paycard', it.id); payCardDefaults(false); });
 }
 function fmtDateShort(iso){ return new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); }
 function updateDateVal(){
@@ -4442,7 +4442,7 @@ function openTripPicker(){
     icon: (t.countries || []).map(flagOf).join('') || '✈️',
     sel: t.id === selectedTripId,
   })), it => {
-    selectedTripId = it.id; localStorage.setItem('bh-trip', it.id);
+    selectedTripId = it.id; store.set('trip', it.id);
     renderTripRow(); refreshTripCurrencies(); tripDateDefault();
   });
 }
@@ -4464,7 +4464,7 @@ function refreshTripCurrencies(){
     SEG2CODE[l] = c;
     return l;
   });
-  const last = localStorage.getItem('bh-cur') || labels[0];
+  const last = store.get('cur') || labels[0];
   buildSeg('segCurrency', labels, Math.max(labels.indexOf(last), 0));
 }
 
@@ -4508,8 +4508,8 @@ function openForm(m){
       lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) { scopeSwitch = true; openForm(target); } });
   }
   const names = payerNames();
-  const lastPayer = localStorage.getItem('bh-payer') || names[0];
-  const lastCur = localStorage.getItem('bh-cur') || 'A$';
+  const lastPayer = store.get('payer') || names[0];
+  const lastCur = store.get('cur') || 'A$';
 
   const fundish = m === 'fund' || m === 'transfer' || m === 'income' || m === 'paycard';   // no category; the currency follows the fund
   $('rowTrip').style.display = m === 'trip' ? 'block' : 'none';
@@ -4539,7 +4539,7 @@ function openForm(m){
   } else if (m === 'fundexp') {
     $('formTitle').textContent = 'Add';
     $('descInput').placeholder = 'description — e.g. Car parts';
-    const lastFund = localStorage.getItem('bh-fundexp');
+    const lastFund = store.get('fundexp');
     fundFromId = (lastFund && CTX.funds.some(f => f.id === lastFund)) ? lastFund
       : ((CTX.funds.find(f => !f.is_spend_pot && !f.is_leftover_target) || CTX.funds[0] || {}).id || null);
     renderFundRow('from'); afterFundChange();
@@ -4550,7 +4550,7 @@ function openForm(m){
   } else if (m === 'fund') {
     $('formTitle').textContent = 'Money out';
     $('descInput').placeholder = 'remarks — e.g. Stashaway top-up';
-    const lastFund = localStorage.getItem('bh-fund');
+    const lastFund = store.get('fund');
     fundFromId = (lastFund && CTX.funds.some(f => f.id === lastFund)) ? lastFund : ((CTX.funds[0] || {}).id || null);
     renderFundRow('from'); afterFundChange();
     $('fundHint').textContent = 'money leaving a fund that is NOT a purchase — an investment, paying someone back, a fee. Bought something with it? Use Expense → From a fund so it reaches the card’s statement.';
@@ -4558,7 +4558,7 @@ function openForm(m){
   } else if (m === 'income') {
     $('formTitle').textContent = 'Add income';
     $('descInput').placeholder = 'source — e.g. Salary';
-    const lastInc = localStorage.getItem('bh-incfund');
+    const lastInc = store.get('incfund');
     fundToId = (lastInc && CTX.funds.some(f => f.id === lastInc)) ? lastInc
       : ((CTX.funds.find(f => /float/i.test(f.name)) || CTX.funds[0] || {}).id || null);
     renderFundRow('to'); afterFundChange();
@@ -4572,13 +4572,13 @@ function openForm(m){
     $('formTitle').textContent = 'Pay a card';
     $('descInput').placeholder = 'remarks (optional) — e.g. September statement';
     const ccs = (CTX.cards || []).filter(c => c.kind === 'credit_card' && !c.is_archived);
-    const lastCard = localStorage.getItem('bh-paycard');
+    const lastCard = store.get('paycard');
     payCardId = (lastCard && ccs.some(c => c.id === lastCard)) ? lastCard : (ccs[0] || {}).id || null;
     payCardDefaults(true);
   } else {
     $('formTitle').textContent = 'Add';
     $('descInput').placeholder = 'description — e.g. beach club';
-    const lastTrip = localStorage.getItem('bh-trip');
+    const lastTrip = store.get('trip');
     selectedTripId = (lastTrip && tripById(lastTrip)) ? lastTrip : null;
     renderTripRow();
     refreshTripCurrencies();
@@ -4724,7 +4724,7 @@ async function saveEntry(){
         date, amount: cost, remarks: desc, origin: 'manual',
       }, saveId ? { id: saveId } : {}, { kind: 'movement' }));
       if (error) throw error;
-      localStorage.setItem('bh-fund', fundId);
+      store.set('fund', fundId);
       const f = fundById(fundId);
       done(true, 'money out — ' + (f ? f.name : 'fund') + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD'));
       return;
@@ -4748,7 +4748,7 @@ async function saveEntry(){
         date, amount: cost, remarks: desc, origin: 'manual', income_source: desc,
       }, saveId ? { id: saveId } : {}, { kind: 'movement' }));   // income is income, whatever it's called
       if (error) throw error;
-      localStorage.setItem('bh-incfund', fundId);
+      store.set('incfund', fundId);
       const f = fundById(fundId);
       done(true, 'income in — ' + desc + ' · ' + fmtMoney(cost, f ? f.currency : 'AUD') + ' → ' + (f ? f.name : 'fund'));
       return;
@@ -4792,7 +4792,7 @@ async function saveEntry(){
       }
       const { error } = await sb.rpc('record_card_payment', { p_card: c.id, p_date: date, p_legs: [{ fund_id: from.id, amount: cost }], p_remarks: desc || null });
       if (error) throw error;
-      localStorage.setItem('bh-paycard', c.id); localStorage.setItem('bh-paycard-fund', from.id);
+      store.set('paycard', c.id); store.set('paycard-fund', from.id);
       delete payCardOwed[c.id];
       done(true, 'paid ' + c.name + ' ' + fmtMoney(cost, from.currency) + ' from ' + from.name + ' — Available unchanged, it was spent when the charges happened');
       return;
@@ -4880,13 +4880,13 @@ async function saveEntry(){
       if (!selectedTripId) { done(false, 'pick a trip first'); return; }
       base.trip_id = selectedTripId;
     }
-    if (mode === 'fundexp') { base.fund_id = fundExp.id; localStorage.setItem('bh-fundexp', fundExp.id); }
+    if (mode === 'fundexp') { base.fund_id = fundExp.id; store.set('fundexp', fundExp.id); }
     if (saveId) base.id = saveId;
     // the split rows (payer +, joint −) are derived by the database from payer + amount
     const { error } = await sb.from(table).insert(base).select('id').single();
     if (error) throw error;
-    localStorage.setItem('bh-payer', payer);
-    localStorage.setItem('bh-cur', segSel('segCurrency'));
+    store.set('payer', payer);
+    store.set('cur', segSel('segCurrency'));
     const tripName = mode === 'trip' ? (tripById(selectedTripId) || {}).name : '';
     // a trip purchase on a card in another currency: a quiet note, not a warning — the Desk takes the card's amount from the statement
     const cardNow = (CTX.cards || []).find(c => c.id === card.id);
@@ -5169,7 +5169,7 @@ function endTutorial(quiet){
   tutEls = null;
   closeSheet();
   go('scr-home');
-  localStorage.setItem('bh-tut-done', '1');
+  store.set('tut-done', '1');
   if (!quiet) toast('you’re all set — tap + to add your first expense 🐻');
 }
 function tutStep(i){
@@ -5236,18 +5236,23 @@ document.addEventListener('keydown', e => {
 // session AND retry while a refresh token is still sitting in storage. the login
 // page only wins when there is genuinely no one signed in.
 let booted = false;
-function tryBoot(session){ if (session && !booted && !recoverMode) { booted = true; boot(); } }
+function tryBoot(session){ if (session && session.user && !booted && !recoverMode) { booted = true; boot(session); } }
 if (sb) {
+  { const n = takeSignInNote(); if (n) { $('loginError').style.color = 'var(--bad)'; $('loginError').textContent = n; } }
   sb.auth.onAuthStateChange((evt, session) => {
-    if (evt === 'PASSWORD_RECOVERY' || evt === 'SIGNED_OUT') return;
+    if (evt === 'PASSWORD_RECOVERY') return;
+    // supabase-js gave up on this login (refresh refused) or another tab signed out: the one way out (v2 sprint 3).
+    // Deferred: auth calls made inside this callback would wait on the lock the callback runs under
+    if (evt === 'SIGNED_OUT') { if (booted) setTimeout(() => endSession('you were signed out — sign in again'), 0); else store.clear(); return; }
+    // another login took over this browser in a different tab: start afresh as that login
+    if (booted && session && session.user && store.uid && session.user.id !== store.uid) { location.reload(); return; }
     tryBoot(session);
   });
   (async () => {
     for (let i = 0; i < 4 && !booted; i++) {
       const { data } = await sb.auth.getSession();
       if (data && data.session) { tryBoot(data.session); return; }
-      const stored = Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('auth-token'));
-      if (!stored) return;                       // truly signed out — login page is correct
+      if (!hasStoredLogin()) { store.clear(); return; }   // truly signed out — login page is correct, nothing cached stays
       await new Promise(r => setTimeout(r, 800 * (i + 1)));
     }
   })();

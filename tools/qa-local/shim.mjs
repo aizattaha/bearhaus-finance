@@ -309,6 +309,7 @@ async function handleAuth(req, res, url, claims){
 function patched(file){
   let h = fs.readFileSync(path.join(REPO, file), 'utf8');
   h = h.replace(/const SUPABASE_URL = '[^']+';/, "const SUPABASE_URL = 'http://127.0.0.1:" + PORT + "';")
+       .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\s*/, '')   // the shim serves the API on this origin; the CSP is tested on tools/dev
        .replace(/<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2"><\/script>/, '<script src="/vendor/supabase.js"></script>')
        .replace(/<link[^>]*fonts\.g(oogleapis|static)[^>]*>\s*/g, '')
        .replace(/<link rel="manifest"[^>]*>/, '')

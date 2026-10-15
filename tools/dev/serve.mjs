@@ -27,6 +27,12 @@ createServer(async (req, res) => {
         .replace(/const SUPABASE_URL = '[^']+';/, `const SUPABASE_URL = '${URL_}';`)
         .replace(/const SUPABASE_KEY = '[^']+';/, `const SUPABASE_KEY = '${KEY}';`);
     }
+    // the pages' Content Security Policy names the production project in connect-src: point it at the local
+    // stack, so the same policy is tested here (v2 sprint 3)
+    if (extname(file) === '.html') {
+      body = body.toString().replace(/(<meta http-equiv="Content-Security-Policy" content="[^"]*connect-src )https:\/\/[a-z0-9]+\.supabase\.co/,
+        (_, head) => head + new URL(URL_).origin);
+    }
     res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(body);
   } catch { res.writeHead(404); res.end('not found'); }
