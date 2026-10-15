@@ -1,4 +1,4 @@
-# BearHaus — handover (15 Oct 2026, updated after v2 sprint 2)
+# BearHaus — handover (16 Oct 2026, updated after v2 sprint 3)
 
 Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` first, then this, then `DECISIONS.md`.
 
@@ -7,10 +7,11 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 - Supabase (Postgres + RLS + security-definer RPCs; PostgREST from the browser with the publishable key). Static hosting on GitHub Pages from `main`: `https://aizattaha.github.io/bearhaus-finance/app/` and `/desktop/`.
 - Users: Aizat (owner) and Paige (member — **login not yet created**, see §5).
 
-## 2 · State of production (v2 sprint 2)
+## 2 · State of production (v2 sprint 3)
 - **v2 is under way.** The review panel's plan (2 phases × 4 sprints, QA gate per sprint) is in Aizat's Drive: `Reports/2026-10 v2 review/00-CTO-v2-plan.md`. Sprint 1 shipped: data-leak containment, fail-fast CI, privilege lockdown, transfer guard, statement-import and select-all fixes, card opening positions, SG cards for fund purchases. See DECISIONS §E.
 - **Sprint 2 shipped** ("every number right"): card rules (where each card is offered, default card per person per context, archived cards locked except Desk overrides); one "today" per household; a trip or pot swap on a card leaves the bank once; statement sign and scheduled payments; transfers and the month plan written by the server (plan applied once); past months protected; "Payment" locked as the settle-up category; what the card charged for foreign-currency purchases; a nightly money check; a server-side sign-up check waiting to be switched on. DECISIONS E12–E19.
-- Schema: baseline + 33 migrations, last `20261016030000_settled_amounts_checks`. The Action's `test` job applies the chain from scratch on Postgres 17 (as production).
+- **Sprint 3 shipped** ("the database does the sums"): every fund number from one rule (`fund_money`); the phone launches with two calls (`app_bootstrap`, `home_summary`) instead of ~28, a save costs two; Budget, Funds, Travel and the Desk's Pots read SQL read models (no 1,000-row cap, grouped by category id); the transfer/card-payment group check refuses; array-form RLS + covering indexes (speed budgets met at 100 households × 50,000 purchases); calmer re-filing with no Activity noise; ids instead of names; the migration probes and old fallbacks are gone. DECISIONS E20–E26.
+- Schema: baseline + 38 migrations, last `20261017040000_ids_not_names`. The Action's `test` job applies the chain from scratch on Postgres 17 (as production).
 - The October architecture review is **fully implemented** (items 1–6); the ledger plan **phases 1–3 are shipped**; phase 4 deferred.
 - QA round 2 (three testers) — every finding fixed and verified; summary in `docs/qa/2026-10-14-round-2.md`.
 - Known production-data facts the next engineer should know (no numbers here on purpose): the 356 historical "money out of a fund" rows are **still unsorted** — Desk → Sort fund spending is waiting for Aizat; no real card payments have been recorded yet, so every card shows its charges since `pot_start` (1 Sep 2026) as owed; HSBC's closing day (2) and the other cards' closing days are not set yet.
@@ -28,6 +29,7 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 10. Soft delete everywhere; transfers and card payments delete/restore as a unit; purge after 30 days.
 
 ## 4 · What Aizat still has to do
+0. **New in sprint 3 (optional, 2 minutes):** run the Test House data fix from Terminal — `psql "<production connection string>" -f "…/Data fixes/2026-10-16-test-house-transfer-pair.sql"` (connection string: Supabase → Project Settings → Database). It only touches the QA household and clears the money check's last warning about groups.
 0. **New in sprint 2:** Settings → **Default cards** — Aizat: Daily Macquarie - Aizat, Trip UOB PPV; Paige: Daily HSBC Star Alliance (the rest as you like); Settings → Payment cards — switch each card's Daily · Trip · From a fund chips. Supabase → Authentication → Hooks → **Before User Created** → Postgres → `public.hook_before_user_created` (after Paige has her login, or before — her JOIN code passes it). On the Desk, type what UOB PPV charged for each foreign trip purchase when you check its statement.
 1. ~~Backup passphrase~~ — **reset 15 Oct 2026** (the 13 Oct one had been lost) and saved in the password manager as "BearHaus backup passphrase (GitHub BACKUP_PASSPHRASE)". **Restore drill passed 15 Oct** — see `docs/RESTORE.md` (lessons: a restore must re-apply the privilege lockdown and record the migration history). Backups from before 15 Oct can't be opened.
 2. Phone → Settings → People → **that's me** (links his login to his profile).
@@ -45,7 +47,7 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 - Whether to keep the **Sort fund spending** page after the backlog is empty (it hides itself when the list is empty; code can then be removed).
 
 ## 6 · Known limitations / things that look like bugs but aren't
-- The app degrades when a migration hasn't landed yet (probe flags `reconOK … fundIdOK`); the phone's edit-sheet falls back to the old `save_expense` signature with a message. Both deploys (Pages, DB) are independent and can land minutes apart — by design.
+- No probes any more (sprint 3): a change that needs a new column or function ships **database first** (push, wait for both deploy jobs), app second. Both deploys are independent; an app pushed before its migration breaks for those minutes.
 - `supabase db push` has twice failed on its own history insert after the SQL applied (passes 3 and phase 2). Rerun the failed job → "Remote database is up to date". The workflow prints the push log tail as an annotation.
 - Deleting one side of a transfer deletes both (said plainly in the sheet).
 - Activity shows a Sort move as "expense deleted + fund row added" (same id).
@@ -54,7 +56,8 @@ Written for the next engineer (Claude Code on Aizat's Mac). Read `CLAUDE.md` fir
 - A view-only or member login can no longer change the household's owner or delete it; the public app key can run only the two sign-up checks (v2 sprint 1). One side of a transfer (or a card-payment leg) can't be edited on its own — the phone shows those fields dimmed.
 - Desk `Pots` lists spending pots plus any other fund with money on cards.
 - A purchase in another currency on a card shows on the card as *waiting* until its charged amount is typed on the Desk; card owed leaves it out until then (sprint 2).
-- The transfer/card-payment group check only **logs** (to `integrity_issues`, counted by the nightly check) in sprint 2; it starts refusing in sprint 3.
+- The transfer/card-payment group check **refuses** any change that leaves a group unbalanced (sprint 3). A group that was already broken can only be deleted as a unit. Production has one — a 23 Jul test transfer in the QA household "The Test House" (one side never got its pair id); the fix is ready in Drive `Data fixes/2026-10-16-test-house-transfer-pair.sql` (proven on the 15 Oct copy; moves no money). Until it runs, the nightly check shows it as 1 'warn'.
+- 7 BearHaus purchases from Feb–May 2024 carry the card name "Singapore" with no card (an old import label, not a card). They sit before `pot_start`, on no card or statement, so they move no number; an edit leaves them as they are.
 - Trip sends made before sprint 2 were linked to their purchases only where the match was exact; an unlinked older send still counts fully as cash out (as before).
 
 ## 7 · Local development & QA
