@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <!-- Content Security Policy (v2 sprint 3): scripts only from this site, network only to our Supabase project and the
      exchange-rate API, fonts from Google. 'unsafe-inline' stays until the inline onclick handlers are gone (DECISIONS E27). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://diqaezhdxloqhglndqrq.supabase.co https://api.frankfurter.app https://api.frankfurter.dev; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none'; worker-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://diqaezhdxloqhglndqrq.supabase.co https://api.frankfurter.app https://api.frankfurter.dev; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'; worker-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BearHaus · Desk</title>
 <meta name="theme-color" content="#004A98">
@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="../app/vendor/supabase-js-2.117.3.min.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R"></script>
-<script src="../app/common.js?v=20261016"></script>
+<script src="../app/common.js?v=20261017"></script>
 <style>
 :root{
   --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
@@ -88,6 +88,18 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
 .empty{padding:28px;text-align:center;color:var(--ink-soft)}
 .overlay{display:none;position:fixed;inset:0;background:rgba(26,43,68,.35);z-index:40;align-items:center;justify-content:center;padding:20px}
 .overlay.show{display:flex}
+/* the add panel: the phone's Quick Add at phone size */
+#addtx{flex-direction:column;gap:10px}
+.addpanel{position:relative;width:420px;max-width:calc(100vw - 40px);height:min(860px,calc(100vh - 80px));border-radius:24px;overflow:hidden;background:#fff;box-shadow:var(--shadow-lift)}
+.addpanel iframe{width:100%;height:100%;border:0;display:block}
+.addwait{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff}
+.addhint{color:#fff;opacity:.85}
+/* the Desk tour: a dimmed page with one highlighted spot and a card beside it */
+.tut-block{position:fixed;inset:0;z-index:69}
+.tut-hole{position:fixed;z-index:70;border-radius:14px;box-shadow:0 0 0 9999px rgba(26,43,68,.55);pointer-events:none;transition:all .25s cubic-bezier(.4,0,.2,1)}
+.tut-card{position:fixed;z-index:71;background:#fff;border-radius:18px;box-shadow:var(--shadow-lift);padding:18px 20px;width:360px;max-width:calc(100vw - 40px);transition:top .25s,left .25s}
+.tut-card .cap{margin-top:6px}
+.tut-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}
 .bulkcard{width:100%;max-width:640px;box-shadow:var(--shadow-lift)}
 .bkgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
 .bkf{display:flex;flex-direction:column;gap:4px}
@@ -129,6 +141,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <button class="nv" data-scr="sort" id="nvSort" onclick="go('sort')" style="display:none">🧹 Sort fund spending <span class="tag warn" id="nvSortN"></span></button>
     <div class="foot">
       <a class="btn-tert" href="../app/" style="text-decoration:none">← mobile app</a>
+      <button class="btn-tert" onclick="startDeskTour()">📖 Desk tour</button>
       <button class="btn-tert" onclick="signOut()">sign out</button>
       <p class="cap" id="hhLabel" style="padding:0 10px"></p>
     </div>
@@ -426,34 +439,13 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     </div>
   </div>
 </div>
+<!-- add a transaction: the phone's own Quick Add, in a phone-sized panel (one form on both — v2) -->
 <div id="addtx" class="overlay" onclick="if(event.target===this)closeAddTx()">
-  <div class="card bulkcard" style="max-width:640px">
-    <div class="row" style="justify-content:space-between">
-      <div><p class="cap">Add transaction</p><h2 class="h2">New expense</h2></div>
-      <button class="btn-tert" onclick="closeAddTx()">✕ close</button>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <button class="chip sel" id="axKindDaily" onclick="setAxKind('daily')">🛍️ Daily</button>
-      <button class="chip" id="axKindTrip" onclick="setAxKind('travel')">✈️ Trip</button>
-      <select class="descinput" id="axTrip" style="display:none;min-width:200px"></select>
-    </div>
-    <div class="bkgrid">
-      <label class="bkf"><span class="cap">Date</span><input class="descinput" id="axDate" type="date"></label>
-      <label class="bkf"><span class="cap">Amount</span><div class="row" style="gap:6px;flex-wrap:nowrap"><input class="descinput num" id="axAmount" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="flex:1;min-width:0"><select class="descinput" id="axCur" style="width:92px"></select></div></label>
-      <label class="bkf" style="grid-column:1 / -1"><span class="cap">Description</span><input class="descinput" id="axDesc" placeholder="the shop or what it was" maxlength="200"></label>
-      <label class="bkf"><span class="cap">Category</span><select class="descinput" id="axCat"></select></label>
-      <label class="bkf"><span class="cap">Card</span><select class="descinput" id="axCard"></select></label>
-      <label class="bkf"><span class="cap">Who paid</span><select class="descinput" id="axWho"></select><span class="cap" id="axWhoNote"></span></label>
-      <label class="bkf"><span class="cap">Comments</span><input class="descinput" id="axComments" placeholder="optional"></label>
-      <label class="bkf" id="axFundWrap"><span class="cap">Counts against</span><select class="descinput" id="axFund"></select><span class="cap">a fund instead of the month’s budget — e.g. a car service from the Car Fund</span></label>
-    </div>
-    <div class="row" style="margin-top:10px;gap:8px"><button type="button" class="chip" id="axRefund" onclick="this.classList.toggle('sel')">↩ refund / credit</button><span class="cap">a credit on the statement — counts against the category as a minus</span></div>
-    <p class="cap" id="axErr" style="margin-top:10px;color:var(--bad)"></p>
-    <div class="row" style="justify-content:flex-end;margin-top:12px">
-      <button class="btn btn-soft" onclick="closeAddTx()">Cancel</button>
-      <button class="btn btn-primary" id="axSave" onclick="saveAddTx()">Save</button>
-    </div>
+  <div class="addpanel">
+    <div class="addwait" id="addWait"><span class="spin"></span><p class="cap" style="margin-top:10px">opening the add form…</p></div>
+    <iframe id="addFrame" title="Add a transaction" src="about:blank"></iframe>
   </div>
+  <p class="cap addhint">type the description, Enter, type the amount, Enter saves · Esc closes</p>
 </div>
 <div id="ask" class="overlay" style="z-index:60">
   <div class="card bulkcard" style="max-width:440px">
@@ -516,6 +508,7 @@ async function boot(session){
   $('login').style.display = 'none'; $('app').style.display = 'grid';
   await loadContext();
   initStatements();
+  if (!store.get('desk-tut-v')) setTimeout(() => { if (!deskTut) startDeskTour(); }, 900);   // first visit per login
 }
 if (sb) {
   { const n = takeSignInNote(); if (n) $('loginError').textContent = n; }
@@ -1557,70 +1550,117 @@ const fundTag = r => (r.kind === 'daily' || !r.kind) && r.fund_id ? ' <span clas
 const fundOptsFor = (cur, selId, blankLabel) => '<option value="">' + esc(blankLabel || 'the month’s budget') + '</option>'
   + CTX.funds.filter(f => (!cur || f.currency === cur) && !f.is_spend_pot).map(f => '<option value="' + f.id + '"' + (f.id === selId ? ' selected' : '') + '>' + esc(f.name) + ' · ' + esc(f.currency) + '</option>').join('');
 
-// ── add a transaction from the Desk (a statement line the app doesn't have yet) ──
-const ax = { src: null, kind: 'daily', trips: [] };
-async function openAddTx(src){
-  ax.src = src; ax.kind = 'daily';
-  if (!ax.trips.length) { const t = await sb.from('trips').select('id, name, currency, currencies, start_date').order('start_date', {ascending:false}).limit(30); ax.trips = t.data || []; }
-  $('axTrip').innerHTML = ax.trips.map(t => '<option value="' + t.id + '">' + esc(t.name) + '</option>').join('') || '<option value="">no trips yet</option>';
-  const card = src === 'st' && st.card ? st.card : null;
-  $('axCard').innerHTML = cardOptions(card ? card.id : null, true, !!(card && card.is_archived)) + '<optgroup label="Other"><option value="cash">Cash</option></optgroup>';
-  const curs = [...new Set(CTX.funds.map(f => f.currency))]; if (card && card.currency && !curs.includes(card.currency)) curs.unshift(card.currency);
-  $('axCur').innerHTML = curs.map(c => '<option value="' + c + '">' + c + '</option>').join('');
-  $('axCur').value = (card && card.currency) || curs[0];
-  $('axDate').value = src === 'st' && st.period ? (st.period.end < todayIso() ? st.period.end : todayIso()) : todayIso();
-  $('axAmount').value = ''; $('axDesc').value = ''; $('axComments').value = ''; $('axErr').textContent = '';
-  setAxKind('daily'); axWhoFromCard();
-  $('axCard').onchange = axWhoFromCard;
-  const axFunds = () => { const keep = $('axFund').value; $('axFund').innerHTML = fundOptsFor($('axCur').value, keep); };
-  axFunds(); $('axCur').onchange = axFunds;
-  $('addtx').classList.add('show'); setTimeout(() => $('axDesc').focus(), 50);
+// ── add a transaction from the Desk ──
+// The Desk opens the phone's own Quick Add (app/?embed=add) in a phone-sized panel, so adding a transaction is the
+// same form, the same defaults and the same rules on both. From a statement it passes the card and a date inside
+// the period; an archived card's line saves through desk_add_expense, inside the form. The form answers with
+// "ready", "saved" (then the Desk refreshes) or "close".
+const ax = { src: null };
+function openAddTx(src){
+  ax.src = src;
+  const q = new URLSearchParams({ embed: 'add', mode: 'daily' });
+  if (src === 'st' && st.card) {
+    q.set('card', st.card.id);
+    if (st.period) q.set('date', st.period.end < todayIso() ? st.period.end : todayIso());
+  }
+  $('addWait').style.display = 'flex';
+  $('addFrame').src = new URL('../app/?' + q.toString(), location.href).href;
+  $('addtx').classList.add('show');
 }
-function closeAddTx(){ $('addtx').classList.remove('show'); }
-function setAxKind(k){
-  ax.kind = k;
-  $('axKindDaily').classList.toggle('sel', k === 'daily'); $('axKindTrip').classList.toggle('sel', k === 'travel');
-  $('axTrip').style.display = k === 'travel' ? '' : 'none';
-  $('axFundWrap').style.display = k === 'daily' ? '' : 'none';   // a trip's purchases already count against the trip
-  const cats = CTX.cats.filter(c => c.kind === k);
-  const groups = [...new Set(cats.map(c => c.group_name || 'Other'))];
-  $('axCat').innerHTML = groups.map(g => '<optgroup label="' + esc(g) + '">' + cats.filter(c => (c.group_name || 'Other') === g).map(c => '<option value="' + c.id + '">' + esc((c.icon ? c.icon + ' ' : '') + c.name) + '</option>').join('') + '</optgroup>').join('');
+function closeAddTx(){
+  $('addtx').classList.remove('show');
+  $('addFrame').src = 'about:blank';
 }
-function axWhoFromCard(){
-  const v = $('axCard').value; const c = v === 'cash' ? CTX.cards.find(x => x.kind === 'cash') : cardById(v);
-  const owner = c && c.profile_id ? c.profile_id : null;
-  $('axWho').innerHTML = CTX.profiles.map(p => '<option value="' + p.id + '">' + esc(p.display_name) + '</option>').join('') + '<option value="joint">' + esc(CTX.hh.joint_label || 'Joint') + '</option>';
-  $('axWho').value = owner || 'joint'; $('axWho').disabled = !!owner;
-  $('axWhoNote').textContent = owner ? 'follows the card' : (c ? 'a shared card — pick who paid' : 'pick a card');
-  if (c && c.currency && [...$('axCur').options].some(o => o.value === c.currency)) { $('axCur').value = c.currency; if ($('axCur').onchange) $('axCur').onchange(); }
+window.addEventListener('message', e => {
+  const f = $('addFrame');
+  if (e.origin !== location.origin || !f || e.source !== f.contentWindow || !e.data || e.data.bh !== 'add') return;
+  if (e.data.type === 'ready') { $('addWait').style.display = 'none'; try { f.focus(); } catch (x) {} return; }
+  if (e.data.type === 'error') { toast('couldn’t open the add form: ' + e.data.msg); closeAddTx(); return; }
+  if (e.data.type === 'saved') {
+    toast(e.data.msg || 'saved'); closeAddTx();
+    if (ax.src === 'st') loadStatement(); else if (ax.src === 'nc') loadNoCard(true);
+    return;
+  }
+  if (e.data.type === 'close' && $('addtx').classList.contains('show')) closeAddTx();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('addtx').classList.contains('show')) closeAddTx(); });
+
+// ── the Desk tour ───────────────────────────────────────────
+// first visit per login, replayable from the menu. One idea per stop; a stop whose spot isn't on screen yet
+// (no card picked, no statement) shows its card in the middle instead.
+const DESK_TOUR = [
+  { center: true, title: 'The Desk', text: 'the big-screen side of BearHaus: check statements, record card payments, tidy many rows at once and see every fund. Same login, same numbers as the phone.' },
+  { scr: 'statements', el: () => document.querySelector('nav .nv[data-scr="statements"]'), title: 'Statements', text: 'each card and bank account, checked against its statement, one period at a time.' },
+  { scr: 'statements', el: () => $('stCard').closest('.row') || $('stCard'), title: 'Pick a card, then the period', text: 'archived cards are listed too — for their last statement.' },
+  { scr: 'statements', el: () => $('stOpening').style.display !== 'none' ? $('stOpening') : null, title: 'First time for each card', text: 'say what the card owed on the day BearHaus started counting, and which fund set that money aside. Once per card.' },
+  { scr: 'statements', el: () => $('stAdd'), title: 'A line the app doesn’t have', text: 'add it here — it’s the phone’s own + form, with this card and a date in the period already filled in.' },
+  { scr: 'statements', el: () => $('stRows').closest('.card'), title: 'Tick what’s on the statement', text: 'select the rows, then Reconcile selected — they lock. A purchase in ¥ or US$ gets a box for what the card charged.' },
+  { scr: 'statements', el: () => $('stTotal').closest('.card'), title: 'Do the totals agree?', text: 'type the statement’s new spend (and opening and closing). The check says if something is missing in the app, or ticked that shouldn’t be.' },
+  { scr: 'statements', el: () => $('stClose'), title: 'Close it', text: 'when the totals agree, close the statement — that period locks.' },
+  { scr: 'statements', el: () => $('stPay').style.display !== 'none' ? $('stPay') : null, title: 'Record the payment', text: 'what you paid, from which fund, and the date. A future date shows as scheduled until that day. Paying lowers In the bank and Owed on cards — never Available.' },
+  { scr: 'nocard', el: () => document.querySelector('nav .nv[data-scr="nocard"]'), title: 'Transactions', text: 'every row in one list. Filter, then change the category, card or fund of many rows at once.' },
+  { scr: 'swap', el: () => document.querySelector('nav .nv[data-scr="swap"]'), title: 'Pot swap', text: 'spent in one currency but the money came from another? record the swap and its rate here.' },
+  { scr: 'pots', el: () => document.querySelector('nav .nv[data-scr="pots"]'), title: 'Pots 🍯', text: 'every fund in one place — Available, owed on cards, in the bank, cleared, pending — and every card’s balance.' },
+  { scr: 'activity', el: () => document.querySelector('nav .nv[data-scr="activity"]'), title: 'Activity', text: 'who changed what, and when — every save, edit and delete, from the phone or here.' },
+  { scr: 'statements', el: () => document.querySelector('nav .foot a'), title: 'Back to the phone', text: 'the phone app is one click away. This tour lives here in the menu whenever you want it 🐻' },
+];
+let deskTut = null, deskTutIdx = -1;
+function startDeskTour(){
+  endDeskTour(true);
+  const block = document.createElement('div'); block.className = 'tut-block';
+  const hole = document.createElement('div'); hole.className = 'tut-hole';
+  const card = document.createElement('div'); card.className = 'tut-card';
+  document.body.append(block, hole, card);
+  deskTut = { block, hole, card };
+  block.onclick = () => deskTourStep(deskTutIdx + 1);
+  deskTourStep(0);
 }
-async function saveAddTx(){
-  const amount = parseFloat($('axAmount').value), desc = $('axDesc').value.trim(), date = $('axDate').value, cardV = $('axCard').value;
-  const err = m => { $('axErr').textContent = m; };
-  if (!date) return err('pick a date'); if (!(amount > 0)) return err('enter the amount'); if (!desc) return err('add a description');
-  if (!cardV) return err('pick the card (or Cash) — every row needs one to sit on a statement');
-  if (ax.kind === 'travel' && !$('axTrip').value) return err('pick a trip');
-  const card = cardV === 'cash' ? CTX.cards.find(x => x.kind === 'cash') : cardById(cardV);
-  if (!card) return err('no Cash card in Settings yet');
-  const whoV = $('axWho').value, pid = whoV === 'joint' ? null : whoV;
-  // ids, not names: the database fills in the category and card names (v2 sprint 3)
-  const row = { household_id: CTX.hh.id, date, description: desc, category_id: $('axCat').value, amount, currency: $('axCur').value, payer_profile_id: pid, payment_method_id: card.id, comments: $('axComments').value.trim() };
-  if (ax.kind === 'travel') row.trip_id = $('axTrip').value;
-  else if ($('axFund').value) row.fund_id = $('axFund').value;
-  $('axSave').disabled = true;
-  const t = ax.kind === 'daily' ? 'daily_expenses' : 'travel_expenses';
-  if ($('axRefund').classList.contains('sel')) row.is_refund = true;
-  // the split rows (payer +, joint −) are derived by the database. An archived card refuses new rows, except
-  // through the Desk's reconciliation function (a closed card's last statement — card rules, sprint 2)
-  const ins = card.is_archived
-    ? await sb.rpc('desk_add_expense', { p: row })
-    : await sb.from(t).insert(row).select('id').single();
-  $('axSave').disabled = false;
-  if (ins.error) return err('couldn’t save: ' + ins.error.message);
-  toast('saved — ' + desc + ' · ' + (row.is_refund ? '+' : '') + fmtMoney(amount, row.currency) + (row.fund_id ? ' · counts against ' + fundName(row.fund_id) : ''));
-  closeAddTx();
-  if (ax.src === 'st') loadStatement(); else loadNoCard(true);
+function endDeskTour(quiet){
+  if (!deskTut) return;
+  Object.values(deskTut).forEach(el => el.remove());
+  deskTut = null; deskTutIdx = -1;
+  store.set('desk-tut-v', '1');
+  go('statements');
+  if (!quiet) toast('that’s the Desk — the tour is in the menu whenever you want it');
 }
+function deskTourStep(i){
+  if (!deskTut) return;
+  if (i >= DESK_TOUR.length) { endDeskTour(); return; }
+  deskTutIdx = i;
+  const s = DESK_TOUR[i];
+  if (s.scr && !$('scr-' + s.scr).classList.contains('active')) go(s.scr);
+  setTimeout(() => deskTourPlace(i, s), 160);
+}
+function deskTourPlace(i, s){
+  if (!deskTut || deskTutIdx !== i) return;
+  const { hole, card } = deskTut, pad = 6;
+  const el = s.center ? null : s.el();
+  let r = null;
+  if (el) {
+    try { el.scrollIntoView({ block: 'center' }); } catch (e) {}
+    r = el.getBoundingClientRect();
+    Object.assign(hole.style, { left: (r.left - pad) + 'px', top: (r.top - pad) + 'px', width: (r.width + pad * 2) + 'px', height: (r.height + pad * 2) + 'px' });
+  } else Object.assign(hole.style, { left: '50%', top: '35%', width: '0px', height: '0px' });
+  card.innerHTML = '<p class="h2">' + s.title + '</p><p class="cap">' + s.text + '</p>'
+    + '<div class="tut-foot"><span class="cap num">' + (i + 1) + ' of ' + DESK_TOUR.length + '</span><div class="row" style="gap:4px">'
+    + (i > 0 ? '<button class="btn-tert" type="button" aria-label="Back" onclick="deskTourStep(' + (i - 1) + ')">‹</button>' : '')
+    + '<button class="btn-tert" type="button" onclick="endDeskTour(true)">Skip</button>'
+    + '<button class="btn btn-primary" type="button" onclick="deskTourStep(' + (i + 1) + ')">' + (i === DESK_TOUR.length - 1 ? 'Done' : 'Next') + '</button></div></div>';
+  requestAnimationFrame(() => {
+    const cw = card.offsetWidth, ch = card.offsetHeight, W = window.innerWidth, H = window.innerHeight;
+    let left, top;
+    if (!r) { left = (W - cw) / 2; top = (H - ch) / 2.4; }
+    else if (r.right + pad + 16 + cw < W - 12) { left = r.right + pad + 16; top = r.top; }   // beside it (the menu, a narrow box)
+    else { left = Math.min(Math.max(r.left, 16), W - cw - 16); top = r.bottom + pad + 14; if (top + ch > H - 16) top = r.top - pad - ch - 14; }
+    card.style.left = left + 'px'; card.style.top = Math.max(Math.min(top, H - ch - 16), 16) + 'px';
+  });
+}
+document.addEventListener('keydown', e => {
+  if (!deskTut) return;
+  if (e.key === 'Escape') endDeskTour(true);
+  else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); deskTourStep(deskTutIdx + 1); }
+  else if (e.key === 'ArrowLeft' && deskTutIdx > 0) deskTourStep(deskTutIdx - 1);
+});
 
 // ── pots ────────────────────────────────────────────────────
 async function loadPots(){

@@ -3,6 +3,9 @@
 // Anything here is global on purpose; keep it to pure helpers, constants and the sign-in/device-memory rules
 // both pages must share.
 
+// ── never inside another site's frame (clickjacking). The Desk frames the phone's add form: same site, allowed.
+try { if (window.top !== window.self && window.top.location.origin !== location.origin) throw 0; } catch (e) { location.replace('about:blank'); }
+
 // ── connection ────────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://diqaezhdxloqhglndqrq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_K-fUtwnuZAJLTNquqDN87Q_yBkEEGhZ';   // publishable (anon) key — RLS does the protecting
