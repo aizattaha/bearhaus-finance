@@ -1720,8 +1720,8 @@ function vizTip(ev, html){
   t.style.left = x + 'px'; t.style.top = y + 'px';
 }
 // lines over months: crosshair + one tooltip listing every series; end labels when there are one or two
-function lineChart(host, { labels, series, cur, height = 200, zero = false }){
-  const W = Math.max(host.clientWidth, 280), H = height, L = 58, R = series.length > 1 ? 70 : 16, T = 10, B = 24;
+function lineChart(host, { labels, series, cur, height = 200, zero = false, marker = null }){
+  const W = Math.max(host.clientWidth, 280), H = height, L = 58, R = series.length > 1 ? 70 : 16, T = marker ? 22 : 10, B = 24;
   const all = series.flatMap(x => x.values).filter(v => v != null);
   let lo = Math.min(...all), hi = Math.max(...all); if (zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
   const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.1 || 1; const ticks = niceTicks(zero ? lo : lo - pad, hi + pad, 4);
@@ -1744,6 +1744,11 @@ function lineChart(host, { labels, series, cur, height = 200, zero = false }){
       if (series.length > 1 && e) g += '<text x="' + (x(li) + 8) + '" y="' + (e.y + 4) + '" style="fill:var(--ink)">' + esc(sr.name) + '</text>';
     }
   });
+  if (marker) {   // a dashed line (the crosshair is solid) and its label above the plot, kept inside the chart
+    const mx = x(marker.at), right = mx > W - R - 150;
+    g += '<line x1="' + mx + '" x2="' + mx + '" y1="' + (T - 4) + '" y2="' + (H - B) + '" stroke="#55657D" stroke-width="1" stroke-dasharray="3 3"/>'
+      + '<text x="' + (mx + (right ? -5 : 5)) + '" y="' + (T - 9) + '" text-anchor="' + (right ? 'end' : 'start') + '">' + esc(marker.label) + '</text>';
+  }
   g += '<line class="xh" x1="0" x2="0" y1="' + T + '" y2="' + (H - B) + '" stroke="#55657D" stroke-width="1" style="display:none"/>';
   g += series.map((sr, k) => '<circle class="xd' + k + '" r="4" fill="' + sr.color + '" stroke="#fff" stroke-width="2" style="display:none"/>').join('');
   g += '<rect x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '" fill="transparent" class="hit"/>';
@@ -1884,17 +1889,25 @@ function renderDashboard(){
   }).join('');
 
   box.innerHTML = html;
+  // spending pots count daily purchases from pot_start (money model v3, 1 Sep 2026): mark that day on every chart a pot
+  // is part of, at the month-end just before it — earlier points show money moved in and out, not spending
+  const ps = CTX.hh && CTX.hh.pot_start, psMonth = ps ? ps.slice(0, 7) + '-01' : null;
+  const potMark = has => {
+    if (!has || !psMonth || psMonth <= months[0] || psMonth > last) return null;
+    const i = months.indexOf(addMonths(psMonth, -1));
+    return i < 0 ? null : { at: i, label: 'spending counted from ' + new Date(ps + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) };
+  };
   // charts draw into the laid-out boxes (they size to them)
   box.querySelectorAll('.nwc').forEach(el => {
     const cc = el.dataset.cc;
-    if (cc === '*') { lineChart(el, { labels: months, cur: D.base, series: [{ name: 'Total', color: '#1F63B8', values: months.map(m => D.funds.reduce((t, f) => t + (val(f, m, 'balance') || 0) * fx.rates[f.currency], 0)) }] }); return; }
+    if (cc === '*') { lineChart(el, { labels: months, cur: D.base, marker: potMark(D.funds.some(f => f.is_spend_pot)), series: [{ name: 'Total', color: '#1F63B8', values: months.map(m => D.funds.reduce((t, f) => t + (val(f, m, 'balance') || 0) * fx.rates[f.currency], 0)) }] }); return; }
     const fs = D.funds.filter(f => f.country === cc);
-    lineChart(el, { labels: months, cur: curOf(cc), series: [{ name: 'Net worth', color: '#1F63B8', values: months.map(m => sumAt(fs, m, 'balance')) }] });
+    lineChart(el, { labels: months, cur: curOf(cc), marker: potMark(fs.some(f => f.is_spend_pot)), series: [{ name: 'Net worth', color: '#1F63B8', values: months.map(m => sumAt(fs, m, 'balance')) }] });
   });
   if ($('budChartD')) barPlanChart($('budChartD'), { labels: bm, spent, plan, cur: dash.cur });
   box.querySelectorAll('.fdc').forEach(el => {
     const f = D.funds.find(x => x.fund_id === el.dataset.f);
-    lineChart(el, { labels: months, cur: f.currency, height: 180, series: [
+    lineChart(el, { labels: months, cur: f.currency, height: 180, marker: potMark(f.is_spend_pot), series: [
       { name: 'Available', color: '#1F63B8', values: months.map(m => val(f, m, 'balance')) },
       { name: 'In the bank', color: '#eb6834', values: months.map(m => val(f, m, 'cash_balance')) }] });
   });
