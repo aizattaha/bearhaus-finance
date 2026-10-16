@@ -269,8 +269,11 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .ob-people .field{margin-top:8px}
 
 /* inside the Desk's add panel: only the add sheet, filling the frame */
-html.embed #app, html.embed .backdrop{display:none!important}
-html.embed .sheet{transform:translate(-50%,0)!important;transition:none}
+html.embed-add #app, html.embed-add .backdrop{display:none!important}
+html.embed-add .sheet{transform:translate(-50%,0)!important;transition:none}
+/* inside the Desk's Settings page: only the Settings screen (the Desk has its own menu and sign-out) */
+html.embed-settings .tabbar, html.embed-settings .fab, html.embed-settings #scr-settings > div:first-child > .btn-tert, html.embed-settings #scr-settings > .btn-tert{display:none!important}
+html.embed-settings #app{max-width:600px}
 /* ── first-run tutorial ────────────────────── */
 .tut-block{position:fixed;inset:0;z-index:39}
 .tut-hole{position:fixed;z-index:40;border-radius:18px;box-shadow:0 0 0 9999px rgba(26,43,68,.55);pointer-events:none;transition:all .25s cubic-bezier(.4,0,.2,1)}
@@ -666,14 +669,16 @@ input[type="date"].descinput{min-width:0}
 // ── the Desk's add panel: the Desk opens this page as ?embed=add in a frame, so adding a transaction on the Desk IS
 // this Quick Add — one form, one set of rules on both. Only a page of this same site can do it; anything else gets
 // the normal app. The Desk may pass the statement's card and a date; it hears back "ready", "saved" or "close".
+// The Desk's Settings page works the same way (?embed=settings): this page's own Settings screen, so settings look and
+// sit exactly as on the phone, and any change to them lands on both.
 const EMBED = (() => {
-  const q = new URLSearchParams(location.search);
-  if (q.get('embed') !== 'add' || window.parent === window) return null;
+  const q = new URLSearchParams(location.search), kind = q.get('embed');
+  if (!['add', 'settings'].includes(kind) || window.parent === window) return null;
   try { if (window.parent.location.origin !== location.origin) return null; } catch (e) { return null; }
-  return { mode: q.get('mode') || 'daily', date: q.get('date'), card: q.get('card'), archived: new Set() };
+  return { kind, mode: q.get('mode') || 'daily', date: q.get('date'), card: q.get('card'), archived: new Set() };
 })();
-if (EMBED) document.documentElement.classList.add('embed');
-function embedSay(msg){ if (EMBED) try { window.parent.postMessage(Object.assign({ bh: 'add' }, msg), location.origin); } catch (e) {} }
+if (EMBED) document.documentElement.classList.add('embed-' + EMBED.kind);
+function embedSay(msg){ if (EMBED) try { window.parent.postMessage(Object.assign({ bh: EMBED.kind }, msg), location.origin); } catch (e) {} }
 let toastTimer = null;
 const VIEW_ONLY_MSG = 'this login is view-only — you can see everything, change nothing';
 function toast(msg){
@@ -944,7 +949,11 @@ async function enterApp(){
   $('login').style.display = 'none'; $('onboard').style.display = 'none';
   $('app').style.display = 'flex';
   store.remove('lost');
-  if (EMBED) { loadContext().then(openEmbedForm).catch(e => { embedSay({ type: 'error', msg: String((e && e.message) || e) }); }); return; }
+  if (EMBED) {
+    loadContext().then(() => { if (EMBED.kind === 'add') return openEmbedForm(); if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household'; go('scr-settings'); embedSay({ type: 'ready' }); })
+      .catch(e => { embedSay({ type: 'error', msg: String((e && e.message) || e) }); });
+    return;
+  }
 
   const now = new Date();
   $('todayLabel').textContent = now.toLocaleDateString('en-AU', {weekday:'long', day:'numeric', month:'long'});
@@ -959,7 +968,7 @@ async function enterApp(){
     applyRole();
     checkPlanNudge(CTX.plan);
     if (!EMBED && store.get('tut-done') && store.get('tut-v') !== TUT_VERSION && !tutEls)
-      setTimeout(() => { if (!tutEls && !$('sheet').classList.contains('open')) startTutorial(true); }, 1200);
+      setTimeout(() => { if (!tutEls && !$('sheet').classList.contains('open')) startTutorial('unseen'); }, 1200);
     // the first paint guessed the home currency — repaint with the real one
     const c = store.get('home2');
     if (c) { try { renderHome(JSON.parse(c)); } catch(e){} }
@@ -2764,6 +2773,20 @@ function renderSettings(){
     renderSettings(); toast('renamed 🐻');
   });
   box.appendChild(hhRow);
+  // the household's "today" (sprint 2): which day a purchase counts in, for every number in both apps
+  const tzRow = document.createElement('div'); tzRow.className = 'srow';
+  const tzNow = (CTX.hh && CTX.hh.timezone) || 'Australia/Melbourne';
+  const zones = (() => { try { return Intl.supportedValuesOf('timeZone'); } catch (e) { return ['Australia/Melbourne', 'Australia/Sydney', 'Australia/Brisbane', 'Australia/Adelaide', 'Australia/Perth', 'Asia/Singapore', 'Asia/Kuala_Lumpur', 'Asia/Jakarta', 'Asia/Bangkok', 'Asia/Tokyo', 'Europe/London']; } })();
+  tzRow.innerHTML = '<div class="rowicon">🕐</div><div style="flex:1;min-width:0"><div class="lbl">Time zone</div><div class="cap">decides which day “today” is for every number</div></div>';
+  const tzSel = document.createElement('select'); tzSel.className = 'descinput'; tzSel.style.cssText = 'max-width:170px;padding:6px 8px;font-size:12px';
+  tzSel.innerHTML = [...new Set([tzNow].concat(zones))].map(z => '<option' + (z === tzNow ? ' selected' : '') + '>' + esc(z) + '</option>').join('');
+  tzSel.onchange = async () => {
+    const r = await sb.from('households').update({ timezone: tzSel.value }).eq('id', CTX.hh.id);
+    if (r.error) { toast('couldn’t change: ' + r.error.message); tzSel.value = tzNow; return; }
+    await loadContext(); markStale(); toast('time zone · ' + tzSel.value + ' 🐻');
+  };
+  tzRow.appendChild(tzSel);
+  box.appendChild(tzRow);
   const sections = [
     { icon:'👥', label:'People', cap: (CTX.profiles || []).map(p => p.display_name).join(' · ') || '…', render: renderSetPeople },
     { icon:'💰', label:'Funds', cap: 'rename · archive · travel & leftover funds', render: renderSetFunds },
@@ -2796,20 +2819,60 @@ function renderSettings(){
   desk.type = 'button'; desk.className = 'setrow'; desk.id = 'setDesk';
   desk.innerHTML = '<div class="rowicon">🖥️</div><div style="min-width:0"><div class="lbl">The Desk</div><div class="cap">statements, card payments and every fund — best on a computer · same login</div></div><span class="chev">›</span>';
   desk.onclick = () => { const w = window.open(new URL('../desktop/', location.href).href, '_blank', 'noopener'); if (!w) location.href = '../desktop/'; };
-  box.appendChild(desk);
+  if (!EMBED) box.appendChild(desk);
   const tut = document.createElement('button');
   tut.type = 'button'; tut.className = 'setrow';
   tut.innerHTML = '<div class="rowicon">📖</div><div style="min-width:0"><div class="lbl">App tutorial</div><div class="cap">the full tour — every screen, two minutes</div></div><span class="chev">›</span>';
   tut.onclick = () => { go('scr-home'); setTimeout(startTutorial, 150); };
-  box.appendChild(tut);
+  if (!EMBED) box.appendChild(tut);
   const news = document.createElement('button');
   news.type = 'button'; news.className = 'setrow';
   news.innerHTML = '<div class="rowicon">✨</div><div style="min-width:0"><div class="lbl">What’s new</div><div class="cap">only the stops that changed since the last tour</div></div><span class="chev">›</span>';
-  news.onclick = () => { go('scr-home'); setTimeout(() => startTutorial(true), 150); };
-  box.appendChild(news);
+  news.onclick = () => { go('scr-home'); setTimeout(() => startTutorial('all'), 150); };
+  if (!EMBED) box.appendChild(news);
 }
 
 // the bin: anything deleted in the last 30 days, restorable (older databases have no bin)
+// a row's details, one ⋯ away — so the list stays as clean as it was (icon, group, owner, order)
+function detailToggle(row, build){
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-tert'; b.textContent = '⋯';
+  b.setAttribute('aria-label', 'More settings'); b.style.cssText = 'font-size:15px;padding:0 6px';
+  let line = null;
+  b.onclick = () => {
+    if (line) { line.remove(); line = null; return; }
+    row.style.flexWrap = 'wrap';
+    line = document.createElement('div'); line.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0 2px 42px';
+    build(line); row.appendChild(line);
+  };
+  return b;
+}
+// move one row up or down among its neighbours (same list), then renumber sort_order for the rows that changed
+async function moveRow(table, rows, item, dir, sameList){
+  const seq = rows.slice().sort((a, b) => (a.sort_order - b.sort_order) || String(a.name || a.display_name).localeCompare(String(b.name || b.display_name)));
+  const peers = seq.filter(x => sameList(x, item));
+  const i = peers.indexOf(item), j = i + dir;
+  if (i < 0 || j < 0 || j >= peers.length) return false;
+  const a = seq.indexOf(peers[i]), b = seq.indexOf(peers[j]);
+  [seq[a], seq[b]] = [seq[b], seq[a]];
+  const changed = seq.map((x, idx) => ({ x, idx })).filter(o => o.x.sort_order !== o.idx);
+  for (const o of changed) {
+    const u = await sb.from(table).update({ sort_order: o.idx }).eq('id', o.x.id);
+    if (u.error) { toast('couldn’t reorder: ' + u.error.message); return false; }
+    o.x.sort_order = o.idx;
+  }
+  return true;
+}
+const upDown = (onMove) => {
+  const w = document.createElement('span'); w.style.cssText = 'display:inline-flex;gap:2px';
+  [['↑', -1, 'Move up'], ['↓', 1, 'Move down']].forEach(([t, d, l]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.style.cssText = 'font-size:11px;padding:4px 9px'; b.textContent = t; b.setAttribute('aria-label', l); b.onclick = () => onMove(d); w.appendChild(b); });
+  return w;
+};
+const iconInput = (val, onSave) => {
+  const i = document.createElement('input'); i.className = 'descinput'; i.maxLength = 4; i.value = val || ''; i.placeholder = '🙂';
+  i.setAttribute('aria-label', 'Icon'); i.style.cssText = 'width:58px;text-align:center;padding:6px 8px;font-size:15px';
+  i.onchange = () => { const v = i.value.trim(); if (v) onSave(v); };
+  return i;
+};
 async function renderSetBin(box){
   const r = await sb.from('recently_deleted').select('kind, id, deleted_at, date, label, amount, currency, detail, is_credit').order('deleted_at', { ascending: false }).limit(200);
   if (r.error) { box.innerHTML = '<p class="cap">' + (/recently_deleted/.test(r.error.message) ? 'the bin arrives with the next database update' : 'couldn’t load: ' + esc(r.error.message)) + '</p>'; return; }
@@ -3034,6 +3097,29 @@ async function renderSetFunds(box){
       renderSetFunds(box); toast('renamed 🐻');
     });
     d.appendChild(arch);
+    d.appendChild(detailToggle(d, line => {
+      const save = async (patch, msg) => {
+        const u = await sb.from('funds').update(patch).eq('id', f.id);
+        if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+        await loadContext(); stale.funds = true; renderSetFunds(box); toast(msg + ' 🐻');
+      };
+      line.appendChild(iconInput(f.icon || fundIcon(f.name), v => save({ icon: v }, f.name + ' · icon ' + v)));
+      const gs = [...new Set(funds.filter(x => x.country === f.country && x.group_name).map(x => x.group_name))];
+      const g = document.createElement('select'); g.className = 'descinput'; g.style.cssText = 'flex:1;min-width:120px;padding:6px 8px;font-size:12px'; g.setAttribute('aria-label', 'Group');
+      g.innerHTML = '<option value="">— no group —</option>' + gs.map(x => '<option' + (x === f.group_name ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '<option value="__newg__">+ new group…</option>';
+      g.onchange = () => {
+        if (g.value !== '__newg__') { save({ group_name: g.value }, f.name + ' → ' + (g.value || 'no group')); return; }
+        // a new group: typed inline, like everything else in Settings (no pop-ups)
+        const ni = document.createElement('input'); ni.className = 'descinput'; ni.placeholder = 'new group name'; ni.style.cssText = 'flex:1;min-width:120px;padding:6px 8px;font-size:12px';
+        const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'btn-mini'; ok.textContent = 'Save';
+        const go2 = () => { const v = ni.value.trim(); if (v) save({ group_name: v }, f.name + ' → ' + v); };
+        ok.onclick = go2; ni.onkeydown = ev => { if (ev.key === 'Enter') go2(); };
+        g.replaceWith(ni); ni.after(ok); ni.focus();
+      };
+      line.appendChild(g);
+      line.appendChild(upDown(async dir => { if (await moveRow('funds', funds, f, dir, (x, y) => x.country === y.country && (x.group_name || '') === (y.group_name || ''))) { await loadContext(); stale.funds = true; renderSetFunds(box); } }));
+      line.appendChild(capEl('order sets the list everywhere — and the first spending pot of a currency is its default'));
+    }));
     into.appendChild(d);
   };
   countries.forEach(cc => {
@@ -3161,6 +3247,13 @@ async function renderSetCards(box){
       trav.title = 'only offered on trip expenses';
       trav.onclick = async () => { if (await save({ travel_only: !c.travel_only })) { trav.classList.toggle('sel', c.travel_only); toast(c.name + (c.travel_only ? ' · trips only' : ' · offered everywhere') + ' 🐻'); } };
       cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel);
+      // whose card it is (a shared card belongs to nobody) and where it sits in the lists
+      const ownSel = document.createElement('select'); ownSel.className = 'descinput'; ownSel.style.cssText = 'width:110px;padding:6px 8px;font-size:12px'; ownSel.setAttribute('aria-label', 'Whose card');
+      ownSel.innerHTML = CTX.profiles.map(p => '<option value="' + p.id + '"' + (p.id === c.profile_id ? ' selected' : '') + '>' + esc(p.display_name) + '</option>').join('')
+        + '<option value=""' + (!c.profile_id ? ' selected' : '') + '>' + esc(jointLabel() || 'Shared') + '</option>';
+      ownSel.onchange = async () => { if (await save({ profile_id: ownSel.value || null })) { renderSetCards(box); toast(c.name + ' · ' + (ownSel.selectedOptions[0] || {}).textContent + '’s card 🐻'); } };
+      cfg.appendChild(ownSel);
+      cfg.appendChild(upDown(async dir => { if (await moveRow('payment_methods', cards, c, dir, (x, y) => (x.profile_id || null) === (y.profile_id || null) && !x.is_archived)) { await loadContext(); renderSetCards(box); } }));
       if (c.show_daily !== undefined) {
         // where this card is offered (Aizat, 15 Oct): Daily · Trip · From a fund
         const cl = document.createElement('div'); cl.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap';
@@ -3378,6 +3471,15 @@ async function renderSetCategories(box){
             toast(c.name + (c.is_active ? ' archived' : ' restored') + ' 🐻');
           };
           d.appendChild(arch);
+          d.appendChild(detailToggle(d, line => {
+            line.appendChild(iconInput(c.icon, async v => {
+              const u = await sb.from('categories').update({ icon: v }).eq('id', c.id);
+              if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+              await loadContext(); stale.budget = true; renderSetCategories(box); toast(c.name + ' · icon ' + v + ' 🐻');
+            }));
+            line.appendChild(upDown(async dir => { if (await moveRow('categories', cats, c, dir, (x, y) => x.kind === y.kind && x.group_name === y.group_name)) { await loadContext(); stale.budget = true; renderSetCategories(box); } }));
+            line.appendChild(capEl('order inside ' + c.group_name + ' · the picker follows it'));
+          }));
         }
         box.appendChild(d);
       });
@@ -5176,8 +5278,9 @@ async function deleteExpense(){
 // a real walk through every screen — it navigates the app, opens the add
 // sheet, and visits Settings. auto-runs once after onboarding; replayable
 // from Settings. copy stays tiny: one idea per stop.
-// isNew: changed or added since the last tour — "What's new" walks only these (TUT_VERSION bumps re-offer it once)
-const TUT_VERSION = '2';
+// isNew: the tour version a stop was added or changed in. "What's new" (Settings) walks every isNew stop; the automatic
+// one walks only the stops newer than the version this login last saw. Bump TUT_VERSION with each new batch.
+const TUT_VERSION = '3';
 const TUT_STEPS = [
   { scr:'scr-home', center:true, title:'The idea',
     text:'every month: plan the income, give spending a cap, move the rest into funds. what’s left over is truly free to spend.' },
@@ -5187,17 +5290,17 @@ const TUT_STEPS = [
     title:'At a glance', text:'spending and income this month — tap either card for the story.' },
   { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
     title:'Add', text:'everything starts here — tap + anytime.' },
-  { scr:'scr-home', pre: () => openSheet(), el: () => $('rowMode'), isNew:true,
+  { scr:'scr-home', pre: () => openSheet(), el: () => $('rowMode'), isNew:2,
     title:'Add anything', text:'Expense · Income · Transfer. Expense splits into Daily, From a fund and Trip; Transfer into Between funds, Money out and Pay a card.' },
   { scr:'scr-home', pre: () => openSheet(), el: () => $('descInput').closest('.f-sec') || $('descInput'),
     title:'The 5-second expense', text:'describe it, tap a category, type the amount, save.' },
-  { scr:'scr-home', pre: () => openSheet(), el: () => $('cardWrap'), isNew:true,
+  { scr:'scr-home', pre: () => openSheet(), el: () => $('cardWrap'), isNew:2,
     title:'Paid with', text:'each person’s default card comes first — and Daily and Trip can have different ones. “More cards…” has the rest; archived cards never show.' },
-  { scr:'scr-home', pre: () => { openSheet(); openForm('fundexp'); }, el: () => $('rowFundFrom'), isNew:true,
+  { scr:'scr-home', pre: () => { openSheet(); openForm('fundexp'); }, el: () => $('rowFundFrom'), isNew:2,
     title:'From a fund', text:'bought with a fund’s money — a car service, an insurance bill? Expense → From a fund. It counts against that fund, not the month’s budget.' },
-  { scr:'scr-home', pre: () => { openSheet(); openForm('paycard'); }, el: () => $('rowPayCard').style.display !== 'none' ? $('rowPayCard') : null, isNew:true,
+  { scr:'scr-home', pre: () => { openSheet(); openForm('paycard'); }, el: () => $('rowPayCard').style.display !== 'none' ? $('rowPayCard') : null, isNew:2,
     title:'Pay a card', text:'paying the card bill takes money out of the bank — not out of Available. The spending already counted the day it happened.' },
-  { scr:'scr-home', center:true, isNew:true, title:'Never twice',
+  { scr:'scr-home', center:true, isNew:2, title:'Never twice',
     text:'lost signal while saving? tap ✓ again — it says “already saved”, it never saves twice. And if the other phone changed the same row, you’re told instead of overwriting it.' },
   { scr:'scr-home', center:true, title:'Locks 🔒',
     text:'once a row is checked off against a card statement on the Desk (cash checks itself off) it locks: amount, date and card stay put, description and category don’t. Unlock it from the edit sheet or the list.' },
@@ -5205,16 +5308,18 @@ const TUT_STEPS = [
     title:'Budget', text:'plan the month, then watch spent vs planned.' },
   { scr:'scr-budget', el: () => $('budChart').closest('.card'),
     title:'Six months back', text:'bars are spending · the dashed line is your plan.' },
-  { scr:'scr-travel', el: () => document.querySelector('#scr-travel .iconbtn'), round:true, isNew:true,
+  { scr:'scr-travel', el: () => document.querySelector('#scr-travel .iconbtn'), round:true, isNew:2,
     title:'Travel', text:'each trip keeps its own spending and currencies. When it’s over, send it to the travel fund in one tap. Paid on a card in another currency? The card’s amount comes from the statement on the Desk.' },
-  { scr:'scr-funds', el: () => $('fundTotals'), isNew:true,
+  { scr:'scr-funds', el: () => $('fundTotals'), isNew:2,
     title:'Funds', text:'Available = what’s left to spend · on cards = charged, not paid yet · in the bank = what the bank shows. Paying a card moves the last two, never Available.' },
-  { scr:'scr-funds', el: () => $('planCard'), isNew:true,
+  { scr:'scr-funds', el: () => $('planCard'), isNew:2,
     title:'The monthly ritual', text:'income − budgets − fund top-ups = leftover. Apply it once a month — tap a line to skip it this month. Two phones can’t apply it twice.' },
-  { scr:'scr-settings', el: () => $('setRows').closest('.card'), isNew:true,
+  { scr:'scr-settings', el: () => $('setRows').closest('.card'), isNew:2,
     title:'Settings', text:'people, funds, income — and Payment cards (where each card shows: Daily · Trip · From a fund) and Default cards (whose card comes first).' },
-  { scr:'scr-settings', el: () => $('setDesk'), isNew:true,
-    title:'The Desk', text:'on a computer? the Desk checks statements, records card payments, and shows every fund in one place. Same login.' },
+  { scr:'scr-settings', el: () => [...document.querySelectorAll('#setRows .srow')].find(r => r.textContent.includes('Time zone')), isNew:3,
+    title:'The finer settings', text:'Time zone sets which day “today” is. Every fund, card and category has a ⋯ for its icon, group, owner and order.' },
+  { scr:'scr-settings', el: () => $('setDesk'), isNew:3,
+    title:'The Desk', text:'on a computer? the Desk opens on a dashboard — net worth per country and in total, spending against the plan, every fund’s trend — and has these same Settings. Same login.' },
   { scr:'scr-settings', el: () => [...document.querySelectorAll('#setRows .setrow')].find(r => r.textContent.includes('Export data')),
     title:'Your data is yours', text:'download everything as files, whenever you like.' },
   { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
@@ -5223,11 +5328,14 @@ const TUT_STEPS = [
 let tutIdx = -1, tutEls = null, tutTimer = null;
 let tutSteps = TUT_STEPS;
 // newsOnly: "What's new" — the stops added or changed since the last tour, framed by a hello and a goodbye
-function startTutorial(newsOnly){
+function startTutorial(news){
   if (tutEls) endTutorial(true);
-  tutSteps = newsOnly === true
-    ? [{ scr:'scr-home', center:true, title:'What’s new ✨', text:'a short walk through what changed — card rules, From a fund, paying cards, the Desk. Skip any time.' }]
-        .concat(TUT_STEPS.filter(x => x.isNew), [{ scr:'scr-home', center:true, title:'That’s everything new', text:'the full tour is in Settings → App tutorial whenever you want it 🐻' }])
+  // news: 'all' = every stop added since July (Settings → What's new) · 'unseen' = only what this login hasn't seen
+  const seen = Number(store.get('tut-v') || 1);
+  const picked = news ? TUT_STEPS.filter(x => x.isNew && (news === 'all' || x.isNew > seen)) : [];
+  tutSteps = news
+    ? [{ scr:'scr-home', center:true, title:'What’s new ✨', text:'a short walk through what changed. Skip any time.' }]
+        .concat(picked, [{ scr:'scr-home', center:true, title:'That’s everything new', text:'the full tour is in Settings → App tutorial whenever you want it 🐻' }])
     : TUT_STEPS;
   go('scr-home');
   const block = document.createElement('div'); block.className = 'tut-block';
