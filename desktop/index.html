@@ -124,7 +124,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <button class="nv active" data-scr="statements" onclick="go('statements')">📄 Statements</button>
     <button class="nv" data-scr="nocard" onclick="go('nocard')">🗂️ Transactions</button>
     <button class="nv" data-scr="swap" onclick="go('swap')">⇄ Pot swap</button>
-    <button class="nv" data-scr="pots" onclick="go('pots')">🌊 Pots</button>
+    <button class="nv" data-scr="pots" onclick="go('pots')">🍯 Pots</button>
     <button class="nv" data-scr="activity" onclick="go('activity')">🕓 Activity</button>
     <button class="nv" data-scr="sort" id="nvSort" onclick="go('sort')" style="display:none">🧹 Sort fund spending <span class="tag warn" id="nvSortN"></span></button>
     <div class="foot">
@@ -318,7 +318,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <!-- POTS -->
     <section class="screen" id="scr-pots">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
-        <div><p class="cap">Spending pots &amp; cards</p><h1 class="h1">Pots</h1></div>
+        <div><p class="cap">Every fund, pot &amp; card</p><h1 class="h1">Pots</h1></div>
         <p class="cap"><b>Available</b> = what's left to spend (every row the day it happens) · <b>Owed on cards</b> = charges not yet paid off · <b>In the bank</b> = Available + Owed · Cleared = reconciled rows only</p>
       </div>
       <div id="potCards" style="display:flex;flex-direction:column;gap:14px;margin-top:14px"><p class="cap">loading…</p></div>
@@ -1633,30 +1633,45 @@ async function loadPots(){
   if (m.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(m.error.message) + '</p>'; return; }
   const b = { data: (m.data || []).filter(f => f.is_active) };
   const cl = {}, ca = {}; b.data.forEach(r => { cl[r.fund_id] = r; ca[r.fund_id] = r; });
-  const pots = (b.data || []).filter(f => f.is_spend_pot);
-  if (!pots.length) { box.innerHTML = '<p class="cap">no spending pots marked — Settings → Funds in the app</p>'; return; }
-  const countries = [...new Set(pots.map(p => p.country))];
+  const funds = b.data || [];
+  if (!funds.length) { box.innerHTML = '<p class="cap">no funds yet — add them in the app (Settings → Funds)</p>'; return; }
+  const countries = [...new Set(funds.map(f => f.country))];
   const cards = (cb.error ? [] : cb.data || []).filter(x => Number(x.charges) || Number(x.payments) || Number(x.owed));
-  box.innerHTML = countries.map(cc => '<div class="card"><p class="h2" style="margin-bottom:10px">' + esc(countryTitle(cc)) + '</p>'
-    + '<table><thead><tr><th>Pot</th><th class="amt">Available</th><th class="amt">Owed on cards</th><th class="amt">In the bank</th><th class="amt">Cleared</th><th class="amt">Pending</th></tr></thead><tbody>'
-    + pots.filter(p => p.country === cc).map(p => { const x = cl[p.fund_id] || {}, y = ca[p.fund_id] || {}; const owed = y.owed_on_cards != null ? Number(y.owed_on_cards) : null; return '<tr>'
-      + '<td><span class="dsc">🌊 ' + esc(p.name) + '</span></td>'
+  // one row per fund: spending pots first (🍯), then every other fund in its group, in the app's order
+  const fundRow = p => { const x = cl[p.fund_id] || {}, y = ca[p.fund_id] || {}; const owed = y.owed_on_cards != null ? Number(y.owed_on_cards) : null;
+    const icon = p.is_spend_pot ? '🍯' : (p.icon ? esc(String(p.icon).slice(0, 16)) : '💰');
+    return '<tr>'
+      + '<td><span class="dsc">' + icon + ' ' + esc(p.name) + '</span>' + (p.is_leftover_target ? ' <span class="cap">· gets the leftover</span>' : '') + '</td>'
       + '<td class="amt lbl">' + fmtMoney(p.balance, p.currency) + '</td>'
-      + '<td class="amt" style="color:' + (owed > 0 ? 'var(--warn)' : owed < 0 ? 'var(--primary)' : 'var(--ink-soft)') + '"' + (owed < 0 ? ' title="this pot paid a card on behalf of other pots — move the money back with a transfer in the app"' : '') + '>' + (owed != null ? fmtMoney(owed, p.currency) : '—') + (owed < 0 ? ' <span class="tag blue">paid for others</span>' : '') + '</td>'
+      + '<td class="amt" style="color:' + (owed > 0 ? 'var(--warn)' : owed < 0 ? 'var(--primary)' : 'var(--ink-soft)') + '"' + (owed < 0 ? ' title="this fund paid a card on behalf of other funds, or holds a refund — move the money back with a transfer in the app if it was for another fund"' : '') + '>'
+      + (owed != null ? fmtMoney(owed, p.currency) : '—') + (owed < 0 ? ' <span class="tag blue">paid for others</span>' : '') + '</td>'
       + '<td class="amt lbl">' + (y.cash_balance != null ? fmtMoney(y.cash_balance, p.currency) : '—') + '</td>'
       + '<td class="amt" style="color:var(--primary)">' + (x.cleared_balance != null ? fmtMoney(x.cleared_balance, p.currency) : '—') + '</td>'
       + '<td class="amt" style="color:' + (Number(x.pending_spend) > 0 ? 'var(--warn)' : 'var(--ink-soft)') + '">' + (x.pending_spend != null ? fmtMoney(x.pending_spend, p.currency) : '—') + '</td>'
-      + '</tr>'; }).join('')
-    + '</tbody></table></div>').join('')
-    // any other fund with purchases on a card (a car service on the Visa against the Car Fund) gets the same three numbers
-    + (() => { const others = (b.data || []).filter(f => !f.is_spend_pot && ca[f.fund_id] && Math.abs(Number(ca[f.fund_id].owed_on_cards)) >= 0.005);
-        return others.length ? '<div class="card"><p class="h2" style="margin-bottom:4px">Other funds with money on cards</p><p class="cap" style="margin-bottom:10px">purchases entered as “from a fund” and not yet paid off — their legs are proposed when you record the card payment</p>'
-          + '<table><thead><tr><th>Fund</th><th class="amt">Available</th><th class="amt">Owed on cards</th><th class="amt">In the bank</th></tr></thead><tbody>'
-          + others.map(p => { const y = ca[p.fund_id]; const owed = Number(y.owed_on_cards); return '<tr><td><span class="dsc">💰 ' + esc(p.name) + '</span> <span class="cap">' + esc(countryTitle(p.country)) + '</span></td>'
-            + '<td class="amt lbl">' + fmtMoney(p.balance, p.currency) + '</td>'
-            + '<td class="amt" style="color:' + (owed > 0 ? 'var(--warn)' : 'var(--primary)') + '">' + (owed < 0 ? '−' + fmtMoney(-owed, p.currency) + ' <span class="tag blue" title="a refund or a payment larger than its purchases — a credit sitting on the card">credit</span>' : fmtMoney(owed, p.currency)) + '</td>'
-            + '<td class="amt lbl">' + fmtMoney(y.cash_balance, p.currency) + '</td></tr>'; }).join('')
-          + '</tbody></table></div>' : ''; })()
+      + '</tr>'; };
+  const groupHead = t => '<tr><td colspan="6" class="cap" style="padding-top:14px;letter-spacing:.05em;text-transform:uppercase">' + esc(t) + '</td></tr>';
+  const countryCard = cc => {
+    const here = funds.filter(f => f.country === cc);
+    const pots = here.filter(f => f.is_spend_pot), rest = here.filter(f => !f.is_spend_pot);
+    const groups = {}; rest.forEach(f => (groups[f.group_name || 'Other'] = groups[f.group_name || 'Other'] || []).push(f));
+    const order = Object.keys(groups).sort((a, c) => Math.min(...groups[a].map(f => f.sort_order)) - Math.min(...groups[c].map(f => f.sort_order)));
+    // a total per currency (a country's funds normally share one)
+    const curs = [...new Set(here.map(f => f.currency))];
+    const sum = (cur, k) => here.filter(f => f.currency === cur).reduce((t, f) => t + Number((ca[f.fund_id] || {})[k] || 0), 0);
+    const totals = curs.map(cur => '<tr style="border-top:1.5px solid var(--muted)"><td><b>All ' + esc(countryTitle(cc)) + ' funds</b>' + (curs.length > 1 ? ' <span class="cap">' + esc(cur) + '</span>' : '') + '</td>'
+      + '<td class="amt lbl"><b>' + fmtMoney(sum(cur, 'balance'), cur) + '</b></td>'
+      + '<td class="amt"><b>' + fmtMoney(sum(cur, 'owed_on_cards'), cur) + '</b></td>'
+      + '<td class="amt lbl"><b>' + fmtMoney(sum(cur, 'cash_balance'), cur) + '</b></td>'
+      + '<td class="amt" style="color:var(--primary)">' + fmtMoney(sum(cur, 'cleared_balance'), cur) + '</td>'
+      + '<td class="amt">' + fmtMoney(sum(cur, 'pending_spend'), cur) + '</td></tr>').join('');
+    return '<div class="card"><p class="h2" style="margin-bottom:10px">' + esc(countryTitle(cc)) + '</p>'
+      + '<table><thead><tr><th>Fund</th><th class="amt">Available</th><th class="amt">Owed on cards</th><th class="amt">In the bank</th><th class="amt">Cleared</th><th class="amt">Pending</th></tr></thead><tbody>'
+      + (pots.length ? groupHead('Spending pots') + pots.map(fundRow).join('') : '')
+      + order.map(g => groupHead(g) + groups[g].map(fundRow).join('')).join('')
+      + totals
+      + '</tbody></table></div>';
+  };
+  box.innerHTML = countries.map(countryCard).join('')
     + (cards.length ? '<div class="card"><p class="h2" style="margin-bottom:4px">Credit cards</p><p class="cap" style="margin-bottom:10px">charges since ' + (CTX.hh.pot_start ? fmtD(CTX.hh.pot_start) : 'the start') + ' minus the payments recorded · record payments on the Statements page when you close a statement</p>'
       + '<table><thead><tr><th>Card</th><th class="amt">Charged</th><th class="amt">Paid</th><th class="amt">Owed</th><th style="width:140px">Last payment</th><th style="width:120px"></th></tr></thead><tbody>'
       + cards.map(x => '<tr><td><span class="dsc">💳 ' + esc(x.name) + '</span></td>'
