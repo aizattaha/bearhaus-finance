@@ -41,6 +41,7 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .btn{font-family:inherit;font-size:15px;font-weight:500;border:none;border-radius:999px;height:48px;padding:0 28px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1)}
 .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-hover)}
 .btn-primary:disabled{opacity:.55;cursor:default}
+.btn-soft{background:var(--accent-soft);color:var(--primary)}
 .btn-tert{background:none;border:none;color:var(--primary);font-size:13px;font-weight:500;cursor:pointer;padding:4px 8px;border-radius:999px;font-family:inherit}
 .rowicon{width:40px;height:40px;border-radius:12px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .iconbtn{width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--primary);border:none;font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer}
@@ -293,6 +294,18 @@ html.embed-settings #app{max-width:600px}
 .toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,16px);background:var(--ink);color:#fff;font-size:13px;font-weight:500;line-height:18px;border-radius:999px;padding:10px 20px;opacity:0;transition:all .25s;z-index:30;pointer-events:none;white-space:nowrap;max-width:88%;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 .toast.show{pointer-events:auto}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.err{white-space:normal;border-radius:16px;text-align:left;width:max-content;max-width:min(88%,440px)}
+/* the confirm strip (Review Board CX-01): a warning or a refusal in full, just above the keypad — never a cut-off
+   pop-up over it. A warning asks "Save anyway / Change"; ✓ alone never steps past it. */
+#askStrip{flex:0 0 auto;display:none;margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#FFF4DE;border:1px solid #EBCB8B;color:var(--ink);font-size:13px;line-height:19px}
+#askStrip.on{display:block}
+#askStrip.err{background:#FDECEC;border-color:var(--bad-bar)}
+#askStrip.info{background:#fff;border-color:var(--accent)}
+#askStrip .askbtns{display:flex;gap:8px;margin-top:8px}
+#askStrip .askbtns .btn{height:38px;font-size:13px;padding:0 14px;flex:1}
+#askStrip.pulse{animation:askp .45s}
+@keyframes askp{0%,100%{transform:none}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.sent-locked .amount-line,.sent-locked #cardWrap,.sent-locked #keypad button:not(#saveBtn){opacity:.45}
 .spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:99px;animation:sp .7s linear infinite;vertical-align:-3px}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -635,6 +648,7 @@ input[type="date"].descinput{min-width:0}
       </div>
       <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px;flex:0 0 auto" onclick="deleteExpense()">Delete</button>
     </div>
+    <div id="askStrip" role="alert" aria-live="assertive"><p id="askText"></p><div class="askbtns"><button type="button" class="btn btn-soft" id="askBack" onclick="askChange()">Change</button><button type="button" class="btn btn-primary" id="askGo" onclick="askSaveAnyway()">Save anyway</button></div></div>
     <div id="dock">
       <div class="dockpane on" id="dock-pad"><div class="keypad" id="keypad"></div></div>
       <div class="dockpane" id="dock-pick">
@@ -698,11 +712,13 @@ const VIEW_ONLY_MSG = 'this login is view-only — you can see everything, chang
 function toast(msg){
   const t = $('toastEl');
   if (/row-level security|view-only|42501/i.test(String(msg))) msg = 'couldn’t save: ' + VIEW_ONLY_MSG;
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer);
-  // errors hang around until read (or tapped away); successes stay brisk (UX-8)
   const isErr = /^couldn’t|failed|didn’t match/i.test(msg);
-  toastTimer = setTimeout(() => t.classList.remove('show'), isErr ? 8000 : 2600);
+  // a refusal while the add / edit form is open reads in full in the strip above the keypad (CX-01)
+  if (isErr && formOpen()) { showAsk(msg.replace(/^couldn’t (save|refund|delete|unlock|update): /, ''), 'err'); return; }
+  t.textContent = msg; t.classList.add('show'); t.classList.toggle('err', isErr || msg.length > 56);   // a long one wraps
+  clearTimeout(toastTimer);
+  // errors hang around until read (or tapped away) and wrap, never cut off; successes stay brisk (UX-8, CX-01)
+  toastTimer = setTimeout(() => t.classList.remove('show'), isErr ? Math.max(8000, msg.length * 70) : 2600);
   t.onclick = () => { clearTimeout(toastTimer); t.classList.remove('show'); };
 }
 // double-tap shield for one-shot buttons (QA-14)
@@ -2500,7 +2516,7 @@ async function loadAllTx(reset){
     }
     if (src.includes('t') && !atx.tDone) {
       qt = sb.from('travel_expenses')
-        .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rc() + ', travel_expense_splits(profile_id, amount)')
+        .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount' + rc() + ', travel_expense_splits(profile_id, amount)')
         .eq('household_id', CTX.hh.id)
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.tOff, atx.tOff + ATX_PAGE - 1);
@@ -3232,6 +3248,9 @@ async function renderSetCards(box){
   const r = await sb.from('payment_methods').select('id, name, profile_id, travel_only, is_archived, sort_order, kind, closing_day, currency, show_daily, show_trip, show_fund').order('sort_order');
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const cards = r.data || [];
+  // a card with purchases, payments or statements keeps its type and currency (the database refuses — A4)
+  const iu = await sb.rpc('cards_in_use');
+  const inUse = new Set(iu.error ? [] : (iu.data || []).map(x => typeof x === 'string' ? x : Object.values(x)[0]));
   const KINDS = [['credit_card', 'credit card'], ['debit_card', 'debit card'], ['bank', 'bank account'], ['prepaid', 'prepaid / wallet'], ['cash', 'cash']];
   const hasKind = cards.some(c => c.kind !== undefined);
   box.innerHTML = '';
@@ -3277,7 +3296,15 @@ async function renderSetCards(box){
       const trav = document.createElement('button'); trav.type = 'button'; trav.className = 'chip' + (c.travel_only ? ' sel' : ''); trav.style.cssText = 'font-size:11px;padding:4px 8px'; trav.textContent = '✈️ travel only';
       trav.title = 'only offered on trip expenses';
       trav.onclick = async () => { if (await save({ travel_only: !c.travel_only })) { trav.classList.toggle('sel', c.travel_only); toast(c.name + (c.travel_only ? ' · trips only' : ' · offered everywhere') + ' 🐻'); } };
+      if (inUse.has(c.id)) {
+        [kindSel, curSel].forEach(el => { el.disabled = true; el.style.opacity = '.55'; el.title = 'this card already has purchases — its type and currency stay as they are'; });
+      }
       cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel);
+      if (inUse.has(c.id)) {
+        const n = document.createElement('p'); n.className = 'cap'; n.style.cssText = 'flex-basis:100%;margin:0';
+        n.textContent = 'type and currency are fixed now it has history — a different card? add it as a new card and archive this one';
+        cfg.appendChild(n);
+      }
       // whose card it is (a shared card belongs to nobody) and where it sits in the lists
       const ownSel = document.createElement('select'); ownSel.className = 'descinput'; ownSel.style.cssText = 'width:110px;padding:6px 8px;font-size:12px'; ownSel.setAttribute('aria-label', 'Whose card');
       ownSel.innerHTML = CTX.profiles.map(p => '<option value="' + p.id + '"' + (p.id === c.profile_id ? ' selected' : '') + '>' + esc(p.display_name) + '</option>').join('')
@@ -3713,7 +3740,7 @@ async function loadTripRows(id){
   const out = [];
   for (let from = 0;; from += 1000) {
     const { data, error } = await sb.from('travel_expenses')
-      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rc() + ', travel_expense_splits(profile_id, amount)')
+      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount' + rc() + ', travel_expense_splits(profile_id, amount)')
       .eq('trip_id', id).order('date', {ascending: false}).order('id').range(from, from + 999);
     if (error) throw error;
     out.push(...(data || []));
@@ -4210,7 +4237,7 @@ let pendOp = null, pendVal = null;   // calculator: pendVal ⟨pendOp⟩ amt, ev
 async function openEmbedEdit(){
   const id = EMBED.id, k = EMBED.rowKind;
   const r = k === 'travel'
-    ? await sb.from('travel_expenses').select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rc() + ', travel_expense_splits(profile_id, amount)').eq('id', id).maybeSingle()
+    ? await sb.from('travel_expenses').select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount' + rc() + ', travel_expense_splits(profile_id, amount)').eq('id', id).maybeSingle()
     : k === 'fund'
       ? await sb.from('fund_transactions').select('id, date, type, amount, remarks, origin, income_source, fund_id' + rc(true) + ', funds(name, currency)').eq('id', id).maybeSingle()
       : await sb.from('daily_expenses').select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)').eq('id', id).maybeSingle();
@@ -4267,6 +4294,7 @@ function backdropTap(){
 }
 function closeSheet(){
   embedSay({ type: 'close' });
+  hideAsk();
   if ($('refundBtn')) { $('refundBtn').style.display = 'none'; $('refundPanel').style.display = 'none'; $('dock').style.display = ''; }
   $('backdrop').classList.remove('open');
   $('sheet').classList.remove('open');
@@ -4419,7 +4447,7 @@ function dockPaneOn(){ return ['pad', 'pick', 'date'].some(x => $('dock-' + x).c
 // ── dock calendar (no system date wheel) ──
 let calMonth = null;   // 'YYYY-MM'
 function openDatePick(){
-  if (moneyLocked()) { toast(MONEY_LOCKED_MSG); return; }
+  if (moneyLocked()) { showAsk(MONEY_LOCKED_MSG, 'info'); return; }
   blurInputs();
   calMonth = ($('dateInput').value || isoDate(new Date())).slice(0, 7);
   renderCal(); dockShow('date');
@@ -4465,6 +4493,7 @@ function renderCardRow(){
     + '<span class="chev">›</span>';
 }
 function openCardPicker(){
+  if (sentLocked()) { showAsk(SENT_LOCKED_MSG, 'info'); return; }
   const cur = $('cardSel').value;
   const items = [...$('cardSel').options].map(o => ({
     id: o.value, name: o.value === '' ? 'no card' : o.textContent,
@@ -4564,7 +4593,7 @@ function renderFundRow(which){
     + '<span class="chev">›</span>';
 }
 function openFundPicker(which){
-  if (moneyLocked()) { toast(MONEY_LOCKED_MSG); return; }
+  if (moneyLocked()) { showAsk(MONEY_LOCKED_MSG, 'info'); return; }
   const selId = which === 'from' ? fundFromId : fundToId;
   let items = fundPickerItems(selId);
   if (mode === 'editDaily') {
@@ -4706,13 +4735,13 @@ function refreshTripCurrencies(){
 window.addEventListener('unhandledrejection', e => { if (e.reason && /^(access removed|session invalid)$/.test(e.reason.message || '')) e.preventDefault(); });
 let scopeSwitch = false;   // set by the scope segment just before it re-opens the form
 function openForm(m){
-  $('sh-form').classList.remove('money-locked');
+  $('sh-form').classList.remove('money-locked', 'sent-locked');
   // switching scope inside the same tab (Daily → From a fund → Trip) keeps what was already typed (QA2 B)
   const tabOf0 = x => x === 'income' ? x : (x === 'transfer' || x === 'paycard' || x === 'fund') ? 'transfer' : /^edit/.test(x) ? 'edit' : 'expense';
   const keep = (scopeSwitch && m !== mode && tabOf0(m) === tabOf0(mode) && tabOf0(m) !== 'edit')
     ? { amt, desc: $('descInput').value, comments: $('commentsInput').value, date: $('dateInput').value, payer: segSel('segPayer'), refund: isRefund, cat: selectedCat } : null;
   scopeSwitch = false;
-  mode = m; amt = keep ? keep.amt : ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; armSaveKey();
+  mode = m; amt = keep ? keep.amt : ''; pendOp = null; pendVal = null; renderAmt(); saving = false; overdrawOk = false; curMismatchOk = false; bigOk = false; hideAsk(); armSaveKey();
   editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none'; $('lockNote').style.display = 'none';
   saveId = null;
   $('descInput').value = keep ? keep.desc : ''; $('commentsInput').value = keep ? keep.comments : ''; setRefund(!!(keep && keep.refund));
@@ -4863,8 +4892,12 @@ function armSaveKey(){ const k = $('saveBtn'); if (k) k.innerHTML = '✓'; }
 const isGroupedFundRow = tx => !!(tx && (tx.transfer_group_id || tx.kind === 'card_payment' || /^Transfer [→←]/.test(tx.remarks || '')));
 const moneyLocked = () => mode === 'editFund' && isGroupedFundRow(editingExp);
 const MONEY_LOCKED_MSG = 'the amount, date and fund are shared with the other side — delete both sides and enter it again to change them';
+// a trip purchase sent to a travel fund keeps its amount, card and currency until the send is undone (E33)
+const sentLocked = () => mode === 'edit' && !!(editingExp && editingExp.settlement_tx_id);
+const SENT_LOCKED_MSG = 'this purchase was sent to a travel fund — undo that send on the trip first to change its amount, card or currency';
 function keyTap(k){
-  if (k !== '✓' && moneyLocked()) { toast(MONEY_LOCKED_MSG); return; }
+  if (k !== '✓' && moneyLocked()) { showAsk(MONEY_LOCKED_MSG, 'info'); return; }
+  if (k !== '✓' && sentLocked()) { showAsk(SENT_LOCKED_MSG, 'info'); return; }
   if (k === '✓') {
     if (pendOp !== null) { calcEval(); renderAmt(); return; }   // ✓ acts as “=” first…
     saveEntry(); return;                                        // …then saves
@@ -4919,13 +4952,43 @@ function buildSplits(payerName, cost){
   return p ? [{ profile_id: p.id, amount: cost }, joint] : [joint];
 }
 
-async function saveEntry(){
+// ── the confirm strip (Review Board CX-01) ──
+// A soft warning (a fund going below zero, a card in another currency, income the plan already counts, a very large
+// amount) and every refusal show here in full, above the keypad. A warning holds until "Save anyway" (the form as it
+// was then) or "Change"; editing the form checks it afresh. ✓ alone never steps past a warning.
+let askSig = null;
+const formOpen = () => $('sheet').classList.contains('open') && $('sh-form').style.display !== 'none';
+function formSig(){
+  return JSON.stringify([mode, amt, $('dateInput').value, segSel('segCurrency'), (pickedCard() || {}).id || null,
+                         fundFromId, fundToId, payCardId, selectedTripId, $('descInput').value.trim().toLowerCase()]);
+}
+function showAsk(msg, kind){
+  const s = $('askStrip');
+  $('askText').textContent = kind === 'err' ? 'Not saved — ' + msg : msg;
+  $('askGo').style.display = kind === 'warn' ? '' : 'none';   // 'err' = not saved; 'info' = how this row works
+  $('askBack').textContent = kind === 'warn' ? 'Change' : 'OK';
+  s.className = 'on ' + kind;
+  const a = document.querySelector('#sh-form .amount-line');   // the strip takes room from the form: keep the amount in sight
+  if (a && a.offsetParent) a.scrollIntoView({ block: 'nearest' });
+  if (kind === 'warn' && navigator.vibrate) navigator.vibrate([10, 40, 10]);
+}
+function hideAsk(){ $('askStrip').className = ''; askSig = null; }
+function askWarn(msg){ saving = false; armSaveKey(); askSig = formSig(); showAsk(msg, 'warn'); }
+function askChange(){ overdrawOk = false; curMismatchOk = false; bigOk = false; hideAsk(); }
+function askSaveAnyway(){ saveEntry(true); }
+
+async function saveEntry(confirmed){
   if (saving) return;
+  if (askSig) {
+    if (askSig !== formSig()) { overdrawOk = false; curMismatchOk = false; bigOk = false; }   // the form changed: check again
+    else if (confirmed !== true) { const s = $('askStrip'); s.classList.remove('pulse'); void s.offsetWidth; s.classList.add('pulse'); return; }
+  }
+  hideAsk();
   const cost = parseFloat(amt);
-  if (!(cost > 0)) { toast('enter an amount first'); return; }
+  if (!(cost > 0)) { showAsk('enter an amount first', 'err'); return; }
   const desc = $('descInput').value.trim();
   if (mode !== 'fund' && mode !== 'transfer' && mode !== 'paycard' && mode !== 'editFund' && !desc) {
-    toast(mode === 'income' ? 'name the source — e.g. Salary' : 'add a description — the shop or what it was'); return;
+    showAsk(mode === 'income' ? 'name the source — e.g. Salary' : 'add a description — the shop or what it was', 'err'); return;
   }
   if (!CTX.hh) { toast('still connecting — try again in a second'); await loadContext(); return; }
 
@@ -4936,7 +4999,7 @@ async function saveEntry(){
   // after a save: the screen showing now refreshes (one call); the others refetch when next opened (v2 sprint 3)
   const done = (ok, msg) => {
     if (ok) { embedSay({ type: 'saved', msg }); closeSheet(); toast(msg); refreshAfterSave(); }
-    else { saving = false; armSaveKey(); toast('couldn’t save: ' + msg); } };
+    else { saving = false; armSaveKey(); showAsk(/row-level security|view-only|42501/i.test(String(msg)) ? VIEW_ONLY_MSG : msg, 'err'); } };
 
   const date = $('dateInput').value || isoDate(new Date());
   try {
@@ -4949,7 +5012,7 @@ async function saveEntry(){
         const b0 = bal.data ? Number(bal.data.balance) : null;
         if (b0 !== null && b0 >= 0 && b0 - cost < -0.005) {
           overdrawOk = true;
-          done(false, 'this takes ' + bal.data.name + ' to −' + fmtMoney(Math.abs(b0 - cost), bal.data.currency) + ' — tap ✓ again to continue');
+          askWarn('This takes ' + bal.data.name + ' to −' + fmtMoney(Math.abs(b0 - cost), bal.data.currency) + '. Save anyway, or change the amount or the fund.');
           return;
         }
       }
@@ -4973,7 +5036,7 @@ async function saveEntry(){
         const planned = await sb.from('income_budgets').select('source_name, amount').eq('month', curMonthIso()).ilike('source_name', desc);
         if (!planned.error && planned.data && planned.data.length) {
           overdrawOk = true;
-          done(false, '“' + desc + '” is already counted through this month’s plan — logging it again double counts. Tap ✓ again if it’s extra money.');
+          askWarn('“' + desc + '” is already counted through this month’s plan — logging it again counts it twice. Save anyway only if this is extra money.');
           return;
         }
       }
@@ -5000,7 +5063,7 @@ async function saveEntry(){
         const b0 = bal.data ? Number(bal.data.balance) : null;
         if (b0 !== null && b0 >= 0 && b0 - cost < -0.005) {
           overdrawOk = true;
-          done(false, 'this takes ' + from.name + ' to −' + fmtMoney(Math.abs(b0 - cost), from.currency) + ' — tap ✓ again to continue');
+          askWarn('This takes ' + from.name + ' to −' + fmtMoney(Math.abs(b0 - cost), from.currency) + '. Save anyway, or change the amount or the fund.');
           return;
         }
       }
@@ -5021,10 +5084,12 @@ async function saveEntry(){
         const cash = fc.data ? Number(fc.data.cash_balance) : null;
         if (cash !== null && cash >= 0 && cash - cost < -0.005) {
           overdrawOk = true;
-          done(false, from.name + ' only has ' + fmtMoney(cash, from.currency) + ' in the bank — this takes it to −' + fmtMoney(Math.abs(cash - cost), from.currency) + '. Tap ✓ again to record it anyway'); return;
+          askWarn(from.name + ' only has ' + fmtMoney(cash, from.currency) + ' in the bank — this payment takes it to −' + fmtMoney(Math.abs(cash - cost), from.currency) + '. Save anyway, or pay from another fund.'); return;
         }
       }
-      const { error } = await sb.rpc('record_card_payment', { p_card: c.id, p_date: date, p_legs: [{ fund_id: from.id, amount: cost }], p_remarks: desc || null });
+      // under the form's id: a retap after a lost reply is the same payment (A5); the server links it to the card's
+      // oldest unpaid statement (A3)
+      const { error } = await sb.rpc('record_card_payment', { p_card: c.id, p_date: date, p_legs: [{ fund_id: from.id, amount: cost }], p_remarks: desc || null, p_id: saveId });
       if (error) throw error;
       store.set('paycard', c.id); store.set('paycard-fund', from.id);
       delete payCardOwed[c.id];
@@ -5074,8 +5139,8 @@ async function saveEntry(){
     if ((mode === 'daily' || mode === 'fundexp') && !curMismatchOk) {
       const cardRow = (CTX.cards || []).find(c => c.id === card.id);
       if (cardRow && cardRow.currency && cardRow.currency !== currency) {
-        curMismatchOk = true; setTimeout(() => { curMismatchOk = false; }, 8000);
-        done(false, cardRow.name + ' is a ' + curLabel(cardRow.currency) + ' card — enter the ' + curLabel(cardRow.currency) + ' amount from the statement so it can reconcile, or tap ✓ again to keep ' + curLabel(currency));
+        curMismatchOk = true;
+        askWarn(cardRow.name + ' is a ' + curLabel(cardRow.currency) + ' card — change the amount to the ' + curLabel(cardRow.currency) + ' the statement shows, so it can be checked off. Or save anyway in ' + curLabel(currency) + '.');
         return;
       }
     }
@@ -5084,8 +5149,8 @@ async function saveEntry(){
     if (!bigOk && (mode === 'daily' || mode === 'trip' || mode === 'fundexp' || mode === 'editDaily' || mode === 'edit')) {
       const far = Math.abs((new Date(date + 'T00:00:00') - new Date(todayIso() + 'T00:00:00')) / 864e5) > 365;
       if (cost >= 100000 || far) {
-        bigOk = true; setTimeout(() => { bigOk = false; }, 8000);
-        done(false, (cost >= 100000 ? fmtMoney(cost, currency) + ' is a lot' : fmtDayMonYr(date) + ' is more than a year from today') + ' — tap ✓ again if that’s right');
+        bigOk = true;
+        askWarn((cost >= 100000 ? fmtMoney(cost, currency) + ' is a lot' : fmtDayMonYr(date) + ' is more than a year from today') + ' — is that right? Save anyway, or change it.');
         return;
       }
     }
@@ -5143,7 +5208,7 @@ function payerFromSplits(exp){
   return p ? p.display_name : (jointLabel() || 'Joint');
 }
 function openEditExpense(exp){
-  mode = 'edit'; editingExp = exp; saving = false;
+  mode = 'edit'; editingExp = exp; saving = false; overdrawOk = false; curMismatchOk = false; bigOk = false; hideAsk(); saveId = null;
   $('sh-form').classList.remove('money-locked');
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
@@ -5197,7 +5262,7 @@ function openEditExpense(exp){
 }
 // ── edit / delete a daily expense ────────────
 function openEditDaily(exp){
-  mode = 'editDaily'; editingExp = exp; saving = false;
+  mode = 'editDaily'; editingExp = exp; saving = false; overdrawOk = false; curMismatchOk = false; bigOk = false; hideAsk(); saveId = null;
   $('sh-form').classList.remove('money-locked');
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
@@ -5255,7 +5320,7 @@ function openEditDaily(exp){
 
 // ── edit / delete a fund transaction ─────────
 function openEditFund(tx){
-  mode = 'editFund'; editingExp = tx; saving = false;
+  mode = 'editFund'; editingExp = tx; saving = false; overdrawOk = false; curMismatchOk = false; bigOk = false; hideAsk(); saveId = null;
   const n = Number(tx.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
@@ -5301,8 +5366,8 @@ function openEditFund(tx){
   $('sh-newtrip').style.display = 'none'; $('sh-plan').style.display = 'none'; $('sh-income').style.display = 'none';
   $('sh-form').style.display = 'flex';
   $('backdrop').classList.add('open'); $('sheet').classList.add('open');
-  if (tx.origin === 'planned') toast('written by Review & apply — edits change this record, not the plan');
-  else if (tx.kind === 'card_payment') toast('a card payment — it never touches Available. Delete removes the whole payment (every fund it was split over)');
+  if (tx.origin === 'planned') showAsk('written by Review & apply — edits change this record, not the plan', 'info');
+  else if (tx.kind === 'card_payment') showAsk('a card payment — it never touches Available. Delete removes the whole payment (every fund it was split over)', 'info');
   else if (isGroupedFundRow(tx)) {
     $('lockNote').style.display = 'block'; $('lockUnlockBtn').style.display = 'none';
     $('lockNoteText').textContent = '↔ one side of a transfer. The amount, date and fund are shared with the other side, so only the note can change here — Delete removes BOTH sides (the other fund goes back up too). To change the amount, delete and redo the transfer.';
@@ -5310,15 +5375,40 @@ function openEditFund(tx){
   }
 }
 
-// a reconciled row: notice on top, no Delete (the database refuses anyway — this just says so first)
+// what can't change on this row, said on top before any editing (CX-01 / UX-16): a reconciled row, a trip purchase
+// sent to a travel fund, a purchase with refunds. The database refuses the same things — this says so first, and
+// takes Delete away where the database would refuse it.
 function applyLockState(exp){
   const locked = !!(exp && exp.reconciled_at);
-  $('lockNote').style.display = locked ? 'block' : 'none'; $('lockUnlockBtn').style.display = '';
+  const sent = !!(exp && exp.settlement_tx_id) && mode === 'edit';
+  const refunded = !!(exp && !exp.refund_of && refundedPart(exp) > 0) && (mode === 'edit' || mode === 'editDaily');
+  $('sh-form').classList.toggle('sent-locked', sent);
+  const lines = []; let canDelete = true;
   if (locked) {
-    $('deleteBtn').style.display = (exp.reconciled_by === 'auto' && !exp.reconciled_statement_id) ? 'block' : 'none';
-    $('lockNoteText').textContent = exp.reconciled_by === 'auto' && !exp.reconciled_statement_id
+    const auto = exp.reconciled_by === 'auto' && !exp.reconciled_statement_id;
+    if (!auto) canDelete = false;
+    lines.push(auto
       ? '🔒 cash rows check themselves off, so this one is locked. Description, category, comments' + (mode === 'editDaily' ? ', counts-against' : '') + ' can still change — unlock it to change the amount, date, card or payer.'
-      : '🔒 this row is locked — it’s been checked off against a statement. Description, category, comments' + (mode === 'editDaily' ? ' and counts-against' : '') + ' can still change.';
+      : '🔒 this row is locked — it’s been checked off against a statement. Description, category, comments' + (mode === 'editDaily' ? ' and counts-against' : '') + ' can still change.');
+  }
+  if (sent) {
+    canDelete = false;
+    lines.push('✈️ sent to a travel fund — the amount, card, currency and trip stay as they were sent. To change them, or to delete this, undo the send on the trip first. The words, category and date can still change.');
+  }
+  if (refunded) {
+    canDelete = false;
+    lines.push('↩ ' + fmtMoney(refundedPart(exp), exp.currency) + ' of this has come back as refunds — the amount can’t go below that. To delete it, or change its currency' + (mode === 'edit' ? ' or trip' : '') + ', delete its refunds first.');
+  }
+  $('lockNote').style.display = lines.length ? 'block' : 'none';
+  $('lockUnlockBtn').style.display = locked ? '' : 'none';
+  $('lockNoteText').textContent = lines.join(' ');
+  if (!canDelete) $('deleteBtn').style.display = 'none';
+  if (sent) {   // name the fund and the day it was sent
+    sb.from('fund_transactions').select('date, funds(name)').eq('id', exp.settlement_tx_id).maybeSingle().then(r => {
+      if (!r.data || editingExp !== exp) return;
+      lines[locked ? 1 : 0] = '✈️ sent to ' + ((r.data.funds || {}).name || 'a travel fund') + ' on ' + fmtDayMonYr(r.data.date) + ' — the amount, card, currency and trip stay as they were sent. To change them, or to delete this, undo the send on the trip first. The words, category and date can still change.';
+      $('lockNoteText').textContent = lines.join(' ');
+    });
   }
 }
 // un-reconcile the row being edited, right here in the sheet (QA round 1, A-B2)
@@ -5328,14 +5418,14 @@ async function unlockEditing(){
   const { error } = await sb.rpc('unreconcile_rows', { p_kind: pk, p_ids: [editingExp.id] });
   if (error) { toast('couldn’t unlock: ' + error.message); return; }
   editingExp.reconciled_at = null; editingExp.reconciled_by = null; editingExp.reconciled_statement_id = null;
-  $('lockNote').style.display = 'none'; $('deleteBtn').style.display = 'inline-block';
+  $('deleteBtn').style.display = 'block'; applyLockState(editingExp);   // a sent or refunded row keeps its other notes
   toast('unlocked 🔓 — edit away; it can be checked off again from All transactions');
   if (atx) loadAllTx(true);
 }
 // ── refund against this purchase (17 Oct 2026) ──
 // all of it or a part; back on the card it was paid with, or as a transfer / cash into the fund it counted against
 // (the card still owes the full charge until it is paid). The server works out where it counts (refund_purchases).
-let rfVia = 'card';
+let rfVia = 'card', rfId = null;   // rfId: the refund's id for this panel — a retap after a lost reply saves once (A5)
 function setupRefundUI(exp){
   const linked = !!(exp && exp.refund_of);
   $('refundPanel').style.display = 'none';
@@ -5354,6 +5444,7 @@ function openRefundPanel(){
   const card = CTX.cards.find(c => c.id === exp.payment_method_id), onCard = !!exp.payment_method_id && (card ? card.kind !== 'cash' : true);
   const cardName = card ? card.name : (exp.paid_with || 'the card');
   rfVia = onCard ? 'card' : 'cash';
+  rfId = crypto.randomUUID ? crypto.randomUUID() : null;
   $('rfTitle').textContent = 'Refund “' + (exp.description || 'this purchase') + '”';
   $('rfCap').textContent = 'all of it or a part — up to ' + fmtMoney(left, exp.currency) + '. The purchase keeps its full amount (it still matches the statement); only what was used counts, in its own month.';
   $('rfAmount').value = left.toFixed(2);
@@ -5376,7 +5467,7 @@ async function saveRefund(){
   if (!guard($('rfSave'))) return;
   saving = true;
   const { error } = await sb.rpc('refund_purchases', { p_items: [{ id: exp.id, amount: v }], p_date: $('rfDate').value || isoDate(new Date()),
-                                                      p_via: rfVia, p_note: $('rfNote').value.trim() || null });
+                                                      p_via: rfVia, p_note: $('rfNote').value.trim() || null, p_id: rfId });
   saving = false;
   if (error) { toast('couldn’t refund: ' + error.message); return; }
   const msg = fmtMoney(v, exp.currency) + ' refunded' + (rfVia === 'card' ? ' on the card' : ' — into its fund');
@@ -5412,7 +5503,7 @@ async function deleteExpense(){
 // from Settings. copy stays tiny: one idea per stop.
 // isNew: the tour version a stop was added or changed in. "What's new" (Settings) walks every isNew stop; the automatic
 // one walks only the stops newer than the version this login last saw. Bump TUT_VERSION with each new batch.
-const TUT_VERSION = '4';
+const TUT_VERSION = '5';
 const TUT_STEPS = [
   { scr:'scr-home', center:true, title:'The idea',
     text:'every month: plan the income, give spending a cap, move the rest into funds. what’s left over is truly free to spend.' },
@@ -5432,10 +5523,12 @@ const TUT_STEPS = [
     title:'From a fund', text:'bought with a fund’s money — a car service, an insurance bill? Expense → From a fund. It counts against that fund, not the month’s budget.' },
   { scr:'scr-home', pre: () => { openSheet(); openForm('paycard'); }, el: () => $('rowPayCard').style.display !== 'none' ? $('rowPayCard') : null, isNew:2,
     title:'Pay a card', text:'paying the card bill takes money out of the bank — not out of Available. The spending already counted the day it happened.' },
-  { scr:'scr-home', center:true, isNew:2, title:'Never twice',
-    text:'lost signal while saving? tap ✓ again — it says “already saved”, it never saves twice. And if the other phone changed the same row, you’re told instead of overwriting it.' },
-  { scr:'scr-home', center:true, title:'Locks 🔒',
-    text:'once a row is checked off against a card statement on the Desk (cash checks itself off) it locks: amount, date and card stay put, description and category don’t. Unlock it from the edit sheet or the list.' },
+  { scr:'scr-home', pre: () => { openSheet(); showAsk('This takes Holidays to −$40.00. Save anyway, or change the amount or the fund.', 'warn'); }, el: () => $('askStrip'), isNew:5, title:'Warnings you can read',
+    text:'when something looks off — a fund going below zero, a card in another currency, a very big amount — it shows here in full, above the keypad. Nothing saves until you pick Save anyway or Change. If the app refuses something, this says why.' },
+  { scr:'scr-home', center:true, isNew:5, title:'Never twice',
+    text:'lost signal while saving? tap ✓ again — it says “already saved”, it never saves twice. That now holds for card payments and refunds too. And if the other phone changed the same row, you’re told instead of overwriting it.' },
+  { scr:'scr-home', center:true, isNew:5, title:'Locks 🔒',
+    text:'once a row is checked off against a card statement on the Desk (cash checks itself off) it locks: amount, date and card stay put, description and category don’t. A trip purchase already sent to a travel fund, or a purchase with refunds, says so at the top of its edit sheet before you change anything.' },
   { scr:'scr-budget', el: () => $('budTotalMain').closest('.total-card'),
     title:'Budget', text:'plan the month, then watch spent vs planned.' },
   { scr:'scr-budget', el: () => $('budChart').closest('.card'),

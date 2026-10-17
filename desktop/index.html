@@ -248,7 +248,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <button class="btn btn-soft" style="height:34px" id="opSave" onclick="saveOpening()">Save</button>
           <span class="cap" id="opState"></span>
         </div>
-        <p class="cap" style="margin-top:6px">Purchases before that day aren't in the app's numbers, so the first statement you pay would push this card below zero. Enter what the card owed that day, once: your bank's balance owing on the day before, or this statement's opening balance plus its purchases dated before the start. Available doesn't change; <i>owed on cards</i> and <i>in the bank</i> do.</p>
+        <p class="cap" style="margin-top:6px">Purchases before that day aren't in the app's numbers, so the first statement you pay would push this card below zero. Enter what the card owed that day, once: your bank's balance owing on the day before, or this statement's opening balance plus its purchases dated before the start. Available doesn't change; <i>owed on cards</i> and <i>in the bank</i> do. Purchases from a fund's money before that day still unpaid are inside this amount too — the fund chosen here pays them; the fund they came from already shows them spent.</p>
       </div>
 
       <div class="grid3" style="margin-top:14px">
@@ -276,6 +276,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <span id="payBadge"></span>
         </div>
         <div id="payList" style="margin-top:8px"></div>
+        <div id="payUnlinked" style="margin-top:12px;display:none"></div>
         <div id="payForm" style="margin-top:12px">
           <p class="cap">Record the payment to this card. Each pot pays for its own charges by default, so every pot's <b>In the bank</b> stays right — change the split if you want one fund to pay the lot. Available never moves here: the charges already took it the day they happened.</p>
           <div class="row" style="gap:14px;margin-top:10px;align-items:flex-start;flex-wrap:wrap">
@@ -844,7 +845,7 @@ async function loadStatement(){
     st.rows = keep;
   }
   st.imp = null; $('impResult').style.display = 'none';
-  st.legs = null; await refreshPay();
+  st.legs = null; st.payNew = false; await refreshPay();
   // rows ticked against THIS statement vs. others
   st.rows.forEach(r => { r.inPeriod = r.date >= p.start && r.date <= p.end; r.carry = r.date < from; });
   $('stTotal').value = st.statement && st.statement.statement_total != null ? Number(st.statement.statement_total).toFixed(2) : '';
@@ -970,13 +971,23 @@ function updateStatementKpis(){
 }
 // ── card payment (the cash event; the charges were the budget event) ──
 async function refreshPay(){
-  st.pay = null; st.payments = [];
+  st.pay = null; st.payments = []; st.unlinked = [];
   if (!st.statement || !st.card || st.card.kind !== 'credit_card') return;
-  const [pb, pl] = await Promise.all([
+  const [pb, pl, pu] = await Promise.all([
     sb.from('statement_balances').select('*').eq('statement_id', st.statement.id).maybeSingle(),
     sb.from('fund_transactions').select('id, date, amount, remarks, fund_id, transfer_group_id, reconciled_at, reconciled_by, funds(name)').eq('settles_statement_id', st.statement.id).eq('kind', 'card_payment').order('date'),
+    // payments to this card on no statement yet (the phone's, before this statement was saved): one of them may be this one's (A3)
+    sb.from('fund_transactions').select('date, amount, remarks, transfer_group_id, funds(name)').eq('household_id', CTX.hh.id).eq('settles_payment_method_id', st.card.id).eq('kind', 'card_payment').is('settles_statement_id', null).order('date'),
   ]);
   st.pay = pb.data || null; st.payments = pl.data || [];
+  const by = {};
+  (pu.data || []).forEach(p => { const g = by[p.transfer_group_id] || (by[p.transfer_group_id] = { group: p.transfer_group_id, date: p.date, amount: 0, funds: [], remarks: p.remarks }); g.amount += Number(p.amount); g.funds.push(p.funds ? p.funds.name : 'fund'); });
+  st.unlinked = Object.values(by).sort((a, b) => a.date < b.date ? -1 : 1);
+}
+async function linkPayment(group, statementId){
+  const { error } = await sb.rpc('link_card_payment', { p_group: group, p_statement: statementId });
+  if (error) { toast('couldn’t link: ' + error.message); return; }
+  toast(statementId ? 'payment linked to this statement 🔗' : 'payment unlinked — it’s listed under the next statement you open'); st.legs = null; st.payNew = false; loadStatement();
 }
 function payFunds(){
   const cur = st.card && st.card.currency;
@@ -1028,11 +1039,20 @@ function renderPay(){
     : pay.status === 'scheduled' ? '<span class="tag">scheduled' + (pay.next_payment ? ' · ' + fmtD(pay.next_payment) : '') + '</span>'
     : pay.status === 'part' ? '<span class="tag warn">' + (paid > 0 ? 'part paid' : 'part scheduled') + ' · ' + fmtMoney(remaining, cur) + ' to go</span>'
     : '<span class="tag">unpaid</span>';
-  $('payList').innerHTML = st.payments.length ? '<table><tbody>' + st.payments.map(p => '<tr><td class="num" style="width:124px">' + fmtD(p.date) + '</td><td>from <b>' + esc(p.funds ? p.funds.name : 'fund') + '</b>' + (p.date > isoDate(new Date()) ? ' <span class="tag">scheduled</span>' : '') + (p.reconciled_at && p.reconciled_by === 'manual' ? ' <span class="tag" title="ticked on a bank statement">🔒 bank</span>' : '') + '</td><td class="amt">' + fmtMoney(p.amount, cur) + '</td><td style="width:70px;text-align:right">' + (p.reconciled_by === 'manual' ? '' : '<button class="btn-tert" onclick="undoPayment(\'' + p.transfer_group_id + '\')">undo</button>') + '</td></tr>').join('') + '</tbody></table>' : '';
-  const form = $('payForm');
-  if (pay.status === 'paid' || pay.status === 'scheduled' || remaining <= 0) { form.style.display = 'none'; return; }
+  $('payList').innerHTML = st.payments.length ? '<table><tbody>' + st.payments.map(p => '<tr><td class="num" style="width:124px">' + fmtD(p.date) + '</td><td>from <b>' + esc(p.funds ? p.funds.name : 'fund') + '</b>' + (p.date > isoDate(new Date()) ? ' <span class="tag">scheduled</span>' : '') + (p.reconciled_at && p.reconciled_by === 'manual' ? ' <span class="tag" title="ticked on a bank statement">🔒 bank</span>' : '') + '</td><td class="amt">' + fmtMoney(p.amount, cur) + '</td><td style="width:130px;text-align:right">' + (p.reconciled_by === 'manual' ? '' : '<button class="btn-tert" onclick="undoPayment(\'' + p.transfer_group_id + '\')">undo</button>') + ' <button class="btn-tert" title="this payment was for another statement" onclick="linkPayment(\'' + p.transfer_group_id + '\', null)">unlink</button></td></tr>').join('') + '</tbody></table>' : '';
+  const form = $('payForm'), un = $('payUnlinked');
+  if (pay.status === 'paid' || pay.status === 'scheduled' || remaining <= 0) { form.style.display = 'none'; un.style.display = 'none'; return; }
+  // payments to this card already saved but on no statement: offer them before a new payment, which would pay twice (A3)
+  if (st.unlinked.length && !st.payNew) {
+    un.style.display = ''; form.style.display = 'none';
+    un.innerHTML = '<p class="cap"><b>Already paid?</b> ' + (st.unlinked.length === 1 ? 'This payment to ' : 'These payments to ') + esc(c.name) + ' ' + (st.unlinked.length === 1 ? 'is' : 'are') + ' on no statement yet — if one is for this statement, link it instead of recording it again.</p>'
+      + '<table style="margin-top:6px"><tbody>' + st.unlinked.map(g => '<tr><td class="num" style="width:124px">' + fmtD(g.date) + '</td><td>from <b>' + esc(g.funds.join(' + ')) + '</b> <span class="cap">' + esc(g.remarks || '') + '</span></td><td class="amt">' + fmtMoney(g.amount, cur) + '</td><td style="width:190px;text-align:right"><button class="btn btn-soft" style="height:32px;padding:0 12px" onclick="linkPayment(\'' + g.group + '\', st.statement.id)">Link to this statement</button></td></tr>').join('') + '</tbody></table>'
+      + '<div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn-tert" onclick="st.payNew=true;renderPay()">None of these — record a new payment</button></div>';
+    return;
+  }
+  un.style.display = 'none';
   form.style.display = '';
-  if (!st.legs) { st.legs = defaultLegs(); $('payDate').value = isoDate(new Date()); }
+  if (!st.legs) { st.legs = defaultLegs(); st.payId = crypto.randomUUID ? crypto.randomUUID() : null; $('payDate').value = isoDate(new Date()); }
   renderPayLegs();
 }
 function renderPayLegs(){
@@ -1064,9 +1084,10 @@ async function recordPayment(){
   const ok = await ask('Record ' + fmtMoney(sum, cur) + ' paid to ' + st.card.name + '?', 'On ' + fmtD($('payDate').value) + ' from ' + legs.map(l => (CTX.funds.find(f => f.id === l.fund_id) || {}).name + ' ' + fmtMoney(l.amount, cur)).join(' + ') + '. Available doesn’t change — only In the bank and what the card is owed.', 'Record');
   if (!ok) return;
   $('payGo').disabled = true;
-  const { error } = await sb.rpc('record_card_payment', { p_card: st.card.id, p_date: $('payDate').value, p_legs: legs, p_statement: st.statement.id });
+  // under this form's id: a retap after a lost reply is the same payment (A5)
+  const { error } = await sb.rpc('record_card_payment', { p_card: st.card.id, p_date: $('payDate').value, p_legs: legs, p_statement: st.statement.id, p_id: st.payId || null });
   if (error) { toast('couldn’t record: ' + error.message); $('payGo').disabled = false; return; }
-  toast('payment recorded 💳'); st.legs = null; loadStatement();
+  toast('payment recorded 💳'); st.legs = null; st.payNew = false; loadStatement();
 }
 async function undoPayment(group){
   if (!await ask('Undo this payment?', 'The card goes back to owing it and the money returns to the fund(s) it came from.', 'Undo')) return;
@@ -1416,6 +1437,7 @@ async function deleteSelected(){
 // transfer / cash into the fund it counted against. One server call for all of them (refund_purchases).
 const rfx = { rows: [] };
 function openRefund(){
+  rfx.id = null;
   const rows = nc.rows.filter(r => nc.sel.has(r.key));
   rfx.rows = rows.filter(r => !r.is_refund && !r.refund_of && Number(r.amount) - Number(r.refunded || 0) > 0.005);
   const skipped = rows.length - rfx.rows.length;
@@ -1447,7 +1469,8 @@ async function applyRefund(){
     if (cash.length) { toast('“' + cash[0].description + '” was paid in cash — choose bank transfer or cash'); return; }
   }
   $('rfApply').disabled = true;
-  const { error } = await sb.rpc('refund_purchases', { p_items: items, p_date: $('rfDate').value || isoDate(new Date()), p_via: via, p_note: $('rfNote').value.trim() || null });
+  rfx.id = rfx.id || (crypto.randomUUID ? crypto.randomUUID() : null);   // a retap after a lost reply saves once (A5)
+  const { error } = await sb.rpc('refund_purchases', { p_items: items, p_date: $('rfDate').value || isoDate(new Date()), p_via: via, p_note: $('rfNote').value.trim() || null, p_id: rfx.id });
   $('rfApply').disabled = false;
   if (error) { toast('couldn’t refund: ' + error.message); return; }
   closeRefund();
