@@ -22,8 +22,8 @@ select 'cards whose owed moved', count(*)
 select h.name as household, f.name as fund, f.currency,
        case when m.cash_balance > s.cash_balance then 'In the bank up' else 'In the bank down' end as direction,
        (select count(*) from public.expenses e join public.payment_methods p on p.id = e.payment_method_id and p.kind = 'credit_card'
-         where e.pot_fund_id = f.id and e.trip_id is null and e.deleted_at is null and e.category <> 'Payment'
-           and e.date < h.pot_start) as card_purchases_before_start,
+         where e.fund_id = f.id and e.trip_id is null and e.deleted_at is null and e.category <> 'Payment'
+           and e.date < h.pot_start) as card_purchases_before_start,   -- a spending pot never counted its pre-start purchases
        (select count(*) from public.fund_transactions t join public.payment_methods p on p.id = t.account_payment_method_id and p.kind = 'credit_card'
          where t.fund_id = f.id and t.type = 'expense' and t.kind <> 'card_payment' and t.date < h.pot_start) as card_rows_before_start,
        (select count(*) from public.fund_transactions t
@@ -36,6 +36,10 @@ select h.name as household, f.name as fund, f.currency,
  where m.cash_balance is distinct from s.cash_balance
  order by h.name, f.currency, f.name;
 
+\echo '── funds owing less than zero on cards: before → after (names; a payment that cleared a pre-start debt shows here until the card''s opening is entered)'
+select f.name as fund, f.currency, s.owed_on_cards < -0.005 as below_zero_before, m.owed_on_cards < -0.005 as below_zero_after
+  from bh_cmp.fund s join public.fund_money m using (fund_id) join public.funds f on f.id = s.fund_id
+ where s.owed_on_cards < -0.005 or m.owed_on_cards < -0.005 order by f.name;
 \echo '── funds owing less than zero on cards: before → after (counts)'
 select (select count(*) from bh_cmp.fund where owed_on_cards < -0.005) as before,
        (select count(*) from public.fund_money where owed_on_cards < -0.005) as after;
