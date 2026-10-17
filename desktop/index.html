@@ -61,6 +61,10 @@ main{padding:28px 32px 60px;max-width:1280px;width:100%;min-width:0}
 .kpi{background:var(--canvas);border-radius:16px;box-shadow:var(--shadow-soft);padding:14px 18px}
 .kpi .v{font-size:22px;line-height:30px;font-weight:600;font-variant-numeric:tabular-nums}
 .kpi.dark{background:var(--primary);color:#fff}.kpi.dark .cap{color:var(--accent)}
+.hb{display:flex;flex-wrap:wrap;gap:4px 22px;align-items:center;background:var(--canvas);border-radius:14px;box-shadow:var(--shadow-soft);padding:9px 16px;font-size:13px;line-height:18px}
+.hb .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+.hb .ok{background:var(--good)}.hb .warn{background:var(--warn)}.hb .bad{background:var(--bad)}
+.hb details{flex-basis:100%}.hb summary{cursor:pointer;color:var(--ink-soft);font-size:12px}.hb ul{margin:4px 0 2px 18px;padding:0}
 
 /* table */
 table{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -1846,12 +1850,13 @@ async function loadDashboard(){
     sb.rpc('household_money'),
     ...curs.map(c => sb.rpc('budget_summary', { p_month: month, p_currency: c, p_months: 24 })),
   ]);
+  const hb = await sb.rpc('ops_heartbeat');   // the safety net's heartbeat (owner only); the Dashboard works without it
   dash.loading = false;
   const err = hist.error || money.error || (bud.find(b => b.error) || {}).error;
   if (err) { $('dashBody').innerHTML = '<p class="cap">couldn’t load the dashboard: ' + esc(err.message) + '</p>'; return; }
   const funds = (money.data || []).filter(f => f.is_active);
   const base = (funds[0] || {}).currency || curs[0] || 'AUD';
-  dash.data = { hist: hist.data || [], funds, curs, base, bud: Object.fromEntries(curs.map((c, i) => [c, bud[i].data])) };
+  dash.data = { hist: hist.data || [], funds, curs, base, bud: Object.fromEntries(curs.map((c, i) => [c, bud[i].data])), hb: hb.error ? null : (hb.data || [])[0] || null };
   if (!dash.cur || !curs.includes(dash.cur)) dash.cur = base;
   renderDashboard();
   dash.data.fx = await fxToBase(curs, base);   // the total waits for the rate; everything else is already on screen
@@ -1964,6 +1969,36 @@ const spark = (vals, color) => {
     + (vals[li] != null ? '<circle cx="' + x(li) + '" cy="' + y(vals[li]) + '" r="2.5" fill="' + color + '"/>' : '') + '</svg>';
 };
 
+// the safety net (Bundle B): did last night's money check run, and what did it find; when was the last backup.
+// The states come from the database (ops_heartbeat): stale after 36 h (check) or 8 days (backup), late after 50 h.
+function heartbeatHtml(h){
+  if (!h) return '';
+  const when = at => new Date(at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  const span = at => { const hrs = (Date.now() - new Date(at).getTime()) / 36e5; return hrs < 48 ? Math.max(1, Math.round(hrs)) + ' hours' : Math.round(hrs / 24) + ' days'; };
+  const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
+  const look = (h.check_fails || 0) + (h.check_warns || 0);
+  const ck = {
+    ok:    ['ok',   'clean'],
+    look:  ['warn', n(look, 'line', 'lines') + ' to look at'],
+    fail:  ['bad',  [h.check_fails ? n(h.check_fails, 'check', 'checks') + ' failed' : '', h.check_rises ? n(h.check_rises, 'count', 'counts') + ' went up' : ''].filter(Boolean).join(' · ') + ' — GitHub emailed you'],
+    stale: ['bad',  'no run for ' + span(h.check_at) + ' — check GitHub → Actions → Money check'],
+    never: ['bad',  'hasn’t run yet'],
+  }[h.check_state] || ['warn', h.check_state];
+  const bk = {
+    ok:    ['ok',   (h.backup_kb ? Math.round(h.backup_kb) + ' KB, encrypted' : 'encrypted')],
+    late:  ['warn', span(h.backup_at) + ' old, late — check GitHub → Actions → Backup database'],
+    stale: ['bad',  span(h.backup_at) + ' old — check GitHub → Actions → Backup database'],
+    never: ['bad',  'none recorded yet'],
+  }[h.backup_state] || ['warn', h.backup_state];
+  const lines = (h.check_lines || []);
+  return '<div class="hb" id="heartbeat" title="the nightly money check and the daily encrypted backup run on GitHub; each leaves a line here">'
+    + '<span><span class="dot ' + ck[0] + '"></span><b>Money check</b> · ' + (h.check_at ? esc(when(h.check_at)) + ' · ' : '') + esc(ck[1]) + '</span>'
+    + '<span><span class="dot ' + bk[0] + '"></span><b>Backup</b> · ' + (h.backup_at ? esc(when(h.backup_at)) + ' · ' : '') + esc(bk[1]) + '</span>'
+    + (lines.length && h.check_state !== 'stale' ? '<details><summary>what the check found (counts only)</summary><ul>' + lines.map(l =>
+        '<li>' + esc(l.n) + ' — <b>' + Number(l.b) + '</b>' + (l.s === 'fail' ? ' <span style="color:var(--bad)">fail</span>' : '') + (l.r ? ' <span style="color:var(--bad)">▲ went up</span>' : '') + '</li>').join('')
+        + '</ul><p class="cap">a warning that goes up fails the night’s run; one that stays the same waits for you. Takeover lines count new logins, members and invites: expected the day you invite someone.</p></details>' : '')
+    + '</div>';
+}
 function renderDashboard(){
   const D = dash.data, box = $('dashBody'); if (!D || !$('scr-dashboard').classList.contains('active')) return;
   const allMonths = [...new Set(D.hist.map(r => r.month))].sort();
@@ -1975,7 +2010,7 @@ function renderDashboard(){
   const sumAt = (fs, m, k) => fs.reduce((t, f) => t + (val(f, m, k) || 0), 0);
   const first = months[0], last = months[months.length - 1], prev = months[months.length - 2];
   const fx = D.fx;
-  let html = '';
+  let html = heartbeatHtml(D.hb);
 
   // ── net worth: one tile per country, one for the total ──
   const tiles = countries.map(cc => {
@@ -2148,7 +2183,7 @@ window.addEventListener('resize', () => { clearTimeout(dashResizeT); dashResizeT
 // (no card picked, no statement) shows its card in the middle instead.
 const DESK_TOUR = [
   { center: true, title: 'The Desk', text: 'the big-screen side of BearHaus: check statements, record card payments, tidy many rows at once and see every fund. Same login, same numbers as the phone.' },
-  { scr: 'dashboard', el: () => document.querySelector('nav .nv[data-scr="dashboard"]'), title: 'Dashboard', text: 'where the Desk opens: net worth per country and in total, spending against the plan month by month, and how each fund is growing or shrinking.' },
+  { scr: 'dashboard', el: () => document.querySelector('nav .nv[data-scr="dashboard"]'), title: 'Dashboard', text: 'where the Desk opens: net worth per country and in total, spending against the plan month by month, and how each fund is growing or shrinking. The line at the top says whether last night’s money check and backup ran — green is fine, red needs you.' },
   { scr: 'dashboard', el: () => $('dashPeriod'), title: 'Pick the period', text: '6, 12 or 24 months. Click a fund in the table to see its own line.' },
   { scr: 'statements', el: () => document.querySelector('nav .nv[data-scr="statements"]'), title: 'Statements', text: 'each card and bank account, checked against its statement, one period at a time.' },
   { scr: 'statements', el: () => $('stCard').closest('.row') || $('stCard'), title: 'Pick a card, then the period', text: 'archived cards are listed too — for their last statement.' },

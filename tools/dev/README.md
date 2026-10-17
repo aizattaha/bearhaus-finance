@@ -37,8 +37,13 @@ add locally: `insert into public.beta_invites (code, max_uses) values ('LOCAL-TE
 
 ## Before every push
 ```
-tools/ci/private-data-guard.sh     # no real figures, ids, emails or statements
+tools/ci/private-data-guard.sh     # no real figures, ids, emails, invite codes, keys or statements
 node tools/ci/check-js.mjs         # every inline script compiles
 tools/sql-tests/run.sh <db-url>    # migrations from scratch + tests
 ```
-CI runs the same three.
+CI runs the same three. The first two also run **by themselves before every push** (Bundle B), on every commit
+being pushed, so a private figure is stopped before GitHub or Pages sees it. Switch the hook on once per clone:
+```
+git config core.hooksPath tools/git-hooks
+```
+A push it stops sends nothing and says which commit and file. Never skip it (`--no-verify`).
