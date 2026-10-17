@@ -165,7 +165,7 @@ begin
   values (current_setting('ci.hh')::uuid, current_setting('ci.today')::date, 'sneaky', current_setting('ci.dining')::uuid, 5, 'AUD', true, current_setting('ci.dinner')::uuid)
   returning id into rid;
   assert (select refund_of from public.expenses where id = rid) is null, 'a client linked a refund';
-  delete from public.daily_expenses where id = rid;
+  perform public.soft_delete_rows('daily', array[rid]);
 end $$;
 -- the refund follows its purchase: a new category moves it too
 update public.daily_expenses set category_id = :'groc' where id = :'dinner';

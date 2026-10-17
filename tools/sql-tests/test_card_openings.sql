@@ -75,6 +75,9 @@ declare v numeric;
 begin
   select owed into v from public.card_balances where payment_method_id = current_setting('ci.amex')::uuid;
   assert v = 0, 'a pre-era payment changed the card, got ' || v;
+  -- and the fund that paid it, likewise (Bundle A1: it used to show as owing less than zero)
+  select owed_on_cards into v from public.fund_cash where fund_id = current_setting('ci.pot')::uuid;
+  assert v = 0, 'a pre-era payment changed the pot''s Owed on cards, got ' || v;
 end $$;
 
 -- an outsider can neither see nor write openings

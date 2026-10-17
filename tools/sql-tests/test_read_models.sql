@@ -1,6 +1,8 @@
 -- Read models (v2 sprint 3): the database does the sums. A household with more than 1,000 purchases, two
 -- currencies, a trip, transfers, a card payment, a card opening and a trip send:
---   · fund_money (and the three views over it) gives exactly what the sprint-2 views gave, fund by fund
+--   · fund_money (and the three views over it) gives exactly what the sprint-2 views gave, fund by fund — with the
+--     Bundle A cut (In the bank / Owed on cards count a card only from the start date, as the card does)
+--   · what the cards owe = what the funds owe on cards, apart from the lines only one side counts (bh_owed_gaps)
 --   · household_money / app_bootstrap / home_summary / budget_summary / trip_summary equal plain SQL sums over
 --     every row (no 1,000-row cap), group by category id (an archived category stays in its group), and read
 --     only the caller's household
@@ -8,7 +10,7 @@
 \set ON_ERROR_STOP on
 begin;
 
--- ── the rules as they were (sprint 2), kept here as the reference ───────
+-- ── the rules as they were (sprint 2), kept here as the reference; the card cut as of Bundle A (A1) ──
 create temp view old_fund_balances as
  select f.household_id, f.id as fund_id,
     coalesce(sum(case when t.date > (now() at time zone h.timezone)::date or t.kind = 'card_payment' then 0::numeric
@@ -43,14 +45,16 @@ create temp view old_fund_cash as
    from old_fund_balances b
    join (select f.id as fund_id,
             coalesce(sum(case when t.date > (now() at time zone h.timezone)::date then 0::numeric
-                              when t.type = 'expense' and t.kind <> 'card_payment' and public.bh_is_credit_card(t.account_payment_method_id) then 0::numeric
+                              when t.kind = 'card_payment' and t.date < h.pot_start then 0::numeric
+                              when t.type = 'expense' and t.kind <> 'card_payment' and public.bh_is_credit_card(t.account_payment_method_id)
+                               and (h.pot_start is null or t.date >= h.pot_start) then 0::numeric
                               when t.type = 'income' then t.amount else - t.amount end), 0::numeric)
             - coalesce((select sum(case when de.is_refund then - de.amount else de.amount end)
                           from public.expenses de left join public.payment_methods pm on pm.id = de.payment_method_id
                          where de.trip_id is null and de.deleted_at is null and de.household_id = f.household_id and de.currency = f.currency
                            and de.category <> 'Payment' and de.date <= (now() at time zone h.timezone)::date and de.pot_fund_id = f.id
                            and (de.fund_id = f.id or f.is_spend_pot and h.pot_start is not null and de.date >= h.pot_start)
-                           and coalesce(pm.kind, 'cash') <> 'credit_card'), 0::numeric)
+                           and (coalesce(pm.kind, 'cash') <> 'credit_card' or de.date < h.pot_start)), 0::numeric)
             + coalesce((select sum(o.amount) from public.card_openings o where o.fund_id = f.id), 0::numeric)
             + coalesce((select sum(round(a.amount * l.cards / l.total, 2))
                           from public.fund_transactions a
@@ -187,6 +191,44 @@ begin
    and (cleared_balance <> balance or abs(owed_on_cards) > 0.005);
   assert v_n >= 3, 'the scenario should move cleared and owed numbers, got ' || v_n || ' funds';
   assert exists (select 1 from public.expenses where household_id = current_setting('ci.hh')::uuid and settlement_tx_id is not null), 'the trip send linked its purchases';
+end $$;
+
+-- ── 1b · cards and funds agree on what is owed (A1 / DH-01) ─────────────
+do $$
+declare hh uuid := current_setting('ci.hh')::uuid; g record; v_n int; v_old numeric; v_card numeric; v_fund numeric;
+begin
+  -- the scenario has fund purchases on cards from before the start date: the card ignores them, and so do the funds now
+  select count(*) into v_n from public.expenses e join public.payment_methods p on p.id = e.payment_method_id and p.kind = 'credit_card'
+   join public.households h on h.id = e.household_id
+   where e.household_id = hh and e.fund_id is not null and e.trip_id is null and e.deleted_at is null and e.date < h.pot_start;
+  assert v_n > 0, 'the scenario has pre-start fund purchases on cards';
+  -- the Car Fund owes exactly its card purchases since the start date plus its card-charged rows, nothing older
+  select owed_on_cards into v_fund from public.fund_money where fund_id = (select id from public.funds where household_id = hh and name = 'Car Fund');
+  select coalesce(sum(case when e.is_refund then -e.amount else e.amount end), 0) into v_card
+    from public.expenses e join public.payment_methods p on p.id = e.payment_method_id and p.kind = 'credit_card' join public.households h on h.id = e.household_id
+   where e.fund_id = (select id from public.funds where household_id = hh and name = 'Car Fund') and e.deleted_at is null
+     and e.date >= h.pot_start and e.counts_on <= current_setting('ci.today')::date;
+  assert v_fund = v_card + 410, 'the Car Fund owes its card purchases since the start + the rego, got ' || v_fund || ' vs ' || (v_card + 410);
+  -- every currency: cards = funds once the one-sided lines are set aside
+  for g in select * from public.bh_owed_gaps() where household_id = hh loop
+    assert g.gap = 0, g.currency || ': cards and funds disagree by ' || g.gap;
+  end loop;
+  select count(*) into v_n from public.bh_owed_gaps() where household_id = hh and currency in ('AUD', 'SGD');
+  assert v_n = 2, 'both currencies are checked, got ' || v_n;
+  -- one-sided lines here: the settle-ups ("Payment") on the AUD cards, which the card counts and no fund does
+  select card_only into v_old from public.bh_owed_gaps() where household_id = hh and currency = 'AUD';
+  assert v_old = (select -sum(e.amount) from public.expenses e join public.payment_methods p on p.id = e.payment_method_id and p.kind = 'credit_card' join public.households h on h.id = e.household_id
+                   where e.household_id = hh and e.category = 'Payment' and e.deleted_at is null and e.date >= h.pot_start and e.date <= current_setting('ci.today')::date),
+         'AUD card-only lines = the settle-ups on cards, got ' || v_old;
+  -- the rule before Bundle A would have failed this check (DH-01): the pre-start card purchases count as owed for ever
+  select sum(o.owed_on_cards) - (select funds_owe from public.bh_owed_gaps() where household_id = hh and currency = 'AUD') into v_old
+    from public.fund_money o where o.household_id = hh and o.currency = 'AUD';
+  assert v_old = 0, 'sanity: fund_money sums as bh_owed_gaps reads it';
+  select coalesce(sum(case when e.is_refund then -e.amount else e.amount end), 0) into v_old
+    from public.expenses e join public.payment_methods p on p.id = e.payment_method_id and p.kind = 'credit_card' join public.households h on h.id = e.household_id
+   where e.household_id = hh and e.fund_id is not null and e.trip_id is null and e.deleted_at is null and e.date < h.pot_start and e.category <> 'Payment';
+  assert v_old <> 0, 'the old rule would have put these pre-start card purchases on the funds as owed';
+  assert (select bad from public.bh_money_check() where check_name = 'funds and cards that disagree on what is owed') = 0, 'the nightly check is clean';
 end $$;
 set local role authenticated;
 

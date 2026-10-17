@@ -40,9 +40,27 @@ begin
   assert not has_function_privilege('authenticated', 'public.bh_send_resum(uuid)', 'execute'), 'bh_send_resum is callable by a login';
   assert not has_function_privilege('authenticated', 'public.bh_trip_send_lines(uuid, uuid, jsonb)', 'execute'), 'bh_trip_send_lines is callable by a login';
   assert not has_function_privilege('anon', 'public.send_trip(uuid, date, jsonb)', 'execute'), 'anon could send a trip';
-  assert not has_function_privilege('anon', 'public.refund_purchases(jsonb, date, text, text)', 'execute'), 'anon could refund a purchase';
+  assert not has_function_privilege('anon', 'public.refund_purchases(jsonb, date, text, text, uuid)', 'execute'), 'anon could refund a purchase';
   assert not has_function_privilege('authenticated', 'public.bh_expense_refunds_sync()', 'execute'), 'the refunds trigger is callable by a login';
   assert not has_function_privilege('anon', 'public.trip_send_plan(uuid)', 'execute'), 'anon could read a trip plan';
+  -- Bundle A: the cross-check and the card/move helpers are the server's
+  assert not has_function_privilege('authenticated', 'public.bh_owed_gaps()', 'execute'), 'bh_owed_gaps is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.bh_card_in_use(uuid)', 'execute'), 'bh_card_in_use is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.bh_card_guard()', 'execute'), 'the card guard is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.bh_on_card_owed(uuid, uuid, date)', 'execute'), 'bh_on_card_owed is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.bh_assert_move(uuid, uuid, date, numeric, uuid, uuid, public.fund_money, text)', 'execute'), 'bh_assert_move is callable by a login';
+  assert not has_function_privilege('anon', 'public.record_card_payment(uuid, date, jsonb, uuid, text, uuid)', 'execute'), 'anon could pay a card';
+  assert not has_function_privilege('anon', 'public.link_card_payment(uuid, uuid)', 'execute'), 'anon could link a payment';
+  -- Bundle A6: no hard deletes from the app login on the money tables (the bin is the way out); the two settings tables keep theirs
+  select string_agg(t, ', ') into v from unnest(array['expenses', 'daily_expenses', 'travel_expenses', 'fund_transactions', 'fund_transactions_all']) t
+   where has_table_privilege('authenticated', 'public.' || t, 'delete');
+  assert v is null, 'a login can hard-delete from: ' || coalesce(v, '');
+  assert not exists (select 1 from pg_policies where schemaname = 'public' and tablename in ('expenses', 'fund_transactions_all') and cmd = 'DELETE'),
+         'a delete policy is left on a money table';
+  assert has_table_privilege('authenticated', 'public.card_defaults', 'delete') and has_table_privilege('authenticated', 'public.card_openings', 'delete'),
+         'card defaults and openings can still be removed';
+  assert exists (select 1 from pg_trigger where tgname = 'expenses_sent_lock' and tgrelid = 'public.expenses'::regclass and (tgtype & 8) = 8),
+         'the sent lock fires on DELETE too';
 end $$;
 
 -- every server function and table/view the two apps use is still reachable by a signed-in login
@@ -55,7 +73,7 @@ begin
     'pot_month_spend','purge_deleted','reconcile_rows','record_card_payment','record_pot_swap','remove_member','restore_rows',
     'revoke_member_invite','save_expense','save_month_plan','send_trip','undo_trip_send','trip_send_plan','set_trip_fund','refund_purchases','soft_delete_rows',
     'unreconcile_rows','update_pot_swap_rate','desk_add_expense','desk_set_card','record_transfer','apply_month_plan','plan_status','set_settled_amount','fund_history',
-    'app_bootstrap','home_summary','budget_summary','household_money','trip_summary']) f
+    'app_bootstrap','home_summary','budget_summary','household_money','trip_summary','link_card_payment','cards_in_use']) f
    where not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                       where n.nspname = 'public' and p.proname = f and has_function_privilege('authenticated', p.oid, 'execute'));
   assert v is null, 'a login can no longer run: ' || coalesce(v, '');
@@ -155,6 +173,11 @@ begin
   assert r.pot_fund_id = current_setting('ci.pot')::uuid, 'the pot is stamped by the server';
   select * into r from public.expenses where id = current_setting('ci.e2')::uuid;
   assert r.reconciled_by = 'auto', 'cash still reconciles itself';
+  -- and it can't be hard-deleted: through the view, or the table
+  begin delete from public.daily_expenses where id = current_setting('ci.e2')::uuid; assert false, 'a member hard-deleted a purchase';
+  exception when insufficient_privilege then null; end;
+  begin delete from public.expenses where id = current_setting('ci.e2')::uuid; assert false, 'a member hard-deleted from expenses';
+  exception when insufficient_privilege then null; end;
   -- created_by, the bin date and the pot stamp ignore a direct update
   update public.expenses set created_by = 'cccccccc-0000-4000-8000-000000000001', deleted_at = now(), pot_fund_id = current_setting('ci.sav')::uuid
    where id = current_setting('ci.e1')::uuid;

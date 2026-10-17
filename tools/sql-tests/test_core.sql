@@ -171,9 +171,9 @@ begin
   perform public.restore_rows('fund', array[(select id from public.fund_transactions_all where remarks = 'Transfer → Savings')]::uuid[]);
   select count(*) into n from public.fund_transactions where transfer_group_id = 'bbbbbbbb-0000-4000-8000-000000000001';
   assert n = 2, 'both halves come back';
-  delete from public.fund_transactions where remarks = 'Transfer → Savings';
-  select count(*) into n from public.fund_transactions where transfer_group_id = 'bbbbbbbb-0000-4000-8000-000000000001';
-  assert n = 0, 'a hard delete of one half removes the other';
+  -- the app login can't hard-delete fund rows (Bundle A6); the bin above is the way out
+  begin delete from public.fund_transactions where remarks = 'Transfer → Savings'; n := -1; exception when insufficient_privilege then n := 2; end;
+  assert n = 2, 'the app login hard-deleted a fund row';
 end $$;
 
 -- ── members: a joined login works, a viewer can only read, outsiders see nothing ──

@@ -63,7 +63,8 @@ end $$;
 do $$
 declare v numeric; n int;
 begin
-  delete from public.fund_transactions where kind = 'card_payment' and household_id = current_setting('ci.hh')::uuid;
+  perform public.delete_card_payment(g) from (select distinct transfer_group_id as g from public.fund_transactions
+                                                where kind = 'card_payment' and household_id = current_setting('ci.hh')::uuid) x;
   perform public.move_expense_to_fund_spend(array[current_setting('ci.sc')::uuid]);
   select count(*) into n from public.fund_transactions where id = current_setting('ci.sc')::uuid and remarks = 'Car parts' and account_payment_method_id = current_setting('ci.visa')::uuid;
   assert n = 1, 'back as a movement charged to the Visa';
