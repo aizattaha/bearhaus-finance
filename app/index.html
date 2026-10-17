@@ -326,6 +326,7 @@ input[type="date"].descinput{min-width:0}
   .key.op{font-size:17px}
   .key.ok{font-size:21px}
 }
+.refunded .lbl,.refunded .amt,.refunded .td>span:first-child{text-decoration:line-through;opacity:.55}
 </style>
 </head>
 <body>
@@ -620,6 +621,18 @@ input[type="date"].descinput{min-width:0}
         <div id="refundWrap" style="margin-top:8px;display:flex;gap:8px;align-items:center"><button type="button" class="chip" id="refundChip" onclick="toggleRefund()">↩ refund / credit</button><span class="cap" id="refundCap">money coming back — counts against the category as a minus</span></div>
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button></div>
+      <button class="btn-tert" id="refundBtn" style="display:none;width:100%;margin-top:10px;flex:0 0 auto" onclick="openRefundPanel()">↩ Refund…</button>
+      <div id="refundPanel" class="settlebox" style="display:none;margin-top:8px;flex:0 0 auto">
+        <p class="lbl" id="rfTitle">Refund</p>
+        <p class="cap" id="rfCap" style="margin-top:2px"></p>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <input class="descinput num" id="rfAmount" type="number" step="0.01" min="0" inputmode="decimal" style="flex:1;min-width:110px" aria-label="amount coming back">
+          <input class="descinput" id="rfDate" type="date" style="flex:1;min-width:140px" aria-label="date it came back">
+        </div>
+        <div id="rfVia" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"></div>
+        <input class="descinput" id="rfNote" placeholder="note (optional)" style="width:100%;margin-top:8px">
+        <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-soft" type="button" style="flex:1" onclick="closeRefundPanel()">Cancel</button><button class="btn btn-primary" type="button" id="rfSave" style="flex:2" onclick="saveRefund()">Refund</button></div>
+      </div>
       <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px;flex:0 0 auto" onclick="deleteExpense()">Delete</button>
     </div>
     <div id="dock">
@@ -2327,11 +2340,19 @@ const RECON_COLS = 'reconciled_at, reconciled_by, reconciled_statement_id';
 // v2 sprint 3 — every database has had them since 14–16 Oct 2026
 const rc = fund => ', ' + RECON_COLS + (fund
   ? ', transfer_group_id, kind, settles_payment_method_id, updated_at'
-  : ', pot_swap_id, updated_at, is_refund, fund_id, payment_method_id, category_id');
+  : ', pot_swap_id, updated_at, is_refund, fund_id, payment_method_id, category_id, refund_of, refunded');
 // a refund / card credit keeps a positive amount in the database and counts negative everywhere
 const sa = r => (r && r.is_refund ? -1 : 1) * Number(r.amount);
 // a purchase funded from a fund (not the month's budget) — counts against that fund, never against the monthly budget
 const fromFund = r => !!(r && r.fund_id);
+// refunds against the purchase (17 Oct 2026): the purchase keeps its full amount (the statement shows it); only what
+// was used counts. Fully refunded → greyed and struck through; part → "A$40 refunded · A$160 used".
+const refundedPart = r => Number((r && r.refunded) || 0);
+const fullyRefunded = r => refundedPart(r) > 0 && refundedPart(r) >= Number(r.amount) - 0.005;
+const refundTag = r => r && r.refund_of ? ' · <span style="color:var(--good)">↩ refund of a purchase</span>'
+  : refundedPart(r) <= 0 ? ''
+  : fullyRefunded(r) ? ' · <span style="color:var(--good)">↩ refunded</span>'
+  : ' · <span style="color:var(--good)">↩ ' + fmtMoney(refundedPart(r), r.currency) + ' refunded · ' + fmtMoney(Number(r.amount) - refundedPart(r), r.currency) + ' used</span>';
 let atx = null, atxSeq = 0;
 // 🔒 reconciled (locked) · 🔓 un-reconciled just now (tap to lock again) · nothing = never reconciled.
 // Internal fund rows (plan writes, transfers) are reconciled automatically and stay that way.
@@ -2707,8 +2728,9 @@ function renderAllTx(type){
         ? esc(((trip && trip.countries) || []).map(flagOf).join('') || '✈️') + ' ' + esc(trip ? trip.name : 'trip') + ' · ' : '';
       b.innerHTML = '<div class="rowicon">' + (CAT_ICON[r.category] || (kind === 't' ? '✈️' : '🛍️')) + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.description) + '</div>'
-        + '<div class="cap">' + tripTag + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + (r.is_refund ? ' · <span style="color:var(--good)">↩ refund</span>' : '') + (fromFund(r) ? ' · <span style="color:var(--primary)">from ' + esc((fundById(r.fund_id) || {}).name || 'a fund') + '</span>' : '') + (r.pot_swap_id ? ' · <span title="paid with Singapore money — pot swap recorded on the Desk">⇄ swapped</span>' : '') + '</div></div>'
+        + '<div class="cap">' + tripTag + esc(r.category) + ' · ' + esc(who) + ' · ' + fmtDayMonYr(r.date) + (r.is_refund && !r.refund_of ? ' · <span style="color:var(--good)">↩ refund</span>' : '') + refundTag(r) + (fromFund(r) ? ' · <span style="color:var(--primary)">from ' + esc((fundById(r.fund_id) || {}).name || 'a fund') + '</span>' : '') + (r.pot_swap_id ? ' · <span title="paid with Singapore money — pot swap recorded on the Desk">⇄ swapped</span>' : '') + '</div></div>'
         + '<div class="amt num" style="color:' + (r.category === 'Payment' || r.is_refund ? 'var(--ink-soft)' : 'var(--bad)') + '">' + (r.category === 'Payment' || r.is_refund ? '+' : '−') + fmtMoney(r.amount, r.currency) + '</div>';
+      if (fullyRefunded(r)) b.classList.add('refunded');
       b.onclick = () => kind === 't' ? openEditExpense(r) : openEditDaily(r);
     } else {
       const inc = r.type === 'income';
@@ -3786,10 +3808,11 @@ function renderTripDetail(){
       const row = document.createElement('div'); row.className = 'trow';
       row.innerHTML = '<div class="td"><span>' + esc(e.description) + '</span>'
         + '<span class="cap">' + esc(who) + ' · ' + new Date(e.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})
-        + (e.sent_to_fund ? ' · sent ✓' : '') + '</span></div>'
-        + '<span class="amt">−' + fmtMoney(e.amount, e.currency) + '</span>'
+        + (e.sent_to_fund ? ' · sent ✓' : '') + refundTag(e) + '</span></div>'
+        + '<span class="amt">' + (e.is_refund ? '+' : '−') + fmtMoney(e.amount, e.currency) + '</span>'
         + '<button class="edit" aria-label="Edit">✎</button>';
       row.style.cursor = 'pointer';
+      if (fullyRefunded(e)) row.classList.add('refunded');
       row.setAttribute('role', 'button'); row.tabIndex = 0;
       row.setAttribute('aria-label', 'edit ' + (e.description || 'expense'));
       row.onclick = () => openEditExpense(e);
@@ -4244,6 +4267,7 @@ function backdropTap(){
 }
 function closeSheet(){
   embedSay({ type: 'close' });
+  if ($('refundBtn')) { $('refundBtn').style.display = 'none'; $('refundPanel').style.display = 'none'; $('dock').style.display = ''; }
   $('backdrop').classList.remove('open');
   $('sheet').classList.remove('open');
   $('sheet').classList.remove('full');
@@ -5162,6 +5186,7 @@ function openEditExpense(exp){
   renderCardRow();
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   applyLockState(editingExp);
+  setupRefundUI(editingExp);
   armSaveKey();
   dockShow('pad');
   $('sheet').classList.add('full');
@@ -5218,6 +5243,7 @@ function openEditDaily(exp){
   renderCardRow();
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   applyLockState(editingExp);
+  setupRefundUI(editingExp);
   armSaveKey();
   dockShow('pad');
   $('sheet').classList.add('full');
@@ -5267,6 +5293,7 @@ function openEditFund(tx){
   $('sh-form').classList.toggle('money-locked', isGroupedFundRow(tx));
   $('deleteBtn').style.display = 'block'; $('deleteBtn').textContent = 'Delete';
   applyLockState(editingExp);
+  setupRefundUI(editingExp);
   armSaveKey();
   dockShow('pad');
   $('sheet').classList.add('full');
@@ -5304,6 +5331,59 @@ async function unlockEditing(){
   $('lockNote').style.display = 'none'; $('deleteBtn').style.display = 'inline-block';
   toast('unlocked 🔓 — edit away; it can be checked off again from All transactions');
   if (atx) loadAllTx(true);
+}
+// ── refund against this purchase (17 Oct 2026) ──
+// all of it or a part; back on the card it was paid with, or as a transfer / cash into the fund it counted against
+// (the card still owes the full charge until it is paid). The server works out where it counts (refund_purchases).
+let rfVia = 'card';
+function setupRefundUI(exp){
+  const linked = !!(exp && exp.refund_of);
+  $('refundPanel').style.display = 'none';
+  // a purchase is refunded with ↩ Refund (the chip would turn the purchase itself into a refund); the old chip stays
+  // only on refunds entered the old way, as their own line. A linked refund stays a refund: delete it to undo.
+  if (mode === 'edit' || mode === 'editDaily') $('refundWrap').style.display = exp && exp.is_refund && !linked ? 'flex' : 'none';
+  const left = exp ? Number(exp.amount) - refundedPart(exp) : 0;
+  const can = exp && !exp.is_refund && !exp.refund_of && exp.category !== 'Payment' && left > 0.005 && (mode === 'edit' || mode === 'editDaily');
+  $('refundBtn').style.display = can ? 'block' : 'none';
+  $('refundBtn').textContent = refundedPart(exp) > 0 ? '↩ Refund more… (' + fmtMoney(refundedPart(exp), exp.currency) + ' back so far)' : '↩ Refund…';
+}
+function openRefundPanel(){
+  const exp = editingExp; if (!exp) return;
+  const left = Math.round((Number(exp.amount) - refundedPart(exp)) * 100) / 100;
+  // the card it was paid with (an archived card isn't in the list, but the money still goes back to it)
+  const card = CTX.cards.find(c => c.id === exp.payment_method_id), onCard = !!exp.payment_method_id && (card ? card.kind !== 'cash' : true);
+  const cardName = card ? card.name : (exp.paid_with || 'the card');
+  rfVia = onCard ? 'card' : 'cash';
+  $('rfTitle').textContent = 'Refund “' + (exp.description || 'this purchase') + '”';
+  $('rfCap').textContent = 'all of it or a part — up to ' + fmtMoney(left, exp.currency) + '. The purchase keeps its full amount (it still matches the statement); only what was used counts, in its own month.';
+  $('rfAmount').value = left.toFixed(2);
+  $('rfDate').value = isoDate(new Date()); $('rfDate').min = exp.date;
+  $('rfNote').value = '';
+  const chip = (v, label) => '<button type="button" class="chip' + (rfVia === v ? ' sel' : '') + '" data-via="' + v + '">' + esc(label) + '</button>';
+  $('rfVia').innerHTML = (onCard ? chip('card', 'back on ' + cardName) : '') + chip('cash', 'bank transfer or cash');
+  $('rfVia').querySelectorAll('[data-via]').forEach(b => b.onclick = () => { rfVia = b.dataset.via; $('rfVia').querySelectorAll('[data-via]').forEach(x => x.classList.toggle('sel', x === b)); });
+  $('refundBtn').style.display = 'none';
+  $('refundPanel').style.display = 'block';
+  dockShow('none'); $('dock').style.display = 'none';   // the keypad types the purchase's own amount — out of the way while refunding
+  $('rfAmount').focus();
+  $('refundPanel').scrollIntoView({ block: 'nearest' });
+}
+function closeRefundPanel(){ $('refundPanel').style.display = 'none'; setupRefundUI(editingExp); $('dock').style.display = ''; dockShow('pad'); }
+async function saveRefund(){
+  const exp = editingExp; if (!exp || saving) return;
+  const v = Math.round(parseFloat($('rfAmount').value) * 100) / 100;
+  if (!(v > 0)) { toast('type how much came back'); return; }
+  if (!guard($('rfSave'))) return;
+  saving = true;
+  const { error } = await sb.rpc('refund_purchases', { p_items: [{ id: exp.id, amount: v }], p_date: $('rfDate').value || isoDate(new Date()),
+                                                      p_via: rfVia, p_note: $('rfNote').value.trim() || null });
+  saving = false;
+  if (error) { toast('couldn’t refund: ' + error.message); return; }
+  const msg = fmtMoney(v, exp.currency) + ' refunded' + (rfVia === 'card' ? ' on the card' : ' — into its fund');
+  embedSay({ type: 'saved', msg });
+  closeSheet(); toast(msg + ' 🐻');
+  refreshAfterSave();
+  if (curTripId && exp.trip_id === curTripId) loadTravel(true);
 }
 let delArm = false;
 async function deleteExpense(){
@@ -5362,6 +5442,8 @@ const TUT_STEPS = [
     title:'Six months back', text:'bars are spending · the dashed line is your plan.' },
   { scr:'scr-travel', el: () => document.querySelector('#scr-travel .iconbtn'), round:true, isNew:4,
     title:'Travel', text:'each trip keeps its own spending and currencies. When it’s over, Send splits it over your travel funds: card lines go to the fund in the card’s currency, at what the card charged (typed on the Desk from the statement); cash goes by the currency you spent. Sent too soon? Undo, and send again.' },
+  { scr:'scr-home', center:true, isNew:4, title:'Refunds',
+    text:'money back on a purchase? open the purchase and tap ↩ Refund — all of it or a part, back on the card or as a transfer. The purchase keeps its full amount (it still matches the statement); only what was used counts, in its own month.' },
   { scr:'scr-funds', el: () => $('fundTotals'), isNew:2,
     title:'Funds', text:'Available = what’s left to spend · on cards = charged, not paid yet · in the bank = what the bank shows. Paying a card moves the last two, never Available.' },
   { scr:'scr-funds', el: () => $('planCard'), isNew:2,

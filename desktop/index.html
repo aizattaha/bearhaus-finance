@@ -70,6 +70,7 @@ td{padding:9px 10px;border-bottom:1px solid #EEF1F5;vertical-align:middle}
 tr.recd td{color:var(--ink-soft)}
 tr.recd td .dsc{opacity:.6}
 tr.sel td{background:#F3F7FF}
+tr.refunded td .dsc,tr.refunded td.amt{text-decoration:line-through;opacity:.55}
 tr:hover td{background:#F7F9FC}
 td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td.num{white-space:nowrap}
@@ -320,7 +321,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <section class="screen" id="scr-nocard">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
         <div><p class="cap">Browse &amp; bulk edit</p><h1 class="h1">Transactions</h1></div>
-        <p class="cap">click a row to edit everything on it (the phone’s own edit sheet) · tick several → <b>Edit selected</b> or <b>Delete selected</b> · a row with no card can never sit on a statement</p>
+        <p class="cap">click a row to edit everything on it (the phone’s own edit sheet) · tick several → <b>Edit selected</b>, <b>Refund selected</b> or <b>Delete selected</b> · a row with no card can never sit on a statement</p>
       </div>
       <div class="toolbar">
         <select class="descinput" id="ncMonth" style="min-width:180px"></select>
@@ -343,6 +344,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         <div class="sticky-bar">
           <span class="lbl" id="ncSelInfo">nothing selected</span>
           <button class="btn btn-primary" id="ncEdit" onclick="openBulk('nc')" disabled>Edit selected</button>
+          <button class="btn btn-soft" id="ncRefund" onclick="openRefund()" disabled>↩ Refund selected</button>
           <button class="btn btn-soft" id="ncDel" onclick="deleteSelected()" disabled style="color:var(--bad)">Delete selected</button>
           <span style="flex:1"></span>
           <button class="btn-tert" id="ncMore" onclick="loadNoCard(false)" style="display:none">Load more</button>
@@ -488,6 +490,23 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <div class="row" style="justify-content:flex-end;margin-top:14px;gap:8px">
       <button class="btn btn-soft" onclick="closeBulk()">Cancel</button>
       <button class="btn btn-primary" id="bkApply" onclick="applyBulk()">Apply to selected</button>
+    </div>
+  </div>
+</div>
+<div id="rf" class="overlay" onclick="if(event.target===this)closeRefund()">
+  <div class="card bulkcard pform">
+    <div class="sheet-head"><div><p class="cap">Refund against the purchase</p><span class="h2" id="rfTitle">2 purchases</span></div><button class="btn-tert" onclick="closeRefund()">Close</button></div>
+    <p class="cap" style="margin:8px 2px 0">all of each purchase, or type the part that came back. The purchase keeps its full amount (it still matches the statement); only what was used counts in the budget and the funds, in the purchase’s own month.</p>
+    <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Purchase</th><th class="amt" style="width:110px">Charged</th><th class="amt" style="width:110px">Back so far</th><th class="amt" style="width:130px">Coming back</th></tr></thead><tbody id="rfRows"></tbody></table></div>
+    <div class="pgrid" style="margin-top:10px">
+      <label class="arow"><span class="ric">📅</span><span class="rmid"><span class="rlab">came back on</span><input id="rfDate" type="date"></span></label>
+      <label class="arow"><span class="ric">💳</span><span class="rmid"><span class="rlab">how it came back</span><select id="rfVia"><option value="card">back on the card it was paid with (a credit on the statement)</option><option value="cash">bank transfer or cash — the card still owes the full charge</option></select></span><span class="chev">›</span></label>
+      <label class="arow" style="grid-column:1 / -1"><span class="ric">📝</span><span class="rmid"><span class="rlab">note</span><input id="rfNote" placeholder="optional"></span></label>
+    </div>
+    <p class="cap" id="rfMsg" style="margin-top:10px"></p>
+    <div class="row" style="justify-content:flex-end;margin-top:14px;gap:8px">
+      <button class="btn btn-soft" onclick="closeRefund()">Cancel</button>
+      <button class="btn btn-primary" id="rfApply" onclick="applyRefund()">Refund</button>
     </div>
   </div>
 </div>
@@ -769,7 +788,7 @@ async function loadStatement(){
   $('stRows').innerHTML = '<tr><td colspan="8" class="empty"><span class="spin"></span></td></tr>';
   // the margin reaches back only: a purchase can post a few days after it was made, never before (v2 S1)
   const from = st.margin ? addDays(p.start, -5) : p.start, to = p.end;
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, fund_id, is_refund, settled_amount';
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, reconciled_statement_id, pot_fund_id, fund_id, is_refund, settled_amount, refund_of, refunded';
   // the statement record first: a CLOSED statement shows exactly the rows ticked on it, whatever their date
   const s0 = await sb.from('statements').select('*').eq('payment_method_id', c.id).eq('period_end', p.end).maybeSingle();
   const closed = !!(s0.data && s0.data.closed_at);
@@ -1320,7 +1339,7 @@ async function loadNoCard(reset){
   }
   const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch), cf = $('ncCardF').value, ff = $('ncFundF').value;
   const cashCard = CTX.cards.find(c => c.kind === 'cash');
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, is_refund, fund_id';
+  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, is_refund, fund_id, refund_of, refunded';
   if (ff) nc.tDone = true;   // only daily purchases can count against a fund — a trip's already count against the trip
   const mk = (t, off, extra) => {
     let qq = sb.from(t).select(sel + (extra || '')).neq('category', 'Payment')
@@ -1344,7 +1363,7 @@ async function loadNoCard(reset){
 function renderNoCard(){
   const body = $('ncRows');
   if (!nc.rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">' + ($('ncCardF').value === 'none' ? 'every row here has a card 🐻' : 'nothing matches') + '</td></tr>'; }
-  else body.innerHTML = nc.rows.map(r => { const c = cardById(r.payment_method_id); return '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + (r.reconciled_at ? ' recd' : '') + '" data-key="' + r.key + '">'
+  else body.innerHTML = nc.rows.map(r => { const c = cardById(r.payment_method_id); return '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + (r.reconciled_at ? ' recd' : '') + (!r.refund_of && Number(r.refunded || 0) >= Number(r.amount) - 0.005 && Number(r.refunded || 0) > 0 ? ' refunded' : '') + '" data-key="' + r.key + '">'
     + '<td><input type="checkbox" class="rowck"' + (nc.sel.has(r.key) ? ' checked' : '') + '></td>'
     + '<td class="num">' + fmtD(r.date) + '</td>'
     + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + fundTag(r) + '</span></td>'
@@ -1371,6 +1390,7 @@ function updateNcBar(){
   $('ncSelInfo').textContent = n ? n + ' selected' : 'nothing selected';
   $('ncEdit').disabled = !n;
   $('ncDel').disabled = !n;
+  $('ncRefund').disabled = !n;
 }
 // delete the ticked rows: they go to Recently deleted for 30 days (restorable in Settings). A row ticked off on a
 // statement is locked — it stays, and the count says so (un-reconcile it first).
@@ -1390,6 +1410,48 @@ async function deleteSelected(){
     if (error) { toast('couldn’t delete: ' + error.message); loadNoCard(true); return; }
   }
   toast(open.length + ' deleted — 30 days in Recently deleted' + (locked ? ' · ' + locked + ' reconciled kept' : ''));
+  loadNoCard(true);
+}
+// refund the ticked purchases (17 Oct 2026): all of each, or a typed part; on the card it was paid with, or as a
+// transfer / cash into the fund it counted against. One server call for all of them (refund_purchases).
+const rfx = { rows: [] };
+function openRefund(){
+  const rows = nc.rows.filter(r => nc.sel.has(r.key));
+  rfx.rows = rows.filter(r => !r.is_refund && !r.refund_of && Number(r.amount) - Number(r.refunded || 0) > 0.005);
+  const skipped = rows.length - rfx.rows.length;
+  if (!rfx.rows.length) { toast('nothing here can be refunded — refunds and fully refunded purchases are skipped'); return; }
+  $('rfTitle').textContent = rfx.rows.length + (rfx.rows.length === 1 ? ' purchase' : ' purchases') + (skipped ? ' · ' + skipped + ' skipped (already refunds, or fully refunded)' : '');
+  $('rfRows').innerHTML = rfx.rows.map((r, i) => { const left = Number(r.amount) - Number(r.refunded || 0); return '<tr><td><span class="dsc">' + esc(r.description) + '</span> <span class="cap">' + fmtD(r.date) + '</span></td>'
+    + '<td class="amt">' + fmtMoney(r.amount, r.currency) + '</td><td class="amt">' + (Number(r.refunded || 0) > 0 ? fmtMoney(r.refunded, r.currency) : '—') + '</td>'
+    + '<td class="amt"><input class="descinput num" type="number" step="0.01" min="0" data-i="' + i + '" value="' + left.toFixed(2) + '" style="width:110px;text-align:right"></td></tr>'; }).join('');
+  $('rfDate').value = isoDate(new Date());
+  const allCards = rfx.rows.every(r => { const c = cardById(r.payment_method_id); return r.payment_method_id && (!c || c.kind !== 'cash'); });
+  $('rfVia').value = allCards ? 'card' : 'cash';
+  $('rfNote').value = '';
+  $('rfMsg').textContent = allCards ? '' : 'some were paid in cash, so they can only come back as a transfer or cash';
+  $('rf').classList.add('show');
+}
+function closeRefund(){ $('rf').classList.remove('show'); }
+async function applyRefund(){
+  const items = [];
+  for (const inp of $('rfRows').querySelectorAll('input')) {
+    const r = rfx.rows[+inp.dataset.i], v = Math.round(parseFloat(inp.value) * 100) / 100;
+    if (!(v > 0)) continue;
+    if (v > Number(r.amount) - Number(r.refunded || 0) + 0.005) { toast('“' + r.description + '”: at most ' + fmtMoney(Number(r.amount) - Number(r.refunded || 0), r.currency) + ' can come back'); return; }
+    items.push({ id: r.id, amount: v });
+  }
+  if (!items.length) { toast('type what came back'); return; }
+  const via = $('rfVia').value;
+  if (via === 'card') {
+    const cash = rfx.rows.filter(r => items.some(x => x.id === r.id)).filter(r => { const c = cardById(r.payment_method_id); return !r.payment_method_id || (c && c.kind === 'cash'); });
+    if (cash.length) { toast('“' + cash[0].description + '” was paid in cash — choose bank transfer or cash'); return; }
+  }
+  $('rfApply').disabled = true;
+  const { error } = await sb.rpc('refund_purchases', { p_items: items, p_date: $('rfDate').value || isoDate(new Date()), p_via: via, p_note: $('rfNote').value.trim() || null });
+  $('rfApply').disabled = false;
+  if (error) { toast('couldn’t refund: ' + error.message); return; }
+  closeRefund();
+  toast(items.length + (items.length === 1 ? ' purchase' : ' purchases') + ' refunded' + (via === 'card' ? ' on the card' : ' into their funds'));
   loadNoCard(true);
 }
 // ── bulk edit (shared by Statements and Transactions) ───────
@@ -1659,7 +1721,12 @@ async function loadSwaps(){
 
 // a purchase that counts against a named fund (not the month's budget) wears the fund's name
 const fundName = id => (CTX.funds.find(f => f.id === id) || {}).name || 'a fund';
-const fundTag = r => (r.kind === 'daily' || !r.kind) && r.fund_id ? ' <span class="tag blue" title="counts against this fund, not the month’s budget">💰 ' + esc(fundName(r.fund_id)) + '</span>' : '';
+const fundTag = r => ((r.kind === 'daily' || !r.kind) && r.fund_id ? ' <span class="tag blue" title="counts against this fund, not the month’s budget">💰 ' + esc(fundName(r.fund_id)) + '</span>' : '') + refundTagD(r);
+// refunds against the purchase (17 Oct 2026): the purchase keeps its full amount for the statement; only what was used counts
+const refundTagD = r => r.refund_of ? ' <span class="tag good" title="counts in its purchase’s month and category">↩ refund of a purchase</span>'
+  : Number(r.refunded || 0) <= 0 ? ''
+  : Number(r.refunded) >= Number(r.amount) - 0.005 ? ' <span class="tag good" title="the whole purchase came back — it counts nowhere">↩ refunded</span>'
+  : ' <span class="tag good" title="only what was used counts">↩ ' + fmtMoney(r.refunded, r.currency) + ' refunded · ' + fmtMoney(Number(r.amount) - Number(r.refunded), r.currency) + ' used</span>';
 // funds that can take a purchase in this currency: everything active except spending pots (those are the budget)
 const fundOptsFor = (cur, selId, blankLabel) => '<option value="">' + esc(blankLabel || 'the month’s budget') + '</option>'
   + CTX.funds.filter(f => (!cur || f.currency === cur) && !f.is_spend_pot).map(f => '<option value="' + f.id + '"' + (f.id === selId ? ' selected' : '') + '>' + esc(f.name) + ' · ' + esc(f.currency) + '</option>').join('');
@@ -2069,6 +2136,7 @@ const DESK_TOUR = [
   { scr: 'statements', el: () => $('stClose'), title: 'Close it', text: 'when the totals agree, close the statement — that period locks.' },
   { scr: 'statements', el: () => $('stPay').style.display !== 'none' ? $('stPay') : null, title: 'Record the payment', text: 'what you paid, from which fund, and the date. A future date shows as scheduled until that day. Paying lowers In the bank and Owed on cards — never Available.' },
   { scr: 'nocard', el: () => document.querySelector('nav .nv[data-scr="nocard"]'), title: 'Transactions', text: 'every row in one list. Filter, then change the category, card or fund of many rows at once.' },
+  { scr: 'nocard', el: () => $('ncRefund'), title: 'Refund against the purchase', text: 'tick what was refunded → Refund selected: all of it or a part, back on the card or as a transfer. The purchase keeps its full amount for the statement; only what was used counts, in its own month.' },
   { scr: 'swap', el: () => document.querySelector('nav .nv[data-scr="swap"]'), title: 'Pot swap', text: 'spent in one currency but the money came from another? record the swap and its rate here.' },
   { scr: 'pots', el: () => document.querySelector('nav .nv[data-scr="pots"]'), title: 'Pots 🍯', text: 'every fund in one place — Available, owed on cards, in the bank, cleared, pending — and every card’s balance.' },
   { scr: 'activity', el: () => document.querySelector('nav .nv[data-scr="activity"]'), title: 'Activity', text: 'who changed what, and when — every save, edit and delete, from the phone or here.' },
