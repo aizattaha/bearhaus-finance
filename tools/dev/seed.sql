@@ -29,7 +29,7 @@ update public.payment_methods set is_archived = true where household_id = :'hh':
 -- money in
 insert into public.fund_transactions (household_id, fund_id, type, date, amount, remarks, origin)
 select :'hh'::uuid, f.id, 'income', (select pot_start from public.households where id = :'hh'::uuid), v.amt, 'opening (synthetic)', 'manual'
-from public.funds f join (values ('Float AU', 2000), ('Car Fund', 900), ('Float SG', 1500), ('Savings SG', 3000), ('Travel fund AU', 1200)) v(n, amt) on v.n = f.name
+from public.funds f join (values ('Float AU', 2000), ('Car Fund', 900), ('Float SG', 1500), ('Savings SG', 3000), ('Travel fund AU', 1200), ('Travel fund SG', 800)) v(n, amt) on v.n = f.name
 where f.household_id = :'hh'::uuid;
 
 -- a transfer Float SG → Savings SG
@@ -49,7 +49,8 @@ from (values ((select pot_start from public.households where id = :'hh'::uuid) -
              (current_date - 4, 'Fuel', 'Gas/fuel', 70.00, 'AUD', 'Alex', 'Macquarie - Alex'),
              (current_date - 3, 'Hawker lunch', 'Dining out', 9.80, 'SGD', 'Alex', 'UOB PPV')) v(d, descr, cat, amt, cur, who, card);
 
--- a trip with a purchase in a third currency on the SG card
+-- a trip with a purchase in a third currency on the SG card (and, since the trips-across-currencies change, ¥ cash,
+-- S$ on the same card and A$ on an A$ card: the Send card splits it over both travel funds)
 insert into public.trips (household_id, name, start_date, end_date, currency, currencies, countries)
 values (:'hh'::uuid, 'Test trip', current_date - 20, current_date - 14, 'JPY', '{JPY,SGD}', '{JP}');
 insert into public.expenses (household_id, trip_id, date, description, category, amount, currency, payer_profile_id, payment_method_id, paid_with)
@@ -57,6 +58,13 @@ select :'hh'::uuid, t.id, current_date - 18, 'Ramen', 'Dining out', 1800, 'JPY',
        (select id from public.profiles where household_id = :'hh'::uuid and display_name = 'Alex'),
        (select id from public.payment_methods where household_id = :'hh'::uuid and name = 'UOB PPV'), 'UOB PPV'
 from public.trips t where t.household_id = :'hh'::uuid and t.name = 'Test trip';
+insert into public.expenses (household_id, trip_id, date, description, category, amount, currency, payer_profile_id, payment_method_id, paid_with)
+select :'hh'::uuid, t.id, current_date - v.ago, v.descr, v.cat, v.amt, v.cur,
+       (select id from public.profiles where household_id = :'hh'::uuid and display_name = 'Alex'),
+       (select id from public.payment_methods where household_id = :'hh'::uuid and name = v.card), v.card
+from public.trips t, (values (19, 'Train pass', 'Ferry/Train', 3000, 'JPY', 'Cash'), (20, 'Airport bus', 'Taxi/Grab', 12, 'SGD', 'UOB PPV'),
+                             (25, 'Hotel deposit', 'Hotel', 150, 'AUD', 'Macquarie - Alex')) v(ago, descr, cat, amt, cur, card)
+where t.household_id = :'hh'::uuid and t.name = 'Test trip';
 
 -- six months of everyday purchases, ~1,200 rows: several categories and cards, a few refunds, a few paid from the
 -- Car Fund, a few dated later this month (scheduled)

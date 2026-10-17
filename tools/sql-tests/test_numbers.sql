@@ -44,7 +44,7 @@ values (:'hh', 'Card trip', :'today', :'today', 'AUD', '{AUD}', '{AU}') returnin
 insert into public.travel_expenses (household_id, trip_id, date, description, category, amount, currency, payer_profile_id, payment_method_id, paid_with)
 values (:'hh', :'trip', :'today', 'hotel', 'Hotel', 100, 'AUD', :'ana', :'visa', 'Visa — Ana'),
        (:'hh', :'trip', :'today', 'taxi', 'Taxi/Grab', 30, 'AUD', :'ana', null, '');
-select public.send_trip_to_fund(:'trip', :'tf', :'today');
+select public.send_trip(:'trip', :'today');
 insert into public.statements (household_id, payment_method_id, period_start, period_end)
 values (:'hh', :'visa', (:'today'::date) - 30, (:'today'::date) + 30) returning id as stv \gset
 select set_config('ci.stv', :'stv', true);
@@ -127,13 +127,14 @@ begin
   assert s = 'paid', 'the statement is paid, got ' || s;
 end $$;
 
--- ── a converted trip send splits its card share in proportion ────────────
+-- ── a ¥ trip: the card part at what the A$ card charged, the cash part converted ──
 insert into public.trips (household_id, name, start_date, end_date, currency, currencies, countries)
 values (:'hh', 'Yen trip', :'today', :'today', 'JPY', '{JPY}', '{JP}') returning id as trip3 \gset
 insert into public.travel_expenses (household_id, trip_id, date, description, category, amount, currency, payer_profile_id, payment_method_id, paid_with)
 values (:'hh', :'trip3', :'today', 'ryokan', 'Hotel', 6000, 'JPY', :'ana', :'visa', 'Visa — Ana'),
        (:'hh', :'trip3', :'today', 'noodles', 'Street Food', 4000, 'JPY', :'ana', null, '');
-select public.send_foreign_to_fund(:'trip3', :'tf', :'today', array(select id from public.expenses where trip_id = :'trip3'), 100);
+select public.set_settled_amount((select id from public.expenses where trip_id = :'trip3' and description = 'ryokan'), 60);
+select public.send_trip(:'trip3', :'today', '{"JPY": 40}');
 do $$
 declare v numeric; c numeric;
 begin

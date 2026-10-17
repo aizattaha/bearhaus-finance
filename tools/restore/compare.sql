@@ -26,4 +26,27 @@ union all
 select 'purchases: marked as edited (updated_at/by moved)', count(*)
   from bh_cmp.stamp s join public.expenses e using (id) where e.updated_at is distinct from s.updated_at or e.updated_by is distinct from s.updated_by
 union all
+select 'trip sends: amount or fund changed', count(*)
+  from bh_cmp.send s join public.fund_transactions_all a using (id)
+ where not s.gone and a.deleted_at is null and (a.amount, a.type, a.fund_id) is distinct from (s.amount, s.type, s.fund_id)
+union all
+select 'trip sends: taken back (all their purchases now go elsewhere or wait)', count(*)
+  from bh_cmp.send s join public.fund_transactions_all a using (id) where not s.gone and a.deleted_at is not null
+union all
+select 'trip sends: new (purchases moved to the travel fund in their card''s currency)', count(*)
+  from public.fund_transactions_all a
+ where a.kind = 'allocation' and a.transfer_group_id is null and a.remarks ~ '^Travel: ' and a.deleted_at is null
+   and not exists (select 1 from bh_cmp.send s where s.id = a.id)
+union all
+select 'trip purchases: back to "to send"', count(*)
+  from bh_cmp.tripline s join public.expenses e using (id) where s.sent_to_fund and not e.sent_to_fund
+union all
+select 'trip purchases: now paid from another fund', count(*)
+  from bh_cmp.tripline s join public.expenses e using (id)
+  join public.fund_transactions_all a0 on a0.id = s.settlement_tx_id join public.fund_transactions_all a1 on a1.id = e.settlement_tx_id
+ where a0.fund_id <> a1.fund_id
+union all
+select 'trip purchases: linked to their send for the first time', count(*)
+  from bh_cmp.tripline s join public.expenses e using (id) where s.settlement_tx_id is null and e.settlement_tx_id is not null
+union all
 select 'Activity lines added by the migrations', (select count(*) from public.audit_log) - (select n from bh_cmp.audit);

@@ -150,7 +150,7 @@ select :'hh', :'trip', (:'month'::date - 40 + (i % 10))::date, 'trip line ' || i
        case when i % 2 = 0 then 'JPY' else 'AUD' end,
        (array[:'visa', :'cash']::uuid[])[i % 2 + 1], case when i % 3 = 0 then :'ben'::uuid else :'ana'::uuid end, i % 13 = 0
   from generate_series(1, 30) i;
-select public.send_trip_to_fund(:'trip', :'trav', :'today') \gset x_
+select public.send_trip(:'trip', :'today') \gset x_
 
 -- this month's plan, applied (its Salary counts as income on Home)
 select public.save_month_plan(:'month',

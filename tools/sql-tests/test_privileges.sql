@@ -35,6 +35,12 @@ begin
   -- internal helpers are not callable by a signed-in login
   assert not has_function_privilege('authenticated', 'public.restamp_pots(uuid, date, date, text)', 'execute'), 'restamp_pots is callable by a login';
   assert not has_function_privilege('authenticated', 'public.seed_default_categories(uuid)', 'execute'), 'seed_default_categories is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.bh_rederive_trip_sends(uuid)', 'execute'), 'bh_rederive_trip_sends is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.bh_undo_send(uuid)', 'execute'), 'bh_undo_send is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.bh_send_resum(uuid)', 'execute'), 'bh_send_resum is callable by a login';
+  assert not has_function_privilege('authenticated', 'public.bh_trip_send_lines(uuid, uuid, jsonb)', 'execute'), 'bh_trip_send_lines is callable by a login';
+  assert not has_function_privilege('anon', 'public.send_trip(uuid, date, jsonb)', 'execute'), 'anon could send a trip';
+  assert not has_function_privilege('anon', 'public.trip_send_plan(uuid)', 'execute'), 'anon could read a trip plan';
 end $$;
 
 -- every server function and table/view the two apps use is still reachable by a signed-in login
@@ -45,7 +51,7 @@ begin
     'check_invite','create_household_setup','create_member_invite','delete_card_payment','delete_pot_swap','invite_info',
     'join_household','keep_fund_spend','link_my_profile','move_expense_to_fund_spend','move_fund_spend_to_expenses',
     'pot_month_spend','purge_deleted','reconcile_rows','record_card_payment','record_pot_swap','remove_member','restore_rows',
-    'revoke_member_invite','save_expense','save_month_plan','send_foreign_to_fund','send_trip_to_fund','soft_delete_rows',
+    'revoke_member_invite','save_expense','save_month_plan','send_trip','undo_trip_send','trip_send_plan','set_trip_fund','soft_delete_rows',
     'unreconcile_rows','update_pot_swap_rate','desk_add_expense','desk_set_card','record_transfer','apply_month_plan','plan_status','set_settled_amount','fund_history',
     'app_bootstrap','home_summary','budget_summary','household_money','trip_summary']) f
    where not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace

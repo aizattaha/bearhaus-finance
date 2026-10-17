@@ -109,6 +109,11 @@ end $$;
 -- ── a re-file is not an edit ────────────────────────────────────────────
 reset role;
 select set_config('ci.audit0', (select count(*) from public.audit_log where household_id = :'hh' and table_name = 'expenses' and op = 'update')::text, true) \gset x_
+-- every row here was written in this one transaction, so "now" never moves: date them an hour back first, or a
+-- re-file that stamps them as edited would go unseen (it did, sprint 3 → 17 Oct)
+alter table public.expenses disable trigger zz_expenses_touch;
+update public.expenses set updated_at = updated_at - interval '1 hour' where household_id = :'hh';
+alter table public.expenses enable trigger zz_expenses_touch;
 create temp table _seen as select id, updated_at, updated_by, pot_fund_id, date from public.expenses where household_id = :'hh';
 grant select on _seen to authenticated;
 set local role authenticated;

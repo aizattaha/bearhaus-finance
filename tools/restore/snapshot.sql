@@ -20,6 +20,14 @@ create table bh_cmp.stmt as
 create table bh_cmp.stamp as
   select id, household_id, pot_fund_id, updated_at, updated_by from public.expenses;
 create table bh_cmp.audit as select count(*) as n from public.audit_log;
+-- trip sends and the purchases they paid for (trips across currencies, 17 Oct 2026); works before and after that change
+create table bh_cmp.send as
+  select a.id, a.household_id, a.fund_id, a.date, a.type, a.amount, a.remarks, a.deleted_at is not null as gone
+    from public.fund_transactions_all a
+   where a.kind = 'allocation' and a.transfer_group_id is null and a.remarks ~ '^Travel: ';
+create table bh_cmp.tripline as
+  select e.id, e.household_id, e.trip_id, e.sent_to_fund, e.settlement_tx_id
+    from public.expenses e where e.trip_id is not null and e.deleted_at is null;
 select 'snapshot taken' as status,
        (select count(*) from bh_cmp.fund) as funds, (select count(*) from bh_cmp.card) as cards,
        (select count(*) from bh_cmp.stmt) as statements, (select count(*) from bh_cmp.stamp) as purchases;
