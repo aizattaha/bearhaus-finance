@@ -20,7 +20,9 @@ select 'purchases filed to a different pot than the rule (want 0)', count(*) fro
 select 'households or members whose login is missing (want 0)', (select count(*) from public.households h left join auth.users u on u.id = h.owner_user_id where u.id is null) + (select count(*) from public.household_members m left join auth.users u on u.id = m.user_id where u.id is null);
 select 'money views computed (funds / cash / cards / statements)', (select count(*) from public.fund_balances) || ' / ' || (select count(*) from public.fund_cash) || ' / ' || (select count(*) from public.card_balances) || ' / ' || (select count(*) from public.statement_balances);
 
--- the doors (a restore re-grants the public key — re-apply the lockdown if these fail; docs/RESTORE.md step 6)
+-- the doors (loading a dump re-grants the public key: tools/restore/before-load.sql before the load and
+-- tools/restore/relock.sql after it, docs/RESTORE.md steps 4 and 6)
 select 'functions the public key can run (want 4)', count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute');
 select 'tables/views the public key can read (want 0)', count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r', 'v') and has_table_privilege('anon', c.oid, 'select');
+select 'logins can run every function, so the load kept the automatic grants (want 0; redo from step 3 with before-load.sql)', (not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and not has_function_privilege('authenticated', p.oid, 'execute')))::int;
 select 'tables with RLS off (want 0)', count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
