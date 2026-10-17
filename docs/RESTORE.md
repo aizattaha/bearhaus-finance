@@ -3,8 +3,12 @@
 First drill: **15 Oct 2026, passed**: all 20 tables, every row and every login came back, and the money
 checks hold. **17 Oct 2026:** steps 4 and 6 rebuilt (re-running the lockdown migration had stopped working),
 proven on a synthetic copy of the local stack: afterwards every function, table and view has exactly the
-rights of a database built from the migrations. Run the drill again once a month and after any change to how
-backups are made.
+rights of a database built from the migrations. **Drill with a real backup, 17 Oct 2026, passed** (the
+pre-deploy snapshot of that day, on the local stack, with the new steps): every table, row and login came back,
+the money checks hold (the one known exception only), the public key runs 4 functions and reads no table, and
+the privilege test passes. Production's rights match a migrations-built database except one harmless leftover in
+the build itself (logins hold MAINTAIN on `beta_invites` there, not in production). Run the drill again once a
+month and after any change to how backups are made.
 
 ## Where the backups are
 - **Weekly:** GitHub → Actions → *Backup database* (every Monday, plus on demand). Artifact
