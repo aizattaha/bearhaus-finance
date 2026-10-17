@@ -40,6 +40,8 @@ begin
   assert not has_function_privilege('authenticated', 'public.bh_send_resum(uuid)', 'execute'), 'bh_send_resum is callable by a login';
   assert not has_function_privilege('authenticated', 'public.bh_trip_send_lines(uuid, uuid, jsonb)', 'execute'), 'bh_trip_send_lines is callable by a login';
   assert not has_function_privilege('anon', 'public.send_trip(uuid, date, jsonb)', 'execute'), 'anon could send a trip';
+  assert not has_function_privilege('anon', 'public.refund_purchases(jsonb, date, text, text)', 'execute'), 'anon could refund a purchase';
+  assert not has_function_privilege('authenticated', 'public.bh_expense_refunds_sync()', 'execute'), 'the refunds trigger is callable by a login';
   assert not has_function_privilege('anon', 'public.trip_send_plan(uuid)', 'execute'), 'anon could read a trip plan';
 end $$;
 
@@ -51,7 +53,7 @@ begin
     'check_invite','create_household_setup','create_member_invite','delete_card_payment','delete_pot_swap','invite_info',
     'join_household','keep_fund_spend','link_my_profile','move_expense_to_fund_spend','move_fund_spend_to_expenses',
     'pot_month_spend','purge_deleted','reconcile_rows','record_card_payment','record_pot_swap','remove_member','restore_rows',
-    'revoke_member_invite','save_expense','save_month_plan','send_trip','undo_trip_send','trip_send_plan','set_trip_fund','soft_delete_rows',
+    'revoke_member_invite','save_expense','save_month_plan','send_trip','undo_trip_send','trip_send_plan','set_trip_fund','refund_purchases','soft_delete_rows',
     'unreconcile_rows','update_pot_swap_rate','desk_add_expense','desk_set_card','record_transfer','apply_month_plan','plan_status','set_settled_amount','fund_history',
     'app_bootstrap','home_summary','budget_summary','household_money','trip_summary']) f
    where not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace

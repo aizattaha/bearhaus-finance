@@ -55,7 +55,7 @@ select h.id,
   from public.households h where h.name like 'Perf house %';
 update public.households set pot_start = current_date - 400 where name like 'Perf house %';
 insert into public.expenses (household_id, date, description, category, category_id, amount, currency, payment_method_id, paid_with,
-                             pot_fund_id, created_at, updated_at, reconciled_at, reconciled_by, reconciled_statement_id)
+                             pot_fund_id, created_at, updated_at, reconciled_at, reconciled_by, reconciled_statement_id, counts_on)
 select h.id, current_date - (i % 400), 'purchase ' || i,
        h.names[1 + i % array_length(h.cats, 1)], h.cats[1 + i % array_length(h.cats, 1)],
        ((i * 37) % 9000) / 100.0 + 1, 'AUD',
@@ -63,7 +63,8 @@ select h.id, current_date - (i % 400), 'purchase ' || i,
        h.pot, now(), now(),
        case when i % 3 <> 0 and i % 400 between 30 and 60 then now() end,
        case when i % 3 <> 0 and i % 400 between 30 and 60 then 'manual' end,
-       case when i % 3 <> 0 and i % 400 between 30 and 60 then h.stmt end
+       case when i % 3 <> 0 and i % 400 between 30 and 60 then h.stmt end,
+       current_date - (i % 400)
   from _hh h cross join generate_series(1, :purchases) i;
 insert into public.fund_transactions_all (household_id, fund_id, type, kind, date, amount, remarks, origin, account_payment_method_id, created_at, updated_at)
 select h.id, case when i % 2 = 0 then h.pot else h.sav end, case when i % 5 = 0 then 'expense' else 'income' end, 'movement',
