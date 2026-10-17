@@ -38,13 +38,30 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+    outputs:
+      migrations: ${{ steps.changed.outputs.migrations }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0   # to see what this push changed
       - name: Apply every migration to an empty database, then test
         run: tools/sql-tests/run.sh "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+      - name: Did this push change a migration?
+        # a tests-only push is tested but not deployed: no snapshot, no push (Bundle B). A manual run always deploys.
+        id: changed
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+             && git diff --quiet "$BEFORE" "$GITHUB_SHA" -- supabase/migrations; then
+            echo "migrations=false" >> "$GITHUB_OUTPUT"; echo "tests only: nothing to deploy"
+          else
+            echo "migrations=true" >> "$GITHUB_OUTPUT"
+          fi
   push-migrations:
     needs: test
-    if: github.event_name != 'pull_request'
+    # production only from main (Bundle B, ENG-10), and only when a migration changed
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.test.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -58,7 +75,7 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       - name: Encrypted snapshot before the push
-        # a restore point for this deploy; encrypted like the weekly backup, kept 30 days
+        # a restore point for this deploy; encrypted like the daily backup, kept 14 days
         run: |
           set -o pipefail
           if [ -z "$BACKUP_PASSPHRASE" ]; then echo "::error::BACKUP_PASSPHRASE missing — no snapshot, no deploy"; exit 1; fi
@@ -75,7 +92,7 @@ jobs:
         with:
           name: pre-deploy-${{ github.sha }}
           path: pre-deploy-*.sql.gpg
-          retention-days: 30
+          retention-days: 14
           if-no-files-found: error
       - name: Push migrations
         # the full log is only readable in the browser; surface the tail of any failure as an

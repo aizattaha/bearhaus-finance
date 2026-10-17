@@ -1,9 +1,13 @@
-# BearHaus — nightly money check (v2 sprint 2)
-# Every night 16:30 UTC (02:30/03:30 Melbourne) and on demand: runs public.bh_money_check() on production —
-# read-only counts of things that should never happen (a broken transfer, plan rows with no apply record,
-# a fund purchase in the wrong currency…). A "fail" line with a count above zero fails the job, and GitHub
-# emails Aizat. The repository is PUBLIC: the log shows check names and counts only, never amounts.
-# Uses the deploy secrets SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_ID (no database password needed).
+# BearHaus — nightly money check (v2 sprint 2; Bundle B, DECISIONS E37)
+# Every night 16:30 UTC (02:30/03:30 Melbourne) and on demand: runs public.bh_money_check_run() on production —
+# read-only counts of things that should never happen (a broken transfer, cards and funds disagreeing on what is
+# owed…) plus the takeover signals (new logins, members, invites, owner changes). The run is stored (counts only)
+# and is the Desk Dashboard's heartbeat. The job FAILS, and GitHub emails Aizat, when a 'fail' line is above zero
+# or a 'warn' count rose since the last run. The repository is PUBLIC: the log shows check names and counts only.
+#
+# It signs in as bh_monitor, a login that can run this check and record a backup and nothing else, with the secret
+# MONITOR_DB_PASSWORD (set up: HANDOVER §4; rotate: docs/RESTORE.md "Keys and passwords"). Until that secret
+# exists it falls back to the account-wide SUPABASE_ACCESS_TOKEN and says so.
 name: Money check
 on:
   schedule:
@@ -16,26 +20,42 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Run the read-only checks (counts only)
+      - name: Run the checks and store the counts
         env:
+          MONITOR_DB_PASSWORD: ${{ secrets.MONITOR_DB_PASSWORD }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          POOLER_HOST: aws-0-ap-southeast-2.pooler.supabase.com
         run: |
           set -euo pipefail
-          code=$(curl -sS -o resp.json -w '%{http_code}' -X POST \
-            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/query" \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
-            -d '{"query": "select check_name, severity, bad from public.bh_money_check() order by severity, check_name"}')
-          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
-            echo "::error title=Money check::couldn't run the check (HTTP $code)"; head -c 300 resp.json; echo; exit 1
+          src=manual; [ "$GITHUB_EVENT_NAME" = schedule ] && src=schedule
+          q="select severity, bad, coalesce(previous::text, '-') as prev, rose, check_name from public.bh_money_check_run('$src')"
+          if [ -n "$MONITOR_DB_PASSWORD" ]; then
+            command -v psql >/dev/null || { sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client >/dev/null; }
+            if ! PGPASSWORD="$MONITOR_DB_PASSWORD" psql "host=$POOLER_HOST port=5432 dbname=postgres user=bh_monitor.$SUPABASE_PROJECT_ID sslmode=require connect_timeout=20" \
+                   -X -q -v ON_ERROR_STOP=1 -At -F $'\t' -c "$q" > lines.tsv 2> err.txt; then
+              echo "::error title=Money check::the check's own login couldn't run it — $(head -c 200 err.txt | tr '\n' ' ')"; exit 1
+            fi
+          else
+            echo "::warning title=Money check::the check's own login isn't set up yet (MONITOR_DB_PASSWORD) — using the account-wide key"
+            code=$(curl -sS -o resp.json -w '%{http_code}' -X POST \
+              "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+              -d "$(jq -n --arg q "$q" '{query: $q}')")
+            if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+              echo "::error title=Money check::couldn't run the check (HTTP $code)"; head -c 300 resp.json; echo; exit 1
+            fi
+            jq -e 'type == "array" and length > 0' resp.json >/dev/null || { echo "::error title=Money check::unexpected reply"; head -c 300 resp.json; echo; exit 1; }
+            jq -r '.[] | [.severity, (.bad|tostring), (.prev // "-"), (if .rose then "t" else "f" end), .check_name] | @tsv' resp.json > lines.tsv
+            rm -f resp.json
           fi
-          if ! jq -e 'type == "array" and length > 0' resp.json >/dev/null; then
-            echo "::error title=Money check::unexpected reply"; head -c 300 resp.json; echo; exit 1
-          fi
-          jq -r '.[] | "\(.severity)\t\(.bad)\t\(.check_name)"' resp.json
-          fails=$(jq '[.[] | select(.severity == "fail" and .bad > 0)] | length' resp.json)
-          warns=$(jq '[.[] | select(.severity == "warn" and .bad > 0)] | length' resp.json)
-          rm -f resp.json
+          [ -s lines.tsv ] || { echo "::error title=Money check::no lines came back"; exit 1; }
+          printf 'severity\tcount\tlast run\trose\tcheck\n'; cat lines.tsv
+          fails=$(awk -F'\t' '$1 == "fail" && $2 > 0' lines.tsv | wc -l)
+          warns=$(awk -F'\t' '$1 == "warn" && $2 > 0' lines.tsv | wc -l)
+          rises=$(awk -F'\t' '$4 == "t"' lines.tsv | wc -l)
           if [ "$warns" -gt 0 ]; then echo "::warning title=Money check::$warns checks worth a look (see the list)"; fi
-          if [ "$fails" -gt 0 ]; then echo "::error title=Money check::$fails checks failed — see the list above"; exit 1; fi
-          echo "money check clean"
+          if [ "$rises" -gt 0 ]; then awk -F'\t' '$4 == "t" { printf "::error title=Money check: went up::%s: %s to %s\n", $5, $3, $2 }' lines.tsv; fi
+          if [ "$fails" -gt 0 ]; then echo "::error title=Money check::$fails checks failed — see the list above"; fi
+          if [ "$fails" -gt 0 ] || [ "$rises" -gt 0 ]; then exit 1; fi
+          echo "money check clean (nothing failed, nothing went up)"

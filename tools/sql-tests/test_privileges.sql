@@ -73,7 +73,7 @@ begin
     'pot_month_spend','purge_deleted','reconcile_rows','record_card_payment','record_pot_swap','remove_member','restore_rows',
     'revoke_member_invite','save_expense','save_month_plan','send_trip','undo_trip_send','trip_send_plan','set_trip_fund','refund_purchases','soft_delete_rows',
     'unreconcile_rows','update_pot_swap_rate','desk_add_expense','desk_set_card','record_transfer','apply_month_plan','plan_status','set_settled_amount','fund_history',
-    'app_bootstrap','home_summary','budget_summary','household_money','trip_summary','link_card_payment','cards_in_use']) f
+    'app_bootstrap','home_summary','budget_summary','household_money','trip_summary','link_card_payment','cards_in_use','ops_heartbeat']) f
    where not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                       where n.nspname = 'public' and p.proname = f and has_function_privilege('authenticated', p.oid, 'execute'));
   assert v is null, 'a login can no longer run: ' || coalesce(v, '');

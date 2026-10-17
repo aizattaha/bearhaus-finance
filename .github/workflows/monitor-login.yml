@@ -1,0 +1,65 @@
+# BearHaus — give the nightly check's own login its password (Bundle B, DECISIONS E37). Run by hand only:
+# once after the secret MONITOR_DB_PASSWORD is first set, after every rotation, and after a real restore.
+#
+# bh_monitor (made by migration 20261019030000_safety_net) can connect and run exactly two functions — the money
+# check and "a backup was made" — and read nothing. This job turns the secret into a SCRAM hash on the runner and
+# sets that hash as the login's password through the Management API, so the password itself never appears in SQL,
+# a database log or this public job log. Then it signs in once as bh_monitor to prove it works.
+name: Monitor login
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  set-password:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Refuse without the secret
+        env:
+          MONITOR_DB_PASSWORD: ${{ secrets.MONITOR_DB_PASSWORD }}
+        run: |
+          if [ "${#MONITOR_DB_PASSWORD}" -lt 32 ]; then
+            echo "::error title=MONITOR_DB_PASSWORD missing or short::Set it first (HANDOVER §4): a random value of 32+ characters."; exit 1
+          fi
+      - name: Set the login's password (as a SCRAM hash)
+        env:
+          MONITOR_DB_PASSWORD: ${{ secrets.MONITOR_DB_PASSWORD }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          verifier=$(python3 -c '
+          import base64, hashlib, hmac, os
+          pw, salt, n = os.environ["MONITOR_DB_PASSWORD"].encode(), os.urandom(16), 4096
+          s = hashlib.pbkdf2_hmac("sha256", pw, salt, n)
+          stored = hashlib.sha256(hmac.new(s, b"Client Key", "sha256").digest()).digest()
+          server = hmac.new(s, b"Server Key", "sha256").digest()
+          b = lambda x: base64.b64encode(x).decode()
+          print("SCRAM-SHA-256$%d:%s$%s:%s" % (n, b(salt), b(stored), b(server)))')
+          echo "::add-mask::$verifier"
+          code=$(curl -sS -o resp.json -w '%{http_code}' -X POST \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg q "alter role bh_monitor with login password '$verifier'" '{query: $q}')")
+          if [ "$code" != 200 ] && [ "$code" != 201 ]; then
+            echo "::error title=Monitor login::couldn't set the password (HTTP $code)"; head -c 300 resp.json | sed 's/SCRAM[^"]*/SCRAM-…/g'; echo; exit 1
+          fi
+          rm -f resp.json
+          echo "password set (as a hash)"
+      - name: Sign in once as bh_monitor
+        env:
+          MONITOR_DB_PASSWORD: ${{ secrets.MONITOR_DB_PASSWORD }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          POOLER_HOST: aws-0-ap-southeast-2.pooler.supabase.com
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null || { sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client >/dev/null; }
+          for i in 1 2 3 4 5 6; do   # the pooler can take a moment to see a new password
+            if who=$(PGPASSWORD="$MONITOR_DB_PASSWORD" psql "host=$POOLER_HOST port=5432 dbname=postgres user=bh_monitor.$SUPABASE_PROJECT_ID sslmode=require connect_timeout=20" \
+                       -X -q -At -c "select session_user" 2> err.txt); then
+              echo "signed in as $who — the nightly check and the backup heartbeat will use this login"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error title=Monitor login::the password is set but signing in failed — $(head -c 200 err.txt | tr '\n' ' ')"; exit 1

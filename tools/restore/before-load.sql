@@ -23,6 +23,15 @@ begin
   end if;
 end $$;
 
+-- the nightly check's own login (Bundle B, DECISIONS E37): the dump grants it two functions, so it must exist
+-- before the load. It comes back with no password: after a real recovery, run the "Monitor login" workflow.
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'bh_monitor') then
+    create role bh_monitor nologin noinherit nocreatedb nocreaterole connection limit 3;
+  end if;
+end $$;
+
 alter default privileges in schema public revoke all on tables    from public, anon, authenticated, service_role;
 alter default privileges in schema public revoke all on sequences from public, anon, authenticated, service_role;
 alter default privileges in schema public revoke all on functions from public, anon, authenticated, service_role;

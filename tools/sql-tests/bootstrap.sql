@@ -21,7 +21,9 @@ begin
   create table auth.users (
     id uuid primary key default gen_random_uuid(),
     email text unique,
-    created_at timestamptz not null default now()
+    created_at timestamptz not null default now(),
+    recovery_sent_at timestamptz,        -- the nightly check's takeover signals read these two (Bundle B)
+    email_change_sent_at timestamptz
   );
   -- auth.uid() / auth.role() read the JWT claims the way PostgREST sets them; tests set them with set_config
   create function auth.uid() returns uuid language sql stable as $f$

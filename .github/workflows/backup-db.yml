@@ -1,20 +1,20 @@
-# BearHaus — database backup
-# Every Monday 18:00 UTC (Tuesday 05:00 Melbourne) and on demand: a full dump of the production
-# database (schema + data), encrypted with a passphrase, kept as a workflow artifact for 90 days.
-# The repository is PUBLIC, so the dump is never stored in it and never uploaded in the clear:
-# the job refuses to run without the passphrase.
+# BearHaus — database backup (daily since Bundle B, DECISIONS E37)
+# Every day 17:00 UTC (03:00/04:00 Melbourne) and on demand: a full dump of the production database (schema + data),
+# encrypted with a passphrase, kept as a workflow artifact. Supabase's Free plan keeps no backups of its own, so
+# these are the only copies. Kept: 14 days, and Monday's for 90 days (about 27 copies at any time).
+# The repository is PUBLIC, so the dump is never stored in it and never uploaded in the clear: the job refuses to
+# run without the passphrase. Each backup leaves a heartbeat row (date and size only) for the Desk Dashboard.
 #
-# One-time setup (GitHub → Settings → Secrets and variables → Actions):
-#   BACKUP_PASSPHRASE      — a long passphrase of your choosing; keep a copy in your password manager
-#   (plus the three deploy secrets: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD)
+# Secrets (GitHub → Settings → Secrets and variables → Actions):
+#   BACKUP_PASSPHRASE      — in Aizat's password manager, "BearHaus backup passphrase (GitHub BACKUP_PASSPHRASE)"
+#   SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD — the deploy secrets (the dump)
+#   MONITOR_DB_PASSWORD    — the narrow bh_monitor login (the heartbeat; falls back to the access token without it)
 #
-# To restore or inspect: download the artifact from the run, then
-#   gpg --batch --passphrase "<passphrase>" -d bearhaus-YYYY-MM-DD.sql.gpg > bearhaus.sql
-#   psql "<database url>" -f bearhaus.sql        (schema first, data second — one file, in order)
+# To restore or inspect: docs/RESTORE.md.
 name: Backup database
 on:
   schedule:
-    - cron: '0 18 * * 1'
+    - cron: '0 17 * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -48,6 +48,9 @@ jobs:
           shred -u schema.sql data.sql "bearhaus-$DAY.sql"
           ls -la *.gpg
           echo "DAY=$DAY" >> "$GITHUB_ENV"
+          echo "KB=$(( ($(stat -c %s "bearhaus-$DAY.sql.gpg") + 1023) / 1024 ))" >> "$GITHUB_ENV"
+          # Monday's copy is kept 90 days, the others 14
+          if [ "$(date -u +%u)" = 1 ]; then echo "KEEP=90" >> "$GITHUB_ENV"; else echo "KEEP=14" >> "$GITHUB_ENV"; fi
         env:
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -56,5 +59,30 @@ jobs:
         with:
           name: bearhaus-db-${{ env.DAY }}
           path: bearhaus-${{ env.DAY }}.sql.gpg
-          retention-days: 90
+          retention-days: ${{ env.KEEP }}
           if-no-files-found: error
+      - name: Record the backup (heartbeat — date and size only)
+        env:
+          MONITOR_DB_PASSWORD: ${{ secrets.MONITOR_DB_PASSWORD }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          POOLER_HOST: aws-0-ap-southeast-2.pooler.supabase.com
+        run: |
+          set -euo pipefail
+          src=manual; [ "$GITHUB_EVENT_NAME" = schedule ] && src=schedule
+          q="select public.bh_backup_done('$src', $KB)"
+          if [ -n "$MONITOR_DB_PASSWORD" ]; then
+            command -v psql >/dev/null || { sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client >/dev/null; }
+            PGPASSWORD="$MONITOR_DB_PASSWORD" psql "host=$POOLER_HOST port=5432 dbname=postgres user=bh_monitor.$SUPABASE_PROJECT_ID sslmode=require connect_timeout=20" \
+              -X -q -v ON_ERROR_STOP=1 -At -c "$q" >/dev/null 2> err.txt \
+              || { echo "::error title=Backup heartbeat::the backup is saved, but its heartbeat couldn't be written — $(head -c 200 err.txt | tr '\n' ' ')"; exit 1; }
+          else
+            echo "::warning title=Backup heartbeat::the check's own login isn't set up yet (MONITOR_DB_PASSWORD) — using the account-wide key"
+            code=$(curl -sS -o resp.json -w '%{http_code}' -X POST \
+              "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+              -d "$(jq -n --arg q "$q" '{query: $q}')")
+            [ "$code" = 200 ] || [ "$code" = 201 ] || { echo "::error title=Backup heartbeat::the backup is saved, but its heartbeat couldn't be written (HTTP $code)"; exit 1; }
+            rm -f resp.json
+          fi
+          echo "heartbeat written: backup of $DAY, $KB KB, kept $KEEP days"
