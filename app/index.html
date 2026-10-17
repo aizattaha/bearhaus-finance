@@ -269,8 +269,8 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .ob-people .field{margin-top:8px}
 
 /* inside the Desk's add panel: only the add sheet, filling the frame */
-html.embed-add #app, html.embed-add .backdrop{display:none!important}
-html.embed-add .sheet{transform:translate(-50%,0)!important;transition:none}
+html.embed-sheet #app, html.embed-sheet .backdrop{display:none!important}
+html.embed-sheet .sheet{transform:translate(-50%,0)!important;transition:none}
 /* inside the Desk's Settings page: only the Settings screen (the Desk has its own menu and sign-out) */
 html.embed-settings .tabbar, html.embed-settings .fab, html.embed-settings #scr-settings > div:first-child > .btn-tert, html.embed-settings #scr-settings > .btn-tert{display:none!important}
 html.embed-settings #app{max-width:600px}
@@ -673,11 +673,12 @@ input[type="date"].descinput{min-width:0}
 // sit exactly as on the phone, and any change to them lands on both.
 const EMBED = (() => {
   const q = new URLSearchParams(location.search), kind = q.get('embed');
-  if (!['add', 'settings'].includes(kind) || window.parent === window) return null;
+  if (!['add', 'settings', 'edit'].includes(kind) || window.parent === window) return null;
   try { if (window.parent.location.origin !== location.origin) return null; } catch (e) { return null; }
-  return { kind, mode: q.get('mode') || 'daily', date: q.get('date'), card: q.get('card'), archived: new Set() };
+  return { kind, mode: q.get('mode') || 'daily', date: q.get('date'), card: q.get('card'), id: q.get('id'), rowKind: q.get('row'), archived: new Set() };
 })();
-if (EMBED) document.documentElement.classList.add('embed-' + EMBED.kind);
+// ?embed=edit&row=daily|travel|fund&id=… : the Desk opens one transaction in this app's own edit sheet
+if (EMBED) document.documentElement.classList.add('embed-' + EMBED.kind, EMBED.kind === 'settings' ? 'embed-page' : 'embed-sheet');
 function embedSay(msg){ if (EMBED) try { window.parent.postMessage(Object.assign({ bh: EMBED.kind }, msg), location.origin); } catch (e) {} }
 let toastTimer = null;
 const VIEW_ONLY_MSG = 'this login is view-only — you can see everything, change nothing';
@@ -950,7 +951,7 @@ async function enterApp(){
   $('app').style.display = 'flex';
   store.remove('lost');
   if (EMBED) {
-    loadContext().then(() => { if (EMBED.kind === 'add') return openEmbedForm(); if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household'; go('scr-settings'); embedSay({ type: 'ready' }); })
+    loadContext().then(() => { if (EMBED.kind === 'add') return openEmbedForm(); if (EMBED.kind === 'edit') return openEmbedEdit(); if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household'; go('scr-settings'); embedSay({ type: 'ready' }); })
       .catch(e => { embedSay({ type: 'error', msg: String((e && e.message) || e) }); });
     return;
   }
@@ -4147,6 +4148,21 @@ let saveId = null;   // the id the next new row is saved under — a retap after
 let amt = '', mode = 'daily', saving = false, editingExp = null, selectedCat = '', overdrawOk = false, curMismatchOk = false, bigOk = false;
 let pendOp = null, pendVal = null;   // calculator: pendVal ⟨pendOp⟩ amt, evaluated left-to-right
 
+// the Desk's panel opens one transaction in the edit sheet — every field, the lock and Delete, exactly as on the phone
+async function openEmbedEdit(){
+  const id = EMBED.id, k = EMBED.rowKind;
+  const r = k === 'travel'
+    ? await sb.from('travel_expenses').select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund' + rc() + ', travel_expense_splits(profile_id, amount)').eq('id', id).maybeSingle()
+    : k === 'fund'
+      ? await sb.from('fund_transactions').select('id, date, type, amount, remarks, origin, income_source, fund_id' + rc(true) + ', funds(name, currency)').eq('id', id).maybeSingle()
+      : await sb.from('daily_expenses').select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)').eq('id', id).maybeSingle();
+  if (r.error || !r.data) { embedSay({ type: 'error', msg: r.error ? r.error.message : 'that row isn’t there any more' }); return; }
+  if (k === 'travel') openEditExpense(r.data);
+  else if (k === 'fund') openEditFund(Object.assign({}, r.data, { funds: r.data.funds || { name: '', currency: '' } }));
+  else openEditDaily(r.data);
+  $('backdrop').classList.add('open'); $('sheet').classList.add('open', 'full');
+  embedSay({ type: 'ready' });
+}
 // the Desk's panel opens straight into the form, with the statement's card and date when it passes them
 async function openEmbedForm(){
   // a closed (archived) card's statement line: it isn't among the cards the app offers — bring it in, and save it
@@ -5270,6 +5286,7 @@ async function deleteExpense(){
   const { error } = await sb.rpc('soft_delete_rows', { p_kind: mode === 'editFund' ? 'fund' : mode === 'editDaily' ? 'daily' : 'travel', p_ids: [editingExp.id] });
   if (error) { saving = false; toast('couldn’t delete: ' + error.message); return; }
   const wasXfer = mode === 'editFund' && /^Transfer [→←]/.test((editingExp.remarks) || '');
+  embedSay({ type: 'saved', msg: wasXfer ? 'both sides deleted — 30 days in Recently deleted' : 'deleted — 30 days in Recently deleted' });
   closeSheet(); toast(wasXfer ? 'both sides deleted — the transfer is in Settings → Recently deleted for 30 days' : 'deleted — it’s in Settings → Recently deleted for 30 days');
   refreshAfterSave();
 }

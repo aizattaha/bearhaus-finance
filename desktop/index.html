@@ -94,6 +94,26 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
 .addpanel iframe{width:100%;height:100%;border:0;display:block}
 .addwait{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff}
 .addhint{color:#fff;opacity:.85}
+.addpanel.wide{width:520px}
+/* the phone's form language (rows with an icon bubble, a small label over the value, a chevron) — used by bulk edit */
+.pform{max-width:820px;width:100%}
+.pform .sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.pform .pamount{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;background:var(--field);border-radius:16px;padding:12px 16px}
+.pform .pamount input{border:none;background:transparent;font-family:inherit;color:var(--ink);padding:0;min-width:0}
+.pform .pamount #bkAmount{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--primary);flex:0 0 auto;width:auto;field-sizing:content}
+.pform .pamount #bkDesc{flex:1;font-size:14px;font-weight:500}
+.pform .pamount #bkDate{font-size:12px;color:var(--ink-soft);flex:0 0 auto}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+@media (max-width:760px){.pgrid{grid-template-columns:1fr}}
+.arow{display:flex;align-items:center;gap:10px;width:100%;background:var(--field);border:2px solid transparent;border-radius:14px;padding:8px 12px;font-family:inherit;cursor:pointer;text-align:left;color:var(--ink);position:relative}
+.arow:hover{background:var(--accent-soft)}
+.arow .ric{flex:0 0 auto;width:32px;height:32px;border-radius:11px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:15px}
+.arow .rlab{font-size:10px;color:var(--ink-soft);display:block;line-height:13px}
+.arow .rmid{min-width:0;flex:1}
+.arow .chev{margin-left:auto;color:var(--ink-soft);flex:0 0 auto}
+.arow select,.arow input{display:block;width:100%;border:none;background:transparent;font-family:inherit;font-size:14px;font-weight:600;color:var(--ink);padding:0;appearance:none;-webkit-appearance:none;outline:none;cursor:pointer;text-overflow:ellipsis}
+.arow:has(.changed){border-color:var(--primary);background:#fff}
+.arow:has(.changed) .ric{background:var(--primary);color:#fff}
 /* the Desk tour: a dimmed page with one highlighted spot and a card beside it */
 .tut-block{position:fixed;inset:0;z-index:69}
 .tut-hole{position:fixed;z-index:70;border-radius:14px;box-shadow:0 0 0 9999px rgba(26,43,68,.55);pointer-events:none;transition:all .25s cubic-bezier(.4,0,.2,1)}
@@ -300,7 +320,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <section class="screen" id="scr-nocard">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
         <div><p class="cap">Browse &amp; bulk edit</p><h1 class="h1">Transactions</h1></div>
-        <p class="cap">tick several rows → <b>Edit selected</b> changes the card, category, who paid, comments or the fund a purchase counts against, on all of them at once · a row with no card can never sit on a statement</p>
+        <p class="cap">click a row to edit everything on it (the phone’s own edit sheet) · tick several → <b>Edit selected</b> or <b>Delete selected</b> · a row with no card can never sit on a statement</p>
       </div>
       <div class="toolbar">
         <select class="descinput" id="ncMonth" style="min-width:180px"></select>
@@ -323,6 +343,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         <div class="sticky-bar">
           <span class="lbl" id="ncSelInfo">nothing selected</span>
           <button class="btn btn-primary" id="ncEdit" onclick="openBulk('nc')" disabled>Edit selected</button>
+          <button class="btn btn-soft" id="ncDel" onclick="deleteSelected()" disabled style="color:var(--bad)">Delete selected</button>
           <span style="flex:1"></span>
           <button class="btn-tert" id="ncMore" onclick="loadNoCard(false)" style="display:none">Load more</button>
         </div>
@@ -451,25 +472,20 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
 </div>
 
 <div id="bulk" class="overlay" onclick="if(event.target===this)closeBulk()">
-  <div class="card bulkcard">
-    <div class="row" style="justify-content:space-between">
-      <div><p class="cap">Bulk edit</p><h2 class="h2" id="bkTitle">3 rows</h2></div>
-      <button class="btn-tert" onclick="closeBulk()">✕ close</button>
-    </div>
-    <p class="cap" style="margin-top:4px">Greyed fields differ per row and can't be changed together — open a row in the app for those. Only the fields you change are written.</p>
-    <div class="bkgrid">
-      <label class="bkf ro"><span class="cap">Date</span><input class="descinput" id="bkDate" disabled></label>
-      <label class="bkf ro"><span class="cap">Amount</span><input class="descinput" id="bkAmount" disabled></label>
-      <label class="bkf ro" style="grid-column:1 / -1"><span class="cap">Description</span><input class="descinput" id="bkDesc" disabled></label>
-      <label class="bkf"><span class="cap">Card</span><select class="descinput" id="bkCard"></select></label>
-      <label class="bkf"><span class="cap">Category</span><select class="descinput" id="bkCat"></select></label>
-      <label class="bkf"><span class="cap">Who paid</span><select class="descinput" id="bkWho"></select></label>
-      <label class="bkf"><span class="cap">Comments</span><input class="descinput" id="bkComments" placeholder="— no change —"></label>
-      <label class="bkf" id="bkFundWrap" style="grid-column:1 / -1"><span class="cap">Counts against</span><select class="descinput" id="bkFund"></select><span class="cap">a fund instead of the month’s budget · daily rows only · never blocked by reconciliation</span></label>
+  <div class="card bulkcard pform">
+    <div class="sheet-head"><div><p class="cap">Edit together</p><span class="h2" id="bkTitle">3 rows</span></div><button class="btn-tert" onclick="closeBulk()">Close</button></div>
+    <div class="pamount"><input id="bkAmount" disabled aria-label="Total"><input id="bkDesc" disabled aria-label="Description"><input id="bkDate" disabled aria-label="Dates"></div>
+    <p class="cap" style="margin:8px 2px 0">pick only what should change on every selected row — the rest stays as it is. Amounts, dates and descriptions differ per row: click a single row to edit those.</p>
+    <div class="pgrid">
+      <label class="arow"><span class="ric">🏷️</span><span class="rmid"><span class="rlab">category</span><select id="bkCat"></select></span><span class="chev">›</span></label>
+      <label class="arow"><span class="ric">💳</span><span class="rmid"><span class="rlab">paid with</span><select id="bkCard"></select></span><span class="chev">›</span></label>
+      <label class="arow"><span class="ric">👤</span><span class="rmid"><span class="rlab">who paid</span><select id="bkWho"></select></span><span class="chev">›</span></label>
+      <label class="arow" id="bkFundWrap"><span class="ric">💰</span><span class="rmid"><span class="rlab">counts against · a fund instead of the month’s budget (daily rows)</span><select id="bkFund"></select></span><span class="chev">›</span></label>
+      <label class="arow" style="grid-column:1 / -1"><span class="ric">📝</span><span class="rmid"><span class="rlab">note</span><input id="bkComments" placeholder="— no change —"></span></label>
     </div>
     <p class="cap" id="bkNote" style="margin-top:10px"></p>
     <p class="cap" id="bkBackWrap" style="margin-top:6px;display:none">these all count against a fund — <a href="#" id="bkBack" onclick="sendBackToFund();return false">send them back to fund movements</a> (undoes a Sort move: the rows become plain money-out movements and lose their category)</p>
-    <div class="row" style="justify-content:flex-end;margin-top:14px">
+    <div class="row" style="justify-content:flex-end;margin-top:14px;gap:8px">
       <button class="btn btn-soft" onclick="closeBulk()">Cancel</button>
       <button class="btn btn-primary" id="bkApply" onclick="applyBulk()">Apply to selected</button>
     </div>
@@ -1332,6 +1348,11 @@ function renderNoCard(){
     if (ev.target.checked) nc.sel.add(key); else nc.sel.delete(key);
     ev.target.closest('tr').classList.toggle('sel', ev.target.checked); updateNcBar();
   });
+  // a click anywhere else on the row opens it in the phone's edit sheet: amount, date, category, card, payer, note…
+  body.querySelectorAll('tr[data-key]').forEach(tr => {
+    tr.style.cursor = 'pointer'; tr.title = 'click to edit this transaction';
+    tr.onclick = ev => { if (ev.target.closest('input')) return; const r = nc.rows.find(x => x.key === tr.dataset.key); if (r) openEditTx(r); };
+  });
   $('ncMore').style.display = nc.dDone && nc.tDone ? 'none' : 'inline';
   $('ncMeta').textContent = nc.rows.length + ' rows loaded' + (nc.dDone && nc.tDone ? '' : ' · more below');
   updateNcBar();
@@ -1340,6 +1361,27 @@ function updateNcBar(){
   const n = nc.sel.size;
   $('ncSelInfo').textContent = n ? n + ' selected' : 'nothing selected';
   $('ncEdit').disabled = !n;
+  $('ncDel').disabled = !n;
+}
+// delete the ticked rows: they go to Recently deleted for 30 days (restorable in Settings). A row ticked off on a
+// statement is locked — it stays, and the count says so (un-reconcile it first).
+async function deleteSelected(){
+  const rows = nc.rows.filter(r => nc.sel.has(r.key));
+  if (!rows.length) return;
+  const open = rows.filter(r => !r.reconciled_at), locked = rows.length - open.length;
+  if (!open.length) { toast('all ' + locked + ' are reconciled 🔒 — un-reconcile them on the Statements page first'); return; }
+  const ok = await ask('Delete ' + open.length + (open.length === 1 ? ' transaction?' : ' transactions?'),
+    'They go to Recently deleted (Settings) for 30 days, where they can be restored.' + (locked ? ' ' + locked + ' reconciled ' + (locked === 1 ? 'row stays' : 'rows stay') + ' — un-reconcile first.' : ''), 'Delete');
+  if (!ok) return;
+  $('ncDel').disabled = true;
+  for (const kind of ['daily', 'travel']) {
+    const ids = open.filter(r => r.kind === kind).map(r => r.id);
+    if (!ids.length) continue;
+    const { error } = await sb.rpc('soft_delete_rows', { p_kind: kind, p_ids: ids });
+    if (error) { toast('couldn’t delete: ' + error.message); loadNoCard(true); return; }
+  }
+  toast(open.length + ' deleted — 30 days in Recently deleted' + (locked ? ' · ' + locked + ' reconciled kept' : ''));
+  loadNoCard(true);
 }
 // ── bulk edit (shared by Statements and Transactions) ───────
 const bk = { src: null, rows: [] };
@@ -1630,13 +1672,23 @@ function openAddTx(src){
   $('addFrame').src = new URL('../app/?' + q.toString(), location.href).href;
   $('addtx').classList.add('show');
 }
+// one transaction, every field: the phone's edit sheet in the same panel, a little wider
+function openEditTx(r){
+  ax.src = 'nc';
+  const q = new URLSearchParams({ embed: 'edit', row: r.kind === 'travel' ? 'travel' : r.kind === 'fund' ? 'fund' : 'daily', id: r.id });
+  $('addWait').style.display = 'flex';
+  document.querySelector('#addtx .addpanel').classList.add('wide');
+  $('addFrame').src = new URL('../app/?' + q.toString(), location.href).href;
+  $('addtx').classList.add('show');
+}
 function closeAddTx(){
+  document.querySelector('#addtx .addpanel').classList.remove('wide');
   $('addtx').classList.remove('show');
   $('addFrame').src = 'about:blank';
 }
 window.addEventListener('message', e => {
   const f = $('addFrame');
-  if (e.origin !== location.origin || !f || e.source !== f.contentWindow || !e.data || e.data.bh !== 'add') return;
+  if (e.origin !== location.origin || !f || e.source !== f.contentWindow || !e.data || !['add', 'edit'].includes(e.data.bh)) return;
   if (e.data.type === 'ready') { $('addWait').style.display = 'none'; try { f.focus(); } catch (x) {} return; }
   if (e.data.type === 'error') { toast('couldn’t open the add form: ' + e.data.msg); closeAddTx(); return; }
   if (e.data.type === 'saved') {
