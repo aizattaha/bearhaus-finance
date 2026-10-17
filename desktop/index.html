@@ -611,7 +611,7 @@ async function loadContext(){
     sb.from('households').select('id, name, joint_label, pot_start, travel_fund_id').single(),
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('payment_methods').select('id, name, profile_id, kind, closing_day, currency, travel_only, is_archived, sort_order').order('sort_order'),
-    sb.from('funds').select('id, name, country, currency, is_spend_pot, is_leftover_target, sort_order').eq('is_active', true).order('sort_order'),
+    sb.from('funds').select('id, name, country, currency, is_spend_pot, is_leftover_target, pays_trips, sort_order').eq('is_active', true).order('sort_order'),
     sb.from('categories').select('id, kind, name, group_name, icon, sort_order').eq('is_active', true).order('sort_order'),
   ]);
   if (hh.error) { toast('couldn’t load household: ' + hh.error.message); return; }
@@ -794,9 +794,16 @@ async function loadStatement(){
                     : qq.or(acct).gte('date', from).lte('date', to);
   };
   const [d, t, f] = await Promise.all([
-    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name)'), (isBank || isCC || closed) ? qf() : { data: [] },
+    q('daily_expenses'), q('travel_expenses', ', trip_id, trips(name), settlement_tx_id'), (isBank || isCC || closed) ? qf() : { data: [] },
   ]);
   if (d.error || t.error || f.error) { toast('couldn’t load: ' + (d.error || t.error || f.error).message); return; }
+  // which fund each sent trip line's send came out of: that fund pays its share of the card (trips across currencies)
+  const txs = [...new Set((t.data || []).map(r => r.settlement_tx_id).filter(Boolean))];
+  st.sendFund = {};
+  if (txs.length) {
+    const sf = await sb.from('fund_transactions').select('id, fund_id').in('id', txs);
+    (sf.data || []).forEach(x => { st.sendFund[x.id] = x.fund_id; });
+  }
   st.statement = s0.data || null;
   st.rows = (d.data || []).map(r => Object.assign({ kind: 'daily', key: 'd:' + r.id }, r))
     .concat((t.data || []).map(r => Object.assign({ kind: 'travel', key: 't:' + r.id }, r)))
@@ -963,14 +970,16 @@ function defaultLegs(){
   const due = Number(pay.due || 0), paid = payCovered(pay), remaining = Math.round((due - paid) * 100) / 100;
   const funds = payFunds(); if (!funds.length) return [];
   const defPot = (funds.find(f => f.is_spend_pot) || funds[0]).id;
-  const travel = CTX.hh.travel_fund_id && funds.some(f => f.id === CTX.hh.travel_fund_id) ? CTX.hh.travel_fund_id : defPot;
+  // a trip line is paid by the fund its send came out of; unsent, by the travel fund in the card's currency
+  const tripFund = (funds.find(f => f.id === CTX.hh.travel_fund_id) || funds.find(f => f.pays_trips) || {}).id || defPot;
+  const travelFor = r => (r.settlement_tx_id && st.sendFund && st.sendFund[r.settlement_tx_id]) || tripFund;
   const by = {};
   if (paid <= 0) {
     // a purchase in another currency counts at what the card charged (v2 sprint 2)
     st.rows.filter(r => r.reconciled_statement_id === s.id && (!cur || cardAmt(r, cur) !== null)).forEach(r => {
       if (r.kind === 'fund' && r.tx_kind === 'card_payment') return;
       const a = (cur ? cardAmt(r, cur) : Number(r.amount)) * (r.credit ? -1 : 1);
-      const fid = r.kind === 'fund' ? (r.settles_payment_method_id ? null : r.fund_id) : r.kind === 'travel' ? travel : (r.pot_fund_id || defPot);
+      const fid = r.kind === 'fund' ? (r.settles_payment_method_id ? null : r.fund_id) : r.kind === 'travel' ? travelFor(r) : (r.pot_fund_id || defPot);
       if (!fid || !funds.some(f => f.id === fid)) { by[defPot] = (by[defPot] || 0) + a; return; }
       by[fid] = (by[fid] || 0) + a;
     });
