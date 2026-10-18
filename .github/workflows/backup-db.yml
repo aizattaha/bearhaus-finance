@@ -5,7 +5,7 @@
 # The repository is PUBLIC, so the dump is never stored in it and never uploaded in the clear: the job refuses to
 # run without the passphrase. Each backup leaves a heartbeat row (date and size only) for the Desk Dashboard.
 #
-# Secrets (GitHub → Settings → Secrets and variables → Actions):
+# Secrets (GitHub → Settings → Environments → production; only main may use them):
 #   BACKUP_PASSPHRASE      — in Aizat's password manager, "BearHaus backup passphrase (GitHub BACKUP_PASSPHRASE)"
 #   SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD — the deploy secrets (the dump)
 #   MONITOR_DB_PASSWORD    — the narrow bh_monitor login (the heartbeat; falls back to the access token without it)
@@ -20,6 +20,7 @@ permissions:
   contents: read
 jobs:
   dump:
+    environment: production   # the secrets live here; only main may use them (Bundle B, B6)
     runs-on: ubuntu-latest
     steps:
       - name: Refuse to run without the passphrase

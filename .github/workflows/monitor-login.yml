@@ -12,6 +12,7 @@ permissions:
   contents: read
 jobs:
   set-password:
+    environment: production   # the secrets live here; only main may use them (Bundle B, B6)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

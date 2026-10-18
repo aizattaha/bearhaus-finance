@@ -5,7 +5,7 @@
 # tools/sql-tests/ pass. The Supabase CLI only applies versions the remote has
 # not seen, so re-runs are safe.
 #
-# One-time setup (GitHub → Settings → Secrets and variables → Actions):
+# Secrets (GitHub → Settings → Environments → production; only main may use them):
 #   SUPABASE_ACCESS_TOKEN  — personal access token from supabase.com/dashboard/account/tokens
 #   SUPABASE_PROJECT_ID    — the project ref (diqaezhdxloqhglndqrq)
 #   SUPABASE_DB_PASSWORD   — the database password (Supabase → Project Settings → Database)
@@ -62,6 +62,7 @@ jobs:
     needs: test
     # production only from main (Bundle B, ENG-10), and only when a migration changed
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.test.outputs.migrations == 'true'
+    environment: production   # the secrets live here; only main may use them (Bundle B, B6)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
