@@ -17,7 +17,7 @@
 :root{
   --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
   --canvas:#FFFFFF; --muted:#E6E5E5; --ink:#1A2B44; --ink-soft:#55657D; --field:#F7F9FC;
-  --good:#2E7D57; --good-soft:#E3F4EA; --bad:#D25353; --bad-bar:#F0A8A8; --warn:#B7791F; --warn-soft:#FFF3D6;
+  --good:#2E7D57; --good-soft:#E3F4EA; --bad:#BF4040; --bad-bar:#F0A8A8; --warn:#B7791F; --warn-soft:#FFF3D6;
   --shadow-soft:0 2px 12px rgba(0,74,152,.06); --shadow-lift:0 8px 28px rgba(0,74,152,.12);
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -170,6 +170,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--accent);border-top-color:var(--primary);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(max-width:860px){#app{grid-template-columns:1fr}nav{position:static;height:auto;flex-direction:row;flex-wrap:wrap}nav .foot{margin-top:0}main{padding:18px 16px 60px}.grid3{grid-template-columns:1fr}}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -335,7 +336,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <option value="">everything</option><option value="purchases">🛍️ purchases &amp; refunds</option><option value="trip">✈️ trip lines</option>
           <option value="income">💵 income</option><option value="transfer">⇄ transfers</option><option value="pot_swap">⇄ pot swaps</option>
           <option value="card_payment">💳 card payments</option><option value="trip_send">✈️ trip sends</option><option value="plan">🎯 monthly plans</option>
-          <option value="fund_out">💰 money out of a fund</option><option value="settle_up">🤝 settle-ups</option></select>
+          <option value="fund_out">💰 money out of a fund</option><option value="settle_up">🤝 settle-ups</option><option value="old_refunds">↩ old-style refunds (no purchase)</option></select>
         <select class="descinput" id="ncCardF" style="min-width:220px"></select>
         <select class="descinput" id="ncFundF" style="min-width:200px" title="purchases that count against a fund instead of the month’s budget"></select>
         <select class="descinput" id="ncCatF" style="min-width:200px" title="a daily category, or a whole group (as the Budget groups them)"></select>
@@ -593,7 +594,7 @@ function go(scr){
   if (scr === 'pots') loadPots();
   if (scr === 'activity' && !ac.init) { ac.init = true; loadActivity(true); }
   if (scr === 'sort') loadSort();
-  if (scr === 'statements') refreshCardList();   // a card added on the phone shows up without a reload
+  if (scr === 'statements') { refreshCardList(); if (!st.card) pickFirstStatementCard(); }   // a card added on the phone shows up without a reload
   if (scr === 'swap' && !sw.init) { sw.init = true; initSwap(); }
   if (scr === 'swap' && [...new Set(CTX.funds.map(f => f.currency))].length < 2) $('swIntro').innerHTML = '<span class="tag warn">one currency</span> this household has funds in one currency only, so there is nothing to swap between — add a second country\'s funds in the app (Settings → Funds) first.';
 }
@@ -617,7 +618,11 @@ async function boot(session){
   $('login').style.display = 'none'; $('app').style.display = 'grid';
   await loadContext();
   initStatements();
-  go('dashboard');   // the Desk opens on the dashboard
+  // the Desk opens on the dashboard — or on the page a link asked for (the phone's setup list: #statements, #sort)
+  const want = (location.hash || '').slice(1);
+  const wantFund = new URL(location.href).searchParams.get('fund');
+  if (want === 'nocard' && wantFund) openTxFund(wantFund);
+  else go(['statements', 'sort', 'pots', 'nocard', 'settings'].includes(want) ? want : 'dashboard');
   if (store.get('desk-tut-v') !== DESK_TOUR_V) setTimeout(() => { if (!deskTut) startDeskTour(); }, 900);   // first visit per login
 }
 if (sb) {
@@ -692,9 +697,18 @@ async function refreshCardList(){
   const keep = $('stCard').value; $('stCard').innerHTML = cardOptions(null, true, true); $('stCard').value = keep;
   if (st.card) st.card = cardById(st.card.id) || st.card;
 }
+// Statements opened with no card picked: the card with the earliest statement still to close (setup_todo), else the
+// first credit card — one choice fewer on the way to closing a statement (Bundle C)
+async function pickFirstStatementCard(){
+  const t = await sb.rpc('setup_todo');
+  if (st.card) return;
+  const it = (t.data || []).find(x => x.key === 'statements'), first = it && (it.periods || [])[0];
+  const c = (first && cardById(first.card_id)) || CTX.cards.find(x => x.kind === 'credit_card' && !x.is_archived && x.closing_day);
+  if (c) { $('stCard').value = c.id; $('stCard').onchange(); }
+}
 function initStatements(){
   $('stCard').innerHTML = cardOptions(null, true, true);
-  $('stCard').onchange = () => { st.card = cardById($('stCard').value) || null; st.sel.clear(); buildPeriods(); loadStatement(); loadOpening(); };
+  $('stCard').onchange = () => { st.card = cardById($('stCard').value) || null; st.sel.clear(); loadOpening(); buildPeriods().then(() => loadStatement()); };
   $('stPeriod').onchange = () => { st.period = st.periods[parseInt($('stPeriod').value)] || null; st.sel.clear(); loadStatement(); };
   $('stMargin').onclick = () => { st.margin = !st.margin; $('stMargin').classList.toggle('sel', st.margin); loadStatement(); };
   $('stCarry').onclick = () => { st.carry = !st.carry; $('stCarry').classList.toggle('sel', st.carry); loadStatement(); };
@@ -741,59 +755,54 @@ async function saveOpening(){
   loadOpening(); refreshPay().then(renderPay);
 }
 // statement periods for a card: credit cards close on closing_day; everything else by calendar month
-function buildPeriods(){
+// a period's label in the picker
+const periodLabel = p => fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.closed ? ' · closed' : p.open ? ' · in progress' : p.saved ? ' · saved' : '');
+// The periods of the card picked (ENG-03, Bundle C): its SAVED statements first, with their own dates — a closing day
+// set or changed later never hides one — then periods worked out from the closing day (calendar months for a card
+// without one, or a bank account) only where no saved statement already sits. Opens on the right one: the earliest
+// period that has ended and isn't closed (from the start date), else the latest that has ended.
+async function buildPeriods(){
   st.periods = [];
   const c = st.card; const sel = $('stPeriod');
   if (!c) { sel.innerHTML = '<option>—</option>'; st.period = null; return; }
-  const today = new Date();
+  const today = todayIso();
+  const r = await sb.from('statements').select('period_start, period_end, closed_at').eq('payment_method_id', c.id).order('period_end', { ascending: false });
+  if (st.card !== c) return;
+  const saved = (r.data || []).map(x => ({ start: x.period_start, end: x.period_end, closed: !!x.closed_at, saved: true, open: x.period_end >= today }));
+  const made = [];
   if (c.kind === 'credit_card' && c.closing_day) {
-    // most recent closing date on or before today, then 14 back
-    let y = today.getFullYear(), m = today.getMonth();
+    const t = new Date(today + 'T00:00:00');
     const closeOf = (yy, mm) => { const last = new Date(yy, mm + 1, 0).getDate(); return new Date(yy, mm, Math.min(c.closing_day, last)); };
-    let end = closeOf(y, m); if (end > today) { m -= 1; end = closeOf(y, m); }
-    // the first one is the one in progress (ends in the future) — handy for pre-ticking
-    const nextEnd = closeOf(y, m + 1);
-    st.periods.push({ start: addDays(isoDate(end), 1), end: isoDate(nextEnd), open: true });
-    for (let i = 0; i < 14; i++) {
-      const e = closeOf(y, m - i), s0 = closeOf(y, m - i - 1);
-      st.periods.push({ start: addDays(isoDate(s0), 1), end: isoDate(e) });
-    }
+    let y = t.getFullYear(), m = t.getMonth();
+    if (isoDate(closeOf(y, m)) >= today) m -= 1;   // the last closing day before today
+    made.push({ start: addDays(isoDate(closeOf(y, m)), 1), end: isoDate(closeOf(y, m + 1)), open: true });   // in progress — handy for pre-ticking
+    for (let i = 0; i < 14; i++) made.push({ start: addDays(isoDate(closeOf(y, m - i - 1)), 1), end: isoDate(closeOf(y, m - i)) });
   } else {
-    for (let i = 0; i < 15; i++) {
-      const ms = addMonths(curMonthIso(), -i), me = addDays(addMonths(ms, 1), -1);
-      st.periods.push({ start: ms, end: me, open: i === 0 });
-    }
+    for (let i = 0; i < 15; i++) { const ms = addMonths(curMonthIso(), -i), me = addDays(addMonths(ms, 1), -1); made.push({ start: ms, end: me, open: me >= today }); }
   }
-  sel.innerHTML = st.periods.map((p, i) => '<option value="' + i + '">' + fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.closed ? ' · closed' : p.open ? ' · in progress' : '') + '</option>').join('');
-  // default to the most recent period that actually has rows (decided in loadStatement on first load)
-  st.pickDefault = true;
-  const idx = st.periods.findIndex(p => !p.open); sel.value = String(idx < 0 ? 0 : idx);
+  const taken = p => saved.some(x => p.start <= x.end && p.end >= x.start);
+  st.periods = saved.concat(made.filter(p => !taken(p))).sort((x, y) => (x.end < y.end ? 1 : x.end > y.end ? -1 : 0));
+  sel.innerHTML = st.periods.map((p, i) => '<option value="' + i + '">' + periodLabel(p) + '</option>').join('');
+  const ps = (CTX.hh && CTX.hh.pot_start) || '0000-00-00';
+  const due = st.periods.map((p, i) => ({ p, i })).filter(x => !x.p.open && !x.p.closed && x.p.end >= ps);
+  const idx = due.length ? due[due.length - 1].i : st.periods.findIndex(p => !p.open);
+  sel.value = String(idx < 0 ? 0 : idx);
   st.period = st.periods[parseInt(sel.value)];
-  // closed statements get their label (one cheap query; the list is relabelled in place when it lands)
-  sb.from('statements').select('period_end, closed_at').eq('payment_method_id', c.id).then(r => {
-    if (r.error || st.card !== c) return;
-    const closedEnds = new Set((r.data || []).filter(x => x.closed_at).map(x => x.period_end));
-    st.periods.forEach((p, i) => { p.closed = closedEnds.has(p.end); const o = sel.options[i]; if (o) o.textContent = fmtDs(p.start) + ' – ' + fmtD(p.end) + (p.closed ? ' · closed' : p.open ? ' · in progress' : ''); });
-  });
   if (c.kind === 'credit_card' && !c.closing_day) $('stHint').textContent = 'this credit card has no closing day yet — set it in Settings → Payment methods; showing calendar months meanwhile';
-  else $('stHint').textContent = 'select the rows on the statement → Reconcile selected · Un-reconcile selected undoes it · close when the totals agree';
+  else $('stHint').textContent = 'opens on the first statement to close · import or tick its rows → Reconcile selected · type its totals → Close (blue when they agree) → record the payment';
+}
+// after a statement is closed and paid: the next one to close (this card first, then the next card that has one)
+async function nextStatement(){
+  const today = todayIso(), ps = (CTX.hh && CTX.hh.pot_start) || '0000-00-00';
+  const later = st.periods.filter(p => !p.open && !p.closed && p.end >= ps && p !== st.period).sort((x, y) => (x.end < y.end ? -1 : 1));
+  if (later.length) { const i = st.periods.indexOf(later[0]); $('stPeriod').value = String(i); st.period = later[0]; st.sel.clear(); loadStatement(); return; }
+  const t = await sb.rpc('setup_todo');
+  const it = (t.data || []).find(x => x.key === 'statements'), nx = it && (it.periods || []).find(x => x.card_id !== st.card.id);
+  if (nx && cardById(nx.card_id)) { $('stCard').value = nx.card_id; $('stCard').onchange(); toast('next: ' + cardById(nx.card_id).name); return; }
+  toast('every statement up to today is closed ✓');
 }
 async function loadStatement(){
   const c = st.card;
-  if (c && st.pickDefault && st.periods.length) {
-    // one cheap look at the card's row dates decides which period opens first
-    st.pickDefault = false;
-    const from = st.periods[st.periods.length - 1].start;
-    const [d, t] = await Promise.all([
-      sb.from('daily_expenses').select('date').eq('payment_method_id', c.id).gte('date', from).order('date', {ascending:false}).limit(1),
-      sb.from('travel_expenses').select('date').eq('payment_method_id', c.id).gte('date', from).order('date', {ascending:false}).limit(1),
-    ]);
-    const latest = [(d.data || [])[0], (t.data || [])[0]].filter(Boolean).map(x => x.date).sort().pop();
-    const i = latest ? st.periods.findIndex(pp => latest >= pp.start && latest <= pp.end) : -1;
-    const open = st.periods.findIndex(pp => pp.open);
-    const pick = i >= 0 ? i : (open >= 0 ? open : 0);
-    $('stPeriod').value = String(pick); st.period = st.periods[pick];
-  }
   const p = st.period;
   st.rows = []; st.statement = null;
   if (!c || !p) { renderStatement(); return; }
@@ -868,7 +877,8 @@ async function loadStatement(){
   if (c && c.kind === 'credit_card') {
     const pv = await sb.from('statements').select('closing_balance, period_end').eq('payment_method_id', c.id).lt('period_end', p.start).not('closing_balance', 'is', null).order('period_end', { ascending: false }).limit(1);
     if (!pv.error && pv.data && pv.data[0]) st.prevClose = pv.data[0];
-    if (st.prevClose && !$('stOpen').value) $('stOpen').placeholder = Number(st.prevClose.closing_balance).toFixed(2);
+    // one step fewer (Bundle C): an empty opening takes the previous statement's closing; it is saved with the totals
+    if (st.prevClose && !$('stOpen').value && !(st.statement && st.statement.closed_at)) { $('stOpen').value = Number(st.prevClose.closing_balance).toFixed(2); $('stOpen').title = 'the previous statement’s closing balance — saved with the totals'; }
   }
   renderStatement();
 }
@@ -974,7 +984,13 @@ function updateStatementKpis(){
   $('stImport').disabled = !c || closed; $('stAdd').disabled = !c;
   $('stMargin').style.opacity = closed ? '.4' : ''; $('stCarry').style.opacity = closed ? '.4' : '';
   $('stClose').textContent = closed ? 'Reopen statement' : 'Close statement';
-  $('stClose').className = 'btn ' + (closed ? 'btn-soft' : 'btn-primary');
+  // Close is the main button only when it's the right next step: the period has ended, rows are ticked and the
+  // statement's totals agree (new spend = ticked, or opening + ticked = closing). Until then Reconcile selected is.
+  const agreeSpend = c && !isNaN(stTotal) && Math.abs(Math.round((stTotal - tickedSpend) * 100) / 100) < 0.005;
+  const agreeChain = c && !isNaN(op) && !isNaN(cl) && Math.abs(Math.round((cl - (op + tickedTotal)) * 100) / 100) < 0.005;
+  st.ready = !!(c && !closed && st.period && !st.period.open && ticked.length && (agreeSpend || agreeChain) && !st.rows.some(r => r.inPeriod && !r.reconciled_at));
+  $('stClose').className = 'btn ' + (st.ready ? 'btn-primary' : 'btn-soft');
+  $('stClose').title = closed ? '' : st.ready ? 'the totals agree — close it' : st.period && st.period.open ? 'this period hasn’t ended yet' : !ticked.length ? 'tick the rows on the statement first' : 'Close turns blue when every row in the period is ticked and the totals agree';
   $('stMeta').innerHTML = c ? (closed ? '<span class="tag good">closed ' + fmtD(st.statement.closed_at.slice(0, 10)) + ' · showing only the rows on it</span>' : (st.statement ? '<span class="tag blue">statement saved · open</span>' : '')) : '';
   const allIn = st.rows.filter(r => r.inPeriod && !r.reconciled_at);
   $('stAll').checked = n > 0 && allIn.length > 0 && allIn.every(r => st.sel.has(r.key));
@@ -1052,7 +1068,11 @@ function renderPay(){
     : '<span class="tag">unpaid</span>';
   $('payList').innerHTML = st.payments.length ? '<table><tbody>' + st.payments.map(p => '<tr><td class="num" style="width:124px">' + fmtD(p.date) + '</td><td>from <b>' + esc(p.funds ? p.funds.name : 'fund') + '</b>' + (p.date > isoDate(new Date()) ? ' <span class="tag">scheduled</span>' : '') + (p.reconciled_at && p.reconciled_by === 'manual' ? ' <span class="tag" title="ticked on a bank statement">🔒 bank</span>' : '') + '</td><td class="amt">' + fmtMoney(p.amount, cur) + '</td><td style="width:130px;text-align:right">' + (p.reconciled_by === 'manual' ? '' : '<button class="btn-tert" onclick="undoPayment(\'' + p.transfer_group_id + '\')">undo</button>') + ' <button class="btn-tert" title="this payment was for another statement" onclick="linkPayment(\'' + p.transfer_group_id + '\', null)">unlink</button></td></tr>').join('') + '</tbody></table>' : '';
   const form = $('payForm'), un = $('payUnlinked');
-  if (pay.status === 'paid' || pay.status === 'scheduled' || remaining <= 0) { form.style.display = 'none'; un.style.display = 'none'; return; }
+  if (pay.status === 'paid' || pay.status === 'scheduled' || remaining <= 0) {
+    form.style.display = 'none'; un.style.display = 'none';
+    if (s.closed_at) $('payBadge').innerHTML += ' <button class="btn btn-primary" style="height:32px;padding:0 14px;margin-left:8px" onclick="nextStatement()">Next statement ›</button>';
+    return;
+  }
   // payments to this card already saved but on no statement: offer them before a new payment, which would pay twice (A3)
   if (st.unlinked.length && !st.payNew) {
     un.style.display = ''; form.style.display = 'none';
@@ -1063,7 +1083,8 @@ function renderPay(){
   }
   un.style.display = 'none';
   form.style.display = '';
-  if (!st.legs) { st.legs = defaultLegs(); st.payId = crypto.randomUUID ? crypto.randomUUID() : null; $('payDate').value = isoDate(new Date()); }
+  if (!st.legs) { st.legs = defaultLegs(); st.payId = crypto.randomUUID ? crypto.randomUUID() : null;
+    $('payDate').value = s.payment_due && s.payment_due <= todayIso() ? s.payment_due : isoDate(new Date()); }   // catching up: paid by its due date
   renderPayLegs();
 }
 function renderPayLegs(){
@@ -1335,14 +1356,14 @@ async function toggleCloseStatement(){
   try {
     const s = await ensureStatement();
     const closing = !s.closed_at;
-    if (closing) {
+    if (closing && !st.ready) {
       const open = st.rows.filter(r => r.inPeriod && !r.reconciled_at).length;
       if (!await ask('Close this statement?', (open ? open + ' unticked rows stay unreconciled and carry over to the next statement. ' : '') + 'Its ticked rows are hidden from later periods; you can reopen it any time.', open ? 'Close anyway' : 'Close')) return;
     }
     const { error } = await sb.from('statements').update({ closed_at: closing ? new Date().toISOString() : null }).eq('id', s.id);
     if (error) throw error;
     st.statement.closed_at = closing ? new Date().toISOString() : null;
-    st.period.closed = closing; { const o = $('stPeriod').options[st.periods.indexOf(st.period)]; if (o) o.textContent = fmtDs(st.period.start) + ' – ' + fmtD(st.period.end) + (closing ? ' · closed' : st.period.open ? ' · in progress' : ''); }
+    st.period.closed = closing; st.period.saved = true; { const o = $('stPeriod').options[st.periods.indexOf(st.period)]; if (o) o.textContent = periodLabel(st.period); }
     toast(closing ? 'statement closed ✓ — only its rows are shown now' : 'statement reopened'); st.sel.clear(); await loadStatement();
     if (closing && st.card.kind === 'credit_card' && st.pay && st.pay.status !== 'paid' && st.pay.status !== 'scheduled') { $('stPay').scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('closed ✓ — now record the payment below'); }
   } catch (err) { toast('couldn’t update: ' + (err.message || err)); }
@@ -1355,7 +1376,7 @@ async function toggleCloseStatement(){
 // so Edit / Refund / Delete selected work as before; fund rows open in the phone's edit sheet (no new write path).
 const nc = { init: false, events: [], rows: [], off: 0, done: false, sel: new Set(), open: new Set(), total: 0, sums: [] };
 const NC_PAGE = 100;
-const NC_KINDS = { purchases: ['purchase', 'refund'], trip: ['trip'], settle_up: ['settle_up'], income: ['income'], transfer: ['transfer'],
+const NC_KINDS = { old_refunds: ['refund'], purchases: ['purchase', 'refund'], trip: ['trip'], settle_up: ['settle_up'], income: ['income'], transfer: ['transfer'],
   pot_swap: ['pot_swap'], card_payment: ['card_payment'], trip_send: ['trip_send'], plan: ['plan'], fund_out: ['money_out', 'allocation'] };
 const NC_KIND_LBL = { purchase: 'purchase', refund: 'refund', trip: 'trip', settle_up: 'settle-up', income: 'income', money_out: 'money out',
   allocation: 'allocation', plan: 'plan', transfer: 'transfer', pot_swap: 'pot swap', card_payment: 'card payment', trip_send: 'trip send' };
@@ -1404,8 +1425,11 @@ async function ncLoadPage(){
     p_fund: $('ncFundF').value || null, p_cat: $('ncCatF').value || null, p_search: q || null, p_limit: NC_PAGE, p_offset: nc.off });
   nc.busy = false;
   if (error) { toast('couldn’t load: ' + error.message); return; }
-  const evs = (data && data.events) || [];
+  let evs = (data && data.events) || [];
   nc.total = data ? data.total : 0; nc.sums = (data && data.sums) || []; nc.off += evs.length; nc.done = !evs.length || nc.off >= nc.total;
+  // old-style refunds = refunds with no purchase (ledger_page lists every refund; the old ones are kept here)
+  nc.oldOnly = $('ncKindF').value === 'old_refunds';
+  if (nc.oldOnly) { evs = evs.filter(ev => ev.legs.every(l => l.src !== 'expense' || !l.refund_of)); nc.sums = []; }
   evs.forEach(ev => {
     ev.legs.forEach(l => { if (l.src !== 'expense') return;
       // a purchase keeps the shape the bulk actions, refunds and the edit sheet expect
@@ -1427,6 +1451,17 @@ function openTxFor(month, catKey, label){
   $('ncMonth').value = month; $('ncCatF').value = catKey || ''; $('ncFundF').value = 'budget'; $('ncKindF').value = ''; $('ncCardF').value = ''; $('ncSearch').value = '';
   nc.init = true; go('nocard'); loadNoCard(true);
   toast('showing ' + (label || 'those') + ' · ' + monthName(month) + ' · counted against the budget');
+}
+// one fund's rows in the whole ledger — its purchases (counted against it) and its own fund rows (Bundle C: the fund
+// drill-down's "Transactions ›", on the Dashboard and from the phone)
+function openTxFund(fundId){
+  ncBuildFilters();
+  if (![...$('ncFundF').options].some(o => o.value === fundId)) {   // spending pots aren't in the list; add the one asked for
+    const f = (dash.data && dash.data.funds || []).find(x => x.fund_id === fundId) || CTX.funds.find(x => x.id === fundId);
+    const o = document.createElement('option'); o.value = fundId; o.textContent = f ? f.name + ' · ' + f.currency : 'that fund'; $('ncFundF').appendChild(o);
+  }
+  $('ncMonth').value = ''; $('ncCatF').value = ''; $('ncKindF').value = ''; $('ncCardF').value = ''; $('ncSearch').value = ''; $('ncFundF').value = fundId;
+  nc.init = true; go('nocard'); loadNoCard(true);
 }
 // one line per event: a purchase as before; a fund event says what moved where, and a multi-row one opens to its rows
 function ncFundLine(ev){
@@ -1492,7 +1527,7 @@ function renderNoCard(){
   body.querySelectorAll('tr.fleg').forEach(tr => { tr.style.cursor = 'pointer'; tr.title = 'click to open this row'; tr.onclick = () => openEditTx({ kind: 'fund', id: tr.dataset.leg }); });
   $('ncMore').style.display = nc.done ? 'none' : 'inline';
   const sums = nc.sums.map(x => [x.spent != null && Math.abs(x.spent) > 0.005 ? 'spent ' + fmtMoney(x.spent, x.currency) : '', x.income ? 'income ' + fmtMoney(x.income, x.currency) : ''].filter(Boolean).join(' · ')).filter(Boolean);
-  $('ncMeta').textContent = nc.total + (nc.total === 1 ? ' line' : ' lines') + (nc.done ? '' : ' · ' + nc.events.length + ' shown') + (sums.length ? ' · ' + sums.join(' · ') : '');
+  $('ncMeta').textContent = nc.oldOnly ? nc.events.length + ' old-style ' + (nc.events.length === 1 ? 'refund' : 'refunds') + (nc.done ? '' : ' so far') : nc.total + (nc.total === 1 ? ' line' : ' lines') + (nc.done ? '' : ' · ' + nc.events.length + ' shown') + (sums.length ? ' · ' + sums.join(' · ') : '');
   updateNcBar();
 }
 function updateNcBar(){
@@ -1935,7 +1970,7 @@ async function fxToBase(curs, base){
 async function loadDashboard(){
   if (dash.loading) return;
   if (dash.data) { renderDashboard(); return; }
-  dash.loading = true;
+  dash.loading = true; dash.explain = {};
   $('dashBody').innerHTML = '<p class="cap"><span class="spin"></span> adding it all up…</p>';
   const curs = [...new Set(CTX.funds.map(f => f.currency))];
   const month = todayIso().slice(0, 7) + '-01';
@@ -1944,14 +1979,19 @@ async function loadDashboard(){
     sb.rpc('household_money'),
     ...curs.map(c => sb.rpc('budget_summary', { p_month: month, p_currency: c, p_months: 24 })),
   ]);
-  const hb = await sb.rpc('ops_heartbeat');   // the safety net's heartbeat (owner only); the Dashboard works without it
+  const [hb, todo, checks] = await Promise.all([
+    sb.rpc('ops_heartbeat'),   // the safety net's heartbeat (owner only); the Dashboard works without it
+    sb.rpc('setup_todo'),      // the owner's setup list (Bundle C) — empty for anyone else
+    sb.rpc('money_checks'),    // which cards are checked against a closed statement, and so which funds are
+  ]);
   dash.loading = false;
   const err = hist.error || money.error || (bud.find(b => b.error) || {}).error;
   if (err) { $('dashBody').innerHTML = '<p class="cap">couldn’t load the dashboard: ' + esc(err.message) + '</p>'; return; }
   const funds = (money.data || []).filter(f => f.is_active);
   const base = (funds[0] || {}).currency || curs[0] || 'AUD';
   dash.cats = {};
-  dash.data = { hist: hist.data || [], funds, curs, base, bud: Object.fromEntries(curs.map((c, i) => [c, bud[i].data])), hb: hb.error ? null : (hb.data || [])[0] || null };
+  dash.data = { hist: hist.data || [], funds, curs, base, bud: Object.fromEntries(curs.map((c, i) => [c, bud[i].data])), hb: hb.error ? null : (hb.data || [])[0] || null,
+               todo: todo.error ? [] : (todo.data || []), checks: checks.error ? null : checks.data };
   if (!dash.cur || !curs.includes(dash.cur)) dash.cur = base;
   renderDashboard();
   dash.data.fx = await fxToBase(curs, base);   // the total waits for the rate; everything else is already on screen
@@ -2107,6 +2147,68 @@ function heartbeatHtml(h){
         + '</ul><p class="cap">a warning that goes up fails the night’s run; one that stays the same waits for you. Takeover lines count new logins, members and invites: expected the day you invite someone.</p></details>' : '')
     + '</div>';
 }
+// ── the owner's setup list (Bundle C, CX-08): setup_todo() works each item out from the data (the words are SETUP_TEXT
+// in common.js, shared with the phone's Home); each is one click to the page that does it and leaves when done
+let setupStepsOpen = false;
+function setupHtml(items){
+  const open = (items || []).filter(i => !i.done && SETUP_TEXT[i.key]);
+  if (!open.length) return '';
+  return '<div class="card" id="setupList"><div class="row" style="justify-content:space-between;align-items:baseline"><p class="h2">Your setup list</p><span class="cap">' + open.length + ' left · worked out from your data — each one goes when it’s done</span></div>'
+    + '<table style="margin-top:6px"><tbody>' + open.map(i => { const t = SETUP_TEXT[i.key];
+        return '<tr' + (i.blocked ? ' style="opacity:.55"' : '') + '><td style="width:34px;font-size:18px">' + t.icon + '</td><td><span class="lbl">' + esc(t.title) + '</span><br><span class="cap">' + esc(t.cap(i)) + '</span>'
+          + (i.key === 'signup_check' && setupStepsOpen ? '<div class="cap" style="margin-top:6px">' + SETUP_SIGNUP_STEPS + '<button class="btn btn-primary" data-mark="signup_check" style="height:34px;margin-top:8px">It’s on</button></div>' : '')
+          + '</td><td style="width:200px;text-align:right;white-space:nowrap">'
+          + (i.key === 'invite' ? '<button class="btn-tert" data-mark="invite" style="font-size:12px">not needed</button> ' : '')
+          + '<button class="btn btn-soft" data-setup="' + i.key + '" style="height:32px;padding:0 12px">' + (i.key === 'signup_check' ? (setupStepsOpen ? 'Hide steps' : 'Show steps') : 'Go ›') + '</button></td></tr>'; }).join('')
+    + '</tbody></table></div>';
+}
+function wireSetup(box, items){
+  box.querySelectorAll('[data-setup]').forEach(b => b.onclick = () => deskSetupGo((items || []).find(i => i.key === b.dataset.setup) || { key: b.dataset.setup }));
+  box.querySelectorAll('#setupList [data-mark]').forEach(b => b.onclick = async () => {
+    const r = await sb.rpc('setup_mark', { p_item: b.dataset.mark, p_done: true });
+    if (r.error) { toast('couldn’t save: ' + r.error.message); return; }
+    setupStepsOpen = false; toast(b.dataset.mark === 'invite' ? 'hidden — invite from Settings → People any time' : 'ticked ✓');
+    dash.data = null; loadDashboard();
+  });
+}
+function deskSetupGo(i){
+  const card = name => CTX.cards.find(c => c.name === name);
+  const openCard = c => { go('statements'); if (c) { $('stCard').value = c.id; $('stCard').onchange(); } };
+  switch (i.key) {
+    case 'me': case 'invite': return openSettingsAt('People');
+    case 'defaults': return openSettingsAt('Default cards');
+    case 'closing_days': return openSettingsAt('Payment methods');
+    case 'old_refunds': ncBuildFilters(); $('ncMonth').value = ''; $('ncCatF').value = ''; $('ncFundF').value = ''; $('ncCardF').value = ''; $('ncSearch').value = '';
+      $('ncKindF').value = 'old_refunds'; nc.init = true; go('nocard'); loadNoCard(true); toast('refunds entered the old way — refund each purchase (tick it → Refund selected), then delete the old line'); return;
+    case 'sort': return go('sort');
+    case 'openings': return openCard(card((i.cards || [])[0]));
+    case 'statements': return openCard(cardById(((i.periods || [])[0] || {}).card_id));
+    case 'trips': openCard(null); toast('type what the card charged on each trip purchase (that card’s statement), then Send on the phone’s Travel tab'); return;
+    case 'signup_check': setupStepsOpen = !setupStepsOpen; renderDashboard(); return;
+  }
+}
+// the Desk's Settings with one section open (the phone's Settings in its desk layout reads &sec=)
+function openSettingsAt(label){
+  const f = $('setFrame');
+  $('setWait').style.display = 'flex';
+  f.src = new URL('../app/?embed=settings&layout=desk&sec=' + encodeURIComponent(label), location.href).href;
+  go('settings');
+}
+// C2: a fund's own line — how its Available is made (fund_explain, SQL), whether its cards are checked, its rows
+function fundExplainBlock(f){
+  const x = (dash.explain || {})[f.fund_id], fc = dash.data && dash.data.checks && (dash.data.checks.funds || []).find(y => y.fund_id === f.fund_id);
+  if (!x || x.error) return '<p class="cap">couldn’t work out how this number is made' + (x && x.error ? ': ' + esc(x.error) : '') + '</p>';
+  return explainHtml(x) + '<p class="cap" style="margin-top:2px">' + (fc ? checkedHtml(fc) + ' · ' : '') + '<button class="btn-tert" data-txf="' + f.fund_id + '" style="padding:0;font-size:12px">every row in Transactions ›</button></p>';
+}
+function wireFdx(host){ host.querySelectorAll('[data-txf]').forEach(b => b.onclick = ev => { ev.stopPropagation(); openTxFund(b.dataset.txf); }); }
+// C2: until a card's first statement is closed, the numbers that depend on it aren't proven — say so
+function uncheckedHtml(ch){
+  if (!ch || !ch.unchecked) return '';
+  const names = (ch.cards || []).filter(c => c.used && !c.checked_to).map(c => c.name);
+  return '<div class="card" style="background:#fff7e6;border-color:#f3d9a4;padding:12px 16px"><span class="tag warn">not yet checked against statements</span> '
+    + esc(listOf(names)) + (names.length === 1 ? ' has' : ' have') + ' no closed statement yet, so <i>In the bank</i>, <i>Owed on cards</i> and the funds that use '
+    + (names.length === 1 ? 'it' : 'them') + ' aren’t proven yet. Available is as entered. Close each statement on the Statements page and this goes.</div>';
+}
 function renderDashboard(){
   const D = dash.data, box = $('dashBody'); if (!D || !$('scr-dashboard').classList.contains('active')) return;
   const allMonths = [...new Set(D.hist.map(r => r.month))].sort();
@@ -2118,7 +2220,7 @@ function renderDashboard(){
   const sumAt = (fs, m, k) => fs.reduce((t, f) => t + (val(f, m, k) || 0), 0);
   const first = months[0], last = months[months.length - 1], prev = months[months.length - 2];
   const fx = D.fx;
-  let html = heartbeatHtml(D.hb);
+  let html = heartbeatHtml(D.hb) + setupHtml(D.todo) + uncheckedHtml(D.checks);
 
   // ── net worth: one tile per country, one for the total ──
   const tiles = countries.map(cc => {
@@ -2239,16 +2341,19 @@ function renderDashboard(){
       const open = dash.fund === f.fund_id;
       return '<tr class="pick' + (open ? ' on' : '') + '" data-f="' + f.fund_id + '" aria-expanded="' + open + '" tabindex="0"><td><span class="dsc">' + (f.is_spend_pot ? '🍯' : esc(f.icon || '💰')) + ' ' + esc(f.name) + ' <span class="cap">' + (open ? '▾' : '▸') + '</span></span></td><td class="amt lbl">' + esc(fmtMoney(now, cur)) + '</td>'
         + '<td class="amt">' + deltaHtml(m1, cur) + '</td><td class="amt">' + deltaHtml(mp, cur) + pct(mp, now - mp) + '</td><td>' + spark(months.map(m => val(f, m, 'balance')), '#1F63B8') + '</td></tr>'
-        + (open ? '<tr class="fdrow"><td colspan="5"><div class="row" style="justify-content:space-between"><p class="lbl">' + esc(f.name) + ' · ' + esc(monLabel(first, true)) + ' to today</p><div class="legend"><span><span class="k" style="background:#1F63B8"></span>Available</span><span><span class="k" style="background:#eb6834"></span>In the bank</span></div></div><div class="fdc" data-f="' + f.fund_id + '" style="margin-top:6px"></div></td></tr>' : ''); };
+        + (open ? '<tr class="fdrow"><td colspan="5"><div class="row" style="justify-content:space-between"><p class="lbl">' + esc(f.name) + ' · ' + esc(monLabel(first, true)) + ' to today</p><div class="legend"><span><span class="k" style="background:#1F63B8"></span>Available</span><span><span class="k" style="background:#eb6834"></span>In the bank</span></div></div>'
+          + '<div class="fdx" data-f="' + f.fund_id + '" style="margin-top:4px">' + (dash.explain && dash.explain[f.fund_id] ? fundExplainBlock(f) : '<p class="cap"><span class="spin"></span></p>') + '</div>'
+          + '<div class="fdc" data-f="' + f.fund_id + '" style="margin-top:6px"></div></td></tr>' : ''); };
     const head = t => '<tr><td colspan="5" class="cap" style="padding-top:12px;letter-spacing:.05em;text-transform:uppercase">' + esc(t) + '</td></tr>';
     return '<div class="card"><p class="h2">' + esc(countryTitle(cc)) + ' · funds</p><p class="cap">Available at each month-end — growing ▲ or shrinking ▼ · click a fund to open its chart under it, click again to close</p>'
-      + '<table style="margin-top:8px"><thead><tr><th>Fund</th><th class="amt">Available now</th><th class="amt">this month</th><th class="amt">since ' + esc(monLabel(first, true)) + '</th><th style="width:110px">trend</th></tr></thead><tbody>'
+      + '<table style="margin-top:8px"><thead><tr><th>Fund</th><th class="amt" title="' + esc(MONEY_DEF) + '">Available now ⓘ</th><th class="amt">this month</th><th class="amt">since ' + esc(monLabel(first, true)) + '</th><th style="width:110px">trend</th></tr></thead><tbody>'
       + (pots.length ? head('Spending pots') + pots.map(row).join('') : '') + order.map(g => head(g) + grp[g].map(row).join('')).join('')
       + '</tbody></table>'
       + '</div>';
   }).join('');
 
   box.innerHTML = html;
+  wireSetup(box, D.todo);
   // spending pots count daily purchases from pot_start (money model v3, 1 Sep 2026): mark that day on every chart a pot
   // is part of, at the month-end just before it — earlier points show money moved in and out, not spending
   const ps = CTX.hh && CTX.hh.pot_start, psMonth = ps ? ps.slice(0, 7) + '-01' : null;
@@ -2274,6 +2379,14 @@ function renderDashboard(){
     tr.onkeydown = ev => { if (ev.target === tr && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); toggle(); } };
   });
   box.querySelectorAll('.txg, .txc').forEach(b => b.onclick = ev => { ev.stopPropagation(); openTxFor(sm, b.dataset.k, b.dataset.n); });
+  box.querySelectorAll('.fdx').forEach(el => {
+    const f = D.funds.find(x => x.fund_id === el.dataset.f);
+    if (!(dash.explain && dash.explain[f.fund_id])) sb.rpc('fund_explain', { p_fund: f.fund_id }).then(r => {
+      (dash.explain = dash.explain || {})[f.fund_id] = r.error ? { error: r.error.message } : r.data;
+      const host = document.querySelector('#dashBody .fdx[data-f="' + f.fund_id + '"]'); if (host) { host.innerHTML = fundExplainBlock(f); wireFdx(host); }
+    });
+    else wireFdx(el);
+  });
   box.querySelectorAll('.fdc').forEach(el => {
     const f = D.funds.find(x => x.fund_id === el.dataset.f);
     lineChart(el, { labels: months, cur: f.currency, height: 180, marker: potMark(f.is_spend_pot), series: [
@@ -2329,24 +2442,25 @@ window.addEventListener('resize', () => { clearTimeout(dashResizeT); dashResizeT
 // the tour runs once per login per version: 2 Dashboard and Settings joined; 3 Settings and the add form laid out for
 // the Desk, pot swap's "same fund" (18 Oct); 4 the Spending card drills into a month, a group, a category (18 Oct);
 // 5 Transactions shows the whole ledger (18 Oct)
-const DESK_TOUR_V = '5';
+const DESK_TOUR_V = '6';
 const DESK_TOUR = [
   { center: true, title: 'The Desk', text: 'the big-screen side of BearHaus: check statements, record card payments, tidy many rows at once and see every fund. Same login, same numbers as the phone.' },
   { scr: 'dashboard', el: () => document.querySelector('nav .nv[data-scr="dashboard"]'), title: 'Dashboard', text: 'where the Desk opens: net worth per country and in total, spending against the plan month by month, and how each fund is growing or shrinking. The line at the top says whether last night’s money check and backup ran — green is fine, red needs you.' },
+  { scr: 'dashboard', el: () => $('setupList'), title: 'Your setup list', text: 'worked out from your data: each job left to do before the numbers can be trusted, in the order to do them — Go › opens the page that does it, and the line goes when it’s done.' },
   { scr: 'dashboard', el: () => $('dashPeriod'), title: 'Pick the period', text: '6, 12 or 24 months. Click a fund in the table to see its own line.' },
   { scr: 'dashboard', el: () => $('budChartD'), title: 'Any month, any category', text: 'hover a month for what was spent and planned; click it and the groups below show that month. Click a group for its categories — Transactions › lists the purchases behind each number.' },
   { scr: 'statements', el: () => document.querySelector('nav .nv[data-scr="statements"]'), title: 'Statements', text: 'each card and bank account, checked against its statement, one period at a time.' },
-  { scr: 'statements', el: () => $('stCard').closest('.row') || $('stCard'), title: 'Pick a card, then the period', text: 'archived cards are listed too — for their last statement.' },
+  { scr: 'statements', el: () => $('stCard').closest('.row') || $('stCard'), title: 'Opens on the next one to close', text: 'the card and the period wait for you: the earliest statement that has ended and isn’t closed. Saved statements keep their own dates even if a closing day changes. Archived cards are listed too — for their last statement.' },
   { scr: 'statements', el: () => $('stOpening').style.display !== 'none' ? $('stOpening') : null, title: 'First time for each card', text: 'say what the card owed on the day BearHaus started counting, and which fund set that money aside. Once per card.' },
   { scr: 'statements', el: () => $('stAdd'), title: 'A line the app doesn’t have', text: 'add it here — it’s the phone’s own + form laid out wide: the fields on the left, the keypad, pickers and calendar on the right. This card and a date in the period are already filled in; type the amount, Enter saves.' },
   { scr: 'statements', el: () => $('stRows').closest('.card'), title: 'Tick what’s on the statement', text: 'select the rows, then Reconcile selected — they lock. A purchase in ¥ or US$ gets a box for what the card charged.' },
   { scr: 'statements', el: () => $('stTotal').closest('.card'), title: 'Do the totals agree?', text: 'type the statement’s new spend (and opening and closing). The check says if something is missing in the app, or ticked that shouldn’t be.' },
-  { scr: 'statements', el: () => $('stClose'), title: 'Close it', text: 'when the totals agree, close the statement — that period locks.' },
-  { scr: 'statements', el: () => $('stPay').style.display !== 'none' ? $('stPay') : null, title: 'Record the payment', text: 'what you paid, from which fund, and the date. A future date shows as scheduled until that day. Paying lowers In the bank and Owed on cards — never Available.' },
+  { scr: 'statements', el: () => $('stClose'), title: 'Close it', text: 'Close turns blue only when every row in the period is ticked and the totals agree — then one click closes it. The opening is filled in from the last statement.' },
+  { scr: 'statements', el: () => $('stPay').style.display !== 'none' ? $('stPay') : null, title: 'Record the payment', text: 'what you paid, from which fund, and the date (the due date when catching up). A future date shows as scheduled until that day. Paying lowers In the bank and Owed on cards — never Available. Then Next statement ›.' },
   { scr: 'nocard', el: () => document.querySelector('nav .nv[data-scr="nocard"]'), title: 'Transactions', text: 'every money event in one list — purchases, incomes, transfers, pot swaps, card payments, trip sends and each month’s plan. A transfer, swap, card payment or plan is one line: click it for its sides. Filter by month, kind, card, fund or category; tick purchases to change many at once.' },
   { scr: 'nocard', el: () => $('ncRefund'), title: 'Refund against the purchase', text: 'tick what was refunded → Refund selected: all of it or a part, back on the card or as a transfer. The purchase keeps its full amount for the statement; only what was used counts, in its own month.' },
   { scr: 'swap', el: () => document.querySelector('nav .nv[data-scr="swap"]'), title: 'Pot swap', text: 'spent in one currency but the money came from another? record the swap and its rate here. A country where nothing needs to move? pick “same fund” and that side is skipped.' },
-  { scr: 'pots', el: () => document.querySelector('nav .nv[data-scr="pots"]'), title: 'Pots 🍯', text: 'every fund in one place — Available, owed on cards, in the bank, cleared, pending — and every card’s balance.' },
+  { scr: 'pots', el: () => document.querySelector('nav .nv[data-scr="pots"]'), title: 'Pots 🍯', text: 'every fund in one place — Available, owed on cards, in the bank, cleared, pending — and every card’s balance, with how far it has been checked against statements. Until a card’s first statement is closed, it and its funds say “not yet checked”.' },
   { scr: 'activity', el: () => document.querySelector('nav .nv[data-scr="activity"]'), title: 'Activity', text: 'who changed what, and when — every save, edit and delete, from the phone or here.' },
   { scr: 'settings', el: () => document.querySelector('nav .nv[data-scr="settings"]'), title: 'Settings', text: 'the phone’s own Settings laid out for the big screen: the sections on the left, the open one on the right — people, funds, payment methods, default cards, categories, the monthly plan and the time zone. Every list starts with ＋ Add…; archived ones fold away at the bottom.' },
   { scr: 'statements', el: () => document.querySelector('nav .foot a'), title: 'Back to the phone', text: 'the phone app is one click away. This tour lives here in the menu whenever you want it 🐻' },
@@ -2413,10 +2527,13 @@ document.addEventListener('keydown', e => {
 async function loadPots(){
   const box = $('potCards'); box.innerHTML = '<p class="cap"><span class="spin"></span></p>';
   // every fund's numbers in one pass (household_money, v2 sprint 3) + the cards
-  const [m, cb] = await Promise.all([
+  const [m, cb, mc] = await Promise.all([
     sb.rpc('household_money'),
     sb.from('card_balances').select('payment_method_id, name, currency, charges, credits, fund_charges, payments, owed, last_paid').eq('is_archived', false),
+    sb.rpc('money_checks'),   // checked against statements to when (Bundle C)
   ]);
+  const checks = mc.error ? null : mc.data;
+  const fundCheck = id => checks && (checks.funds || []).find(x => x.fund_id === id), cardCheck = id => checks && (checks.cards || []).find(x => x.id === id);
   if (m.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(m.error.message) + '</p>'; return; }
   const b = { data: (m.data || []).filter(f => f.is_active) };
   const cl = {}, ca = {}; b.data.forEach(r => { cl[r.fund_id] = r; ca[r.fund_id] = r; });
@@ -2428,7 +2545,8 @@ async function loadPots(){
   const fundRow = p => { const x = cl[p.fund_id] || {}, y = ca[p.fund_id] || {}; const owed = y.owed_on_cards != null ? Number(y.owed_on_cards) : null;
     const icon = p.is_spend_pot ? '🍯' : (p.icon ? esc(String(p.icon).slice(0, 16)) : '💰');
     return '<tr>'
-      + '<td><span class="dsc">' + icon + ' ' + esc(p.name) + '</span>' + (p.is_leftover_target ? ' <span class="cap">· gets the leftover</span>' : '') + '</td>'
+      + '<td><span class="dsc">' + icon + ' ' + esc(p.name) + '</span>' + (p.is_leftover_target ? ' <span class="cap">· gets the leftover</span>' : '')
+      + (() => { const fc = fundCheck(p.fund_id); return fc && !fc.checked_to ? ' ' + checkedHtml(fc) : ''; })() + '</td>'
       + '<td class="amt lbl">' + fmtMoney(p.balance, p.currency) + '</td>'
       + '<td class="amt" style="color:' + (owed > 0 ? 'var(--warn)' : owed < 0 ? 'var(--primary)' : 'var(--ink-soft)') + '"' + (owed < 0 ? ' title="this fund paid a card on behalf of other funds, or holds a refund — move the money back with a transfer in the app if it was for another fund"' : '') + '>'
       + (owed != null ? fmtMoney(owed, p.currency) : '—') + (owed < 0 ? ' <span class="tag blue">paid for others</span>' : '') + '</td>'
@@ -2452,20 +2570,21 @@ async function loadPots(){
       + '<td class="amt" style="color:var(--primary)">' + fmtMoney(sum(cur, 'cleared_balance'), cur) + '</td>'
       + '<td class="amt">' + fmtMoney(sum(cur, 'pending_spend'), cur) + '</td></tr>').join('');
     return '<div class="card"><p class="h2" style="margin-bottom:10px">' + esc(countryTitle(cc)) + '</p>'
-      + '<table><thead><tr><th>Fund</th><th class="amt">Available</th><th class="amt">Owed on cards</th><th class="amt">In the bank</th><th class="amt">Cleared</th><th class="amt">Pending</th></tr></thead><tbody>'
+      + '<table><thead><tr><th>Fund</th><th class="amt" title="' + esc(MONEY_DEF) + '">Available ⓘ</th><th class="amt">Owed on cards</th><th class="amt">In the bank</th><th class="amt">Cleared</th><th class="amt">Pending</th></tr></thead><tbody>'
       + (pots.length ? groupHead('Spending pots') + pots.map(fundRow).join('') : '')
       + order.map(g => groupHead(g) + groups[g].map(fundRow).join('')).join('')
       + totals
       + '</tbody></table></div>';
   };
-  box.innerHTML = countries.map(countryCard).join('')
+  box.innerHTML = uncheckedHtml(checks) + countries.map(countryCard).join('')
     + (cards.length ? '<div class="card"><p class="h2" style="margin-bottom:4px">Credit cards</p><p class="cap" style="margin-bottom:10px">charges since ' + (CTX.hh.pot_start ? fmtD(CTX.hh.pot_start) : 'the start') + ' minus the payments recorded · record payments on the Statements page when you close a statement</p>'
-      + '<table><thead><tr><th>Card</th><th class="amt">Charged</th><th class="amt">Paid</th><th class="amt">Owed</th><th style="width:140px">Last payment</th><th style="width:120px"></th></tr></thead><tbody>'
+      + '<table><thead><tr><th>Card</th><th class="amt">Charged</th><th class="amt">Paid</th><th class="amt">Owed</th><th style="width:140px">Last payment</th><th style="width:190px">Checked against statements</th><th style="width:120px"></th></tr></thead><tbody>'
       + cards.map(x => '<tr><td><span class="dsc">💳 ' + esc(x.name) + '</span></td>'
         + '<td class="amt">' + fmtMoney(Number(x.charges) - Number(x.credits) + Number(x.fund_charges), x.currency || 'AUD') + '</td>'
         + '<td class="amt" style="color:var(--good)">' + fmtMoney(x.payments, x.currency || 'AUD') + '</td>'
         + '<td class="amt lbl" style="color:' + (Number(x.owed) > 0 ? 'var(--warn)' : 'var(--ink-soft)') + '">' + fmtMoney(x.owed, x.currency || 'AUD') + '</td>'
         + '<td class="cap">' + (x.last_paid ? fmtD(x.last_paid) : '—') + '</td>'
+        + '<td>' + (() => { const cc = cardCheck(x.payment_method_id); return !cc ? '' : cc.checked_to ? '<span class="cap">to ' + esc(fmtD(cc.checked_to)) + (cc.open_before ? ' · ' + cc.open_before + ' earlier still open' : '') + '</span>' : '<span class="tag warn">not yet</span>'; })() + '</td>'
         + '<td style="text-align:right"><button class="btn-tert" onclick="go(\'statements\');$(\'stCard\').value=\'' + x.payment_method_id + '\';$(\'stCard\').onchange()">statements ›</button></td></tr>').join('')
       + '</tbody></table></div>' : '')
     + '<p class="cap">Paying a card never changes Available — the charges already took it the day they happened. It lowers Owed on cards and In the bank by the same amount. Cleared only counts reconciled rows, so it catches up as statements are closed.</p>';

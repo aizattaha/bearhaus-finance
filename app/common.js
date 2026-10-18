@@ -106,3 +106,53 @@ const curMonthIso = () => { const n = new Date(); return isoDate(new Date(n.getF
 const addMonths = (iso, n) => { const d = new Date(iso + 'T00:00:00'); return isoDate(new Date(d.getFullYear(), d.getMonth() + n, 1)); };
 const fmtD  = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'});
 const fmtDs = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'});
+
+// ── the owner's setup list (Bundle C) ─────────────────────────────────────
+// setup_todo() (SQL) works out each item from the data; this is what each one says on the phone's Home and the Desk
+// Dashboard, which link it to their own screens. An item leaves the list when its job is done. A new feature that
+// gives the owner a job adds an item here and in setup_todo — not a line in HANDOVER.
+const nOf = (k, one, many) => k + ' ' + (k === 1 ? one : (many || one + 's'));
+const listOf = a => { a = (a || []).filter(Boolean); return a.length <= 2 ? a.join(' and ') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; };
+const SETUP_TEXT = {
+  me:           { icon: '👤', title: 'That’s me', cap: () => 'tell the app which person you are: Settings → People → that’s me' },
+  defaults:     { icon: '⭐', title: 'Default cards', cap: i => 'no Daily card yet for ' + listOf(i.people) + ' — and pick where each card is offered (Daily · Trip · From a fund)' },
+  closing_days: { icon: '📅', title: 'A closing day on every credit card', cap: i => listOf(i.cards) + ' — set it before ticking anything on the Desk' },
+  old_refunds:  { icon: '↩️', title: 'Redo the old refunds', cap: i => nOf(i.n, 'old-style refund line') + ' — refund each purchase the new way (↩ Refund), then delete the old line' },
+  sort:         { icon: '🧹', title: 'Sort fund spending', cap: i => nOf(i.n, 'row') + ' still to sort', desk: true },
+  openings:     { icon: '🏁', title: 'What each card owed on the start date', cap: i => listOf(i.cards) + ' — Statements, the panel under the card', desk: true },
+  statements:   { icon: '🧾', title: 'Close statements and record payments', desk: true,
+                  cap: i => i.blocked ? 'set the closing days first, then close each statement since the start date'
+                    : [i.to_close ? nOf(i.to_close, 'statement') + ' to close' : '', i.to_pay ? nOf(i.to_pay, 'closed statement') + ' to pay' : ''].filter(Boolean).join(' · ') },
+  trips:        { icon: '✈️', title: 'Finish your trips', cap: i => [i.waiting ? nOf(i.waiting, 'card purchase') + ' waiting for what the card charged (Desk → Statements)' : '',
+                                                               i.to_send ? nOf(i.to_send, 'line') + ' ready to send (Travel)' : ''].filter(Boolean).join(' · ') },
+  invite:       { icon: '💌', title: 'Invite your partner', cap: i => nOf(i.n, 'person', 'people') + ' with no login of their own: Settings → People → invite to sign in' },
+  signup_check: { icon: '🔐', title: 'Switch on the sign-up check', cap: () => 'one switch in Supabase, so only people you invite can sign up' },
+};
+// the sign-up check is switched on in Supabase's dashboard, not in the app: the steps, then a tick (setup_mark)
+const SETUP_SIGNUP_STEPS = '<ol style="margin:6px 0 0 18px;padding:0;line-height:20px">'
+  + '<li>On a computer, open <b>supabase.com/dashboard</b> and sign in (your password manager has it).</li>'
+  + '<li>Open the <b>BearHaus</b> project → <b>Authentication</b> → <b>Hooks</b>.</li>'
+  + '<li><b>Before User Created</b> → Add hook → <b>Postgres</b> → schema <b>public</b> → function <b>hook_before_user_created</b> → Create.</li>'
+  + '<li>Come back here and tap <b>It’s on</b>.</li></ol>';
+
+// ── numbers that explain themselves (Bundle C, CX-06) ─────────────────────
+// the three fund numbers in one sentence each (both apps, tap/hover on "Available")
+const MONEY_DEF = 'Available = what a fund has left to spend: money in, minus money moved out, minus the purchases counted against it. '
+  + 'Owed on cards = charged to a credit card, not paid yet. In the bank = Available + owed on cards — what the bank should show. '
+  + 'Paying a card moves the last two, never Available.';
+// how one fund's Available is made, from fund_explain() (SQL: the parts add up to fund_money, tested fund by fund)
+function explainHtml(x){
+  if (!x || !x.month) return '';
+  const c = x.currency, f = v => fmtMoney(Number(v) || 0, c), m = x.month, a = x.all;
+  const mon = new Date(x.month_start + 'T00:00:00').toLocaleDateString('en-AU', { month: 'long' });
+  return '<p class="cap"><b>How ' + esc(f(x.available)) + ' Available is made</b> — ' + esc(f(m.opening)) + ' at the start of ' + esc(mon)
+    + ' + ' + esc(f(m.money_in)) + ' in − ' + esc(f(m.moved_out)) + ' moved out − ' + esc(f(m.purchases)) + ' purchases since'
+    + ' (all time: ' + esc(f(a.money_in)) + ' in − ' + esc(f(a.moved_out)) + ' out − ' + esc(f(a.purchases)) + ' purchases)'
+    + (Math.abs(Number(x.owed_on_cards)) >= 0.005 ? '. In the bank ' + esc(f(x.in_bank)) + ' = Available + ' + esc(f(x.owed_on_cards)) + ' still owed on cards' : '') + '.</p>';
+}
+// "checked to 2 Oct" for a fund or a card from money_checks(); null = not yet checked against a statement
+function checkedHtml(entry){
+  if (!entry) return '';
+  if (entry.checked_to) return '<span class="cap">✓ checked against statements to ' + esc(fmtDs(entry.checked_to)) + '</span>';
+  return '<span class="tag warn" title="' + esc('no closed statement yet for ' + listOf(entry.unchecked || [])) + '">not yet checked against statements</span>';
+}

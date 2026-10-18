@@ -22,7 +22,7 @@
 :root{
   --primary:#004A98; --primary-hover:#003A78; --accent:#B4CEFF; --accent-soft:#E4EEFF;
   --canvas:#FFFFFF; --muted:#E6E5E5; --ink:#1A2B44; --ink-soft:#55657D; --field:#F7F9FC;
-  --good:#2E7D57; --good-soft:#E3F4EA; --bad:#D25353; --bad-bar:#F0A8A8;
+  --good:#2E7D57; --good-soft:#E3F4EA; --bad:#BF4040; --bad-bar:#F0A8A8;
   --shadow-soft:0 2px 12px rgba(0,74,152,.06); --shadow-lift:0 8px 28px rgba(0,74,152,.12);
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -205,6 +205,13 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .seg button.sel{background:var(--primary);color:#fff}
 .seg.grow{display:flex}
 .seg.grow button{flex:1}
+.infob{background:none;border:none;color:inherit;font:inherit;cursor:pointer;padding:4px 8px;margin:-4px -4px -4px -2px;min-width:28px;min-height:28px;opacity:.85}
+#setupCard .todo{display:flex;align-items:center;gap:10px;width:100%;padding:10px 0;background:none;border:none;border-top:1px solid var(--muted);font-family:inherit;text-align:left;color:var(--ink);cursor:pointer}
+#setupCard .todo:first-of-type{margin-top:8px}
+#setupCard .todo .ic{flex:0 0 auto;width:32px;height:32px;border-radius:11px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:15px}
+#setupCard .todo .chev{margin-left:auto;color:var(--ink-soft);flex:0 0 auto}
+#setupCard .todo.blocked{opacity:.55}
+#setupCard .steps{background:var(--accent-soft);color:var(--primary);border-radius:12px;padding:10px 12px;margin:0 0 8px}
 #atxType button{padding:6px 2px;flex:1 1 auto;min-width:0}
 #segType button:first-child.sel{background:var(--good)}
 #segType button:last-child.sel{background:var(--bad)}
@@ -366,7 +373,7 @@ html.embed-desk #descInput{font-size:16px}
 .spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:99px;animation:sp .7s linear infinite;vertical-align:-3px}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;box-shadow:0 0 0 4px #fff}   /* 2 px primary ring on a white halo: visible on every surface (was 1.6:1) */
 .srow .edit,.trow .edit{position:relative}
 .srow .edit::after,.trow .edit::after{content:"";position:absolute;inset:-9px}
 input[type="date"].descinput{min-width:0}
@@ -505,6 +512,13 @@ input[type="date"].descinput{min-width:0}
       </div>
 
       <div class="card" id="viewerNote" style="display:none;background:#fff7e6;box-shadow:none"><p class="lbl">👀 view-only login</p><p class="cap">you can see everything in this household, but not change it — ask the owner for a full login if you need to</p></div>
+      <div class="card" id="newsCard" style="display:none;background:var(--accent-soft);box-shadow:none">
+        <p class="lbl" style="color:var(--primary)">What’s new ✨</p>
+        <p class="cap" id="newsCap" style="margin-top:2px"></p>
+        <div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="btn-mini" onclick="$('newsCard').style.display='none';startTutorial('unseen')">Show me</button><button type="button" class="btn-tert" onclick="dismissNews()">Not now</button></div>
+      </div>
+      <!-- the owner's setup list (Bundle C): worked out from the data, one tap to each job, gone when done -->
+      <div class="card" id="setupCard" style="display:none"></div>
       <div class="card" id="planNudge" style="display:none;background:var(--accent-soft);box-shadow:none;cursor:pointer" onclick="openPlanSheet()">
         <p class="lbl" style="color:var(--primary)" id="planNudgeMsg"></p>
         <p class="cap" style="margin-top:2px">tap to open the plan — it takes two minutes</p>
@@ -605,6 +619,8 @@ input[type="date"].descinput{min-width:0}
     <section class="screen" id="scr-funds">
       <div><p class="cap">Funds</p><h2 class="h1" style="margin-top:2px">How much do we have?</h2></div>
       <div class="duo" id="fundTotals"><p class="cap">loading…</p></div>
+      <div class="card" id="moneyDef" style="display:none;background:var(--accent-soft);box-shadow:none;padding:12px 14px" onclick="toggleMoneyDef()"><p class="cap" style="color:var(--primary)"></p></div>
+      <div class="card" id="fundChecks" style="display:none;background:#fff7e6;box-shadow:none;padding:10px 14px;font-size:12px;line-height:17px"></div>
       <div class="card" id="planCard" style="background:var(--accent-soft);box-shadow:none">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
           <p class="lbl" style="color:var(--primary)" id="planTitle">This month's plan</p>
@@ -630,6 +646,7 @@ input[type="date"].descinput{min-width:0}
         <select class="descinput" id="atxMonth" style="margin-top:8px;width:100%" aria-label="month"></select>
         <select class="descinput" id="atxWhat" style="margin-top:8px;width:100%;display:none"></select>
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="chip sel" id="atxOldRef" style="display:none" onclick="atxOldRef=false;this.style.display='none';loadAllTx(true)">↩ old-style refunds only ✕</button>
           <button type="button" class="chip" id="atxOpenOnly" onclick="this.classList.toggle('sel');loadAllTx(true)">🔓 unreconciled only</button>
           <span class="cap">🔒 reconciled rows are locked · tap the lock to un-reconcile</span>
         </div>
@@ -816,6 +833,7 @@ function go(id){
   else if (id === 'scr-travel' && !travelInit) { stale.travel = false; initTravel(); }
   else refreshScreen(id);   // something was saved since this screen last loaded
   if (id === 'scr-settings') renderSettings();
+  if (id === 'scr-home' && CTX.role === 'owner') loadSetup();   // a job done elsewhere leaves the setup list
 }
 // CURSYM, COUNTRY_CUR, ZERO_DEC, fmtMoney, flagOf, COUNTRY_NAME, countryTitle, todayIso → common.js
 
@@ -1158,15 +1176,69 @@ async function enterApp(){
     if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
     applyRole();
     checkPlanNudge(CTX.plan);
+    loadSetup();
     // someone who joined (not the owner), first time on this device: the short joiner tour, once
     if (!EMBED && !store.get('tut-done') && CTX.role !== 'owner' && !tutEls)
       setTimeout(() => { if (!tutEls && !$('sheet').classList.contains('open')) startTutorial('join'); }, 700);
-    else if (!EMBED && store.get('tut-done') && store.get('tut-v') !== TUT_VERSION && !tutEls)
-      setTimeout(() => { if (!tutEls && !$('sheet').classList.contains('open')) startTutorial('unseen'); }, 1200);
+    // after an update: "What's new" waits as a card on Home — it no longer pops over the app at launch (CX-18)
+    else if (!EMBED && store.get('tut-done') && store.get('tut-v') !== TUT_VERSION) showNewsCard();
     // the first paint guessed the home currency — repaint with the real one
     const c = store.get('home2');
     if (c) { try { renderHome(JSON.parse(c)); } catch(e){} }
   }).catch(e => { if (!/access removed|session invalid/.test(String(e && e.message))) showError('couldn’t load your household: ' + (e.message || e)); });
+}
+
+// ── the owner's setup list (Bundle C, CX-08) ──
+// setup_todo() works each item out from the data; a row is one tap to the screen that does it, and leaves the list when
+// the job is done. Owner only. Desk jobs open the Desk on that page. The words are SETUP_TEXT (common.js), shared with
+// the Desk Dashboard.
+let setupAll = false, setupSteps = false;
+async function loadSetup(){
+  if (EMBED || CTX.role !== 'owner') { $('setupCard').style.display = 'none'; return; }
+  const c = store.json('setup'); if (c) renderSetup(c);
+  const { data, error } = await sb.rpc('setup_todo');
+  if (error || !Array.isArray(data)) return;
+  store.set('setup', JSON.stringify(data)); renderSetup(data);
+}
+function renderSetup(items){
+  const box = $('setupCard');
+  const open = (items || []).filter(i => !i.done && SETUP_TEXT[i.key]);
+  if (!open.length || CTX.role !== 'owner') { box.style.display = 'none'; return; }
+  const shown = setupAll ? open : open.slice(0, 3);
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><p class="lbl">Your setup list</p><span class="cap">' + open.length + ' left</span></div>'
+    + '<p class="cap" style="margin-top:2px">worked out from your data — each one goes when it’s done</p>'
+    + shown.map(i => { const t = SETUP_TEXT[i.key];
+        return '<button type="button" class="todo' + (i.blocked ? ' blocked' : '') + '" data-k="' + i.key + '"><span class="ic">' + t.icon + '</span>'
+          + '<span style="min-width:0"><span class="lbl" style="display:block">' + esc(t.title) + (t.desk ? ' <span class="tag">on the Desk</span>' : '') + '</span>'
+          + '<span class="cap" style="display:block">' + esc(t.cap(i)) + '</span></span><span class="chev">›</span></button>'
+          + (i.key === 'signup_check' && setupSteps ? '<div class="steps cap">' + SETUP_SIGNUP_STEPS + '<button type="button" class="btn-mini" data-mark="signup_check" style="margin-top:8px">It’s on</button></div>' : '')
+          + (i.key === 'invite' ? '<div style="text-align:right;margin:-6px 0 4px"><button type="button" class="btn-tert" data-mark="invite" style="font-size:12px">no invite needed — hide this</button></div>' : ''); }).join('')
+    + (open.length > 3 ? '<button type="button" class="btn-tert" id="setupMore" style="padding-left:0;margin-top:4px">' + (setupAll ? 'show fewer' : 'show all ' + open.length) + '</button>' : '');
+  box.style.display = 'block';
+  box.querySelectorAll('.todo').forEach(b => b.onclick = () => setupGo(b.dataset.k));
+  box.querySelectorAll('[data-mark]').forEach(b => b.onclick = async () => {
+    const r = await sb.rpc('setup_mark', { p_item: b.dataset.mark, p_done: true });
+    if (r.error) { toast('couldn’t save: ' + r.error.message); return; }
+    setupSteps = false; toast(b.dataset.mark === 'invite' ? 'hidden — invite from Settings → People any time' : 'ticked ✓'); loadSetup();
+  });
+  if ($('setupMore')) $('setupMore').onclick = () => { setupAll = !setupAll; renderSetup(items); };
+}
+function setupGo(k){
+  const desk = page => { const u = new URL('../desktop/#' + page, location.href).href; const w = window.open(u, '_blank', 'noopener'); if (!w) location.href = u; };
+  ({ me: () => openSetSection('People'), invite: () => openSetSection('People'), defaults: () => openSetSection('Default cards'),
+     closing_days: () => openSetSection('Payment methods'), old_refunds: () => openAllTx({ type: 'All', oldRefunds: true }),
+     trips: () => go('scr-travel'), sort: () => desk('sort'), openings: () => desk('statements'), statements: () => desk('statements'),
+     signup_check: () => { setupSteps = !setupSteps; renderSetup(store.json('setup') || []); } }[k] || (() => {}))();
+}
+// Settings with one section open (the setup list's links)
+function openSetSection(label){
+  go('scr-settings');
+  setTimeout(() => {
+    const row = [...document.querySelectorAll('#setRows .setrow')].find(r => r.dataset.sec === label);
+    if (!row) return;
+    if (!row.classList.contains('open')) row.click();
+    row.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, 60);
 }
 
 // two phones, one household: coming back to the app after a while refetches whatever is on screen (QA2 A)
@@ -1605,7 +1677,7 @@ function renderBudget(st){
     + (fundFunded[st.month] ? ' · ' + fmtMoney(fundFunded[st.month], PC) + ' paid from funds, not counted' : '');
   if (!budget) { sub.textContent = 'no budget set for this month' + schedNote; sub.style.color = ''; }
   else if (spent <= budget) { sub.textContent = fmtMoney(budget - spent, PC) + ' still available' + schedNote; sub.style.color = ''; }
-  else { sub.textContent = fmtMoney(spent - budget, PC) + ' over budget' + schedNote; sub.style.color = '#F0A8A8'; }
+  else { sub.textContent = fmtMoney(spent - budget, PC) + ' over budget' + schedNote; sub.style.color = '#FFD0D0'; }
 
   // current month links straight into the plan editor; the whole card opens the month's transactions
   $('budPlanBtn').style.display = st.month === curMonthIso() ? 'inline-block' : 'none';
@@ -1744,18 +1816,19 @@ async function loadFunds(){
   const m = curMonthIso();
   try {
     // every fund's numbers in one pass (household_money, v2 sprint 3) + this month's plan lines
-    const [money, inc, cat, fb, applied] = await Promise.all([
+    const [money, inc, cat, fb, applied, checks] = await Promise.all([
       sb.rpc('household_money'),
       sb.from('income_budgets').select('source_name, currency, amount').eq('month', m),
       sb.from('category_budgets').select('currency, amount').eq('month', m),
       sb.from('fund_budgets').select('fund_id, amount').eq('month', m),
       appliedQ(m),
+      sb.rpc('money_checks'),   // which funds rest on a card with no closed statement yet (Bundle C)
     ]);
     for (const r of [money, inc, cat, fb, applied]) if (r.error) throw r.error;
     const live = (money.data || []).filter(f => f.is_active);
     const cashBy = {}; live.forEach(r => cashBy[r.fund_id] = r);   // what's still on cards vs in the bank
     fundsState = { month: m, bal: live, inc: inc.data, cat: cat.data, fb: fb.data, cash: cashBy,
-                   appliedOn: applied.data.length ? applied.data[0].date : null };
+                   appliedOn: applied.data.length ? applied.data[0].date : null, checks: checks.error ? null : checks.data };
     store.set('funds', JSON.stringify(fundsState));
     renderFunds(fundsState);
   } catch (err) { toast('couldn’t load funds: ' + err.message); }
@@ -1779,10 +1852,14 @@ function renderFunds(st){
   tbox.style.gridTemplateColumns = countries.length > 1 ? '1fr 1fr' : '1fr';
   tbox.innerHTML = countries.map((cc, i) =>
     '<div class="total-card"' + (i % 2 ? ' style="background:#003A78"' : '') + '>'
-    + '<p class="cap">' + esc(countryTitle(cc)) + ' funds</p>'
+    + '<p class="cap">' + esc(countryTitle(cc)) + ' · Available <button type="button" class="infob" aria-label="what Available means" onclick="toggleMoneyDef()">ⓘ</button></p>'
     + '<p class="disp num" style="margin-top:2px;font-size:19px;line-height:28px">' + fmtMoney(tot[cc] || 0, curOf[cc]) + '</p>'
     + '<p class="cap num" style="margin-top:2px">across ' + (cnt[cc] || 0) + ' funds</p></div>').join('')
     || '<p class="cap" style="padding:8px 0">no funds yet — add one in Settings 🐻</p>';
+  const ch = st.checks, unc = ch ? (ch.cards || []).filter(c => c.used && !c.checked_to).map(c => c.name) : [];
+  $('fundChecks').innerHTML = unc.length ? '<span class="tag warn">not yet checked against statements</span> ' + esc(listOf(unc)) + (unc.length === 1 ? ' has' : ' have')
+    + ' no closed statement yet, so in the bank and on cards aren’t proven for the funds that use ' + (unc.length === 1 ? 'it' : 'them') + '. Available is as entered.' : '';
+  $('fundChecks').style.display = unc.length ? 'block' : 'none';
 
   // money flow: income − spending budget − contributions = leftover (per currency)
   $('planTitle').textContent = monthName(st.month, true).split(' ')[0] + '’s plan';
@@ -1854,6 +1931,7 @@ function renderFunds(st){
       + '<span class="h2">' + esc(countryTitle(cc)) + '</span>'
       + '<span><button class="btn-tert" id="fedit-' + esc(cc) + '">Edit</button>'
       + '<button class="btn-tert" id="fmore-' + esc(cc) + '" style="display:none"></button></span></div>'
+      + '<div class="fgroup" style="padding-top:0"><span class="cap">fund</span><span class="cap">Available <button type="button" class="infob" aria-label="what Available means" onclick="toggleMoneyDef()">ⓘ</button></span></div>'
       + '<div id="funds-' + esc(cc) + '"></div>';
     lbox.appendChild(card);
     renderFundList(cc, st);
@@ -1935,7 +2013,8 @@ function renderFundList(country, st){
       btn.innerHTML = (editing ? '<span class="dhandle">≡</span>' : '')
         + '<div class="rowicon">' + fundIcon(b.name) + '</div>'
         + '<div style="min-width:0;flex:1"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</div>'
-        + (earmark ? '<div class="cap">≈ +' + fmtMoney(earmark, b.currency) + ' earmarked this month</div>' : '') + potCap + '</div>'
+        + (earmark ? '<div class="cap">≈ +' + fmtMoney(earmark, b.currency) + ' earmarked this month</div>' : '') + potCap
+        + (() => { const fc = !editing && st.checks && (st.checks.funds || []).find(x => x.fund_id === b.fund_id); return fc && !fc.checked_to ? '<div>' + checkedHtml(fc) + '</div>' : ''; })() + '</div>'
         + '<div class="amt num" style="color:' + (Number(b.balance) < 0 ? 'var(--bad)' : 'var(--ink)') + '">' + fmtMoney(b.balance, b.currency) + '</div>';
       if (editing) attachDrag(btn.querySelector('.dhandle'), b, country);
       else btn.onclick = () => toggleFundDrill(btn, b);
@@ -2030,7 +2109,7 @@ async function toggleFundDrill(btn, fund){
   d.innerHTML = '<p class="cap">loading…</p>';
   btn.after(d);
   const isPot = fund.is_spend_pot && CTX.hh && CTX.hh.pot_start;
-  const [{ data, error }, sp] = await Promise.all([
+  const [{ data, error }, sp, ex] = await Promise.all([
     sb.from('fund_transactions')
       .select('id, date, type, amount, remarks, origin, income_source' + rc(true))
       .eq('fund_id', fund.fund_id)
@@ -2038,9 +2117,18 @@ async function toggleFundDrill(btn, fund){
     // every fund shows ONE computed line per month of purchases counted against it: "October 2026 spending − A$x"
     // (a pot through its categories; any fund through purchases that name it — never written)
     sb.rpc('pot_month_spend', { p_fund: fund.fund_id }),
+    sb.rpc('fund_explain', { p_fund: fund.fund_id }),   // how Available is made, from fund_money's parts (Bundle C)
   ]);
   if (error) { d.innerHTML = '<p class="cap">couldn’t load: ' + esc(error.message) + '</p>'; return; }
   d.innerHTML = '';
+  { const top = document.createElement('div'); top.style.padding = '2px 0 8px';
+    const fc = fundsState && fundsState.checks && (fundsState.checks.funds || []).find(x => x.fund_id === fund.fund_id);
+    top.innerHTML = (ex && !ex.error ? explainHtml(ex.data) : '') + (fc && fc.checked_to ? '<p style="margin-top:4px">' + checkedHtml(fc) + '</p>' : '')   // "not yet" is on the row already
+      + '<p style="margin-top:4px"><button type="button" class="btn-tert" data-all style="padding-left:0;font-size:12px">every row ›</button>'
+      + '<button type="button" class="btn-tert" data-desk style="font-size:12px">on the Desk ledger ›</button></p>';
+    top.querySelector('[data-all]').onclick = () => openAllTx({ type: 'Funds', what: fund.fund_id });
+    top.querySelector('[data-desk]').onclick = () => { const u = new URL('../desktop/?fund=' + encodeURIComponent(fund.fund_id) + '#nocard', location.href).href; const w = window.open(u, '_blank', 'noopener'); if (!w) location.href = u; };
+    d.appendChild(top); }
   if (isPot) {
     const p = document.createElement('p');
     p.className = 'cap'; p.style.padding = '4px 0 8px';
@@ -2083,8 +2171,10 @@ async function toggleFundDrill(btn, fund){
       reconciled_at: t.reconciled_at, reconciled_by: t.reconciled_by, transfer_group_id: t.transfer_group_id, kind: t.kind, updated_at: t.updated_at });
     d.appendChild(row);
   });
-  if (!list.length) d.innerHTML = '<p class="cap">no transactions yet</p>';
+  if (!list.length) d.insertAdjacentHTML('beforeend', '<p class="cap">no transactions yet</p>');
 }
+// the three fund numbers, in words (MONEY_DEF, common.js) — under the totals, a tap away from every "Available"
+function toggleMoneyDef(){ const el = $('moneyDef'); el.firstElementChild.textContent = MONEY_DEF; el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
 
 // ══ MONTHLY PLAN — one page ═════════════════
 // review is simply the page; tapping Edit turns every number into a
@@ -2418,7 +2508,7 @@ function updatePlanEq(){
     if (el) { el.textContent = (left < 0 ? '−' : '+') + fmtMoney(Math.abs(left), c); el.style.color = left < 0 ? 'var(--bad)' : 'var(--good)'; }
     return '<div class="eqrow"><span class="cap num">' + esc(ccOf(c)) + ' · '
       + n(inc[c]) + ' − ' + n(cat[c]) + ' − ' + n(fb[c]) + '</span>'
-      + '<span class="lbl num" style="font-size:16px' + (left < 0 ? ';color:#F0A8A8' : '') + '">= '
+      + '<span class="lbl num" style="font-size:16px' + (left < 0 ? ';color:#FFD0D0' : '') + '">= '
       + (left < 0 ? '−' : '+') + fmtMoney(Math.abs(left), c) + '</span></div>';
   }).join('');
 }
@@ -2584,9 +2674,11 @@ let atxAux = null;                 // {inc: income_budgets rows, applied: {month
 let atxOpenPlans = new Set();      // months whose plan group is expanded
 let atxOpenSwaps = new Set();      // pot swaps whose legs are expanded
 let atxOpenSched = false;          // the Scheduled (future-dated) block, collapsed by default
+let atxOldRef = false;             // only refunds entered the old way (their own line, no purchase): the setup list's redo item
 // preset: { type, month, what } — what = category (Daily) · trip id (Trips) · fund id (Funds)
 function openAllTx(preset){
   atxAux = null;
+  atxOldRef = !!(preset && preset.oldRefunds); $('atxOldRef').style.display = atxOldRef ? '' : 'none';
   atxOpenPlans = new Set(); atxOpenSwaps = new Set();
   atxOpenSched = false;
   if (!atx) {
@@ -2677,6 +2769,7 @@ async function loadAllTx(reset){
       if (type === 'Daily' && what) qd = qd.eq('category_id', what);
       if (type === 'Funds' && what) qd = qd.eq('pot_fund_id', what);
       if (openOnly) qd = qd.is('reconciled_at', null);
+      if (atxOldRef) qd = qd.eq('is_refund', true).is('refund_of', null);
     }
     if (src.includes('t') && !atx.tDone) {
       qt = sb.from('travel_expenses')
@@ -2688,8 +2781,9 @@ async function loadAllTx(reset){
       if (m) qt = qt.gte('date', m).lt('date', addMonths(m, 1));
       if (type === 'Trips' && what) qt = qt.eq('trip_id', what);
       if (openOnly) qt = qt.is('reconciled_at', null);
+      if (atxOldRef) qt = qt.eq('is_refund', true).is('refund_of', null);
     }
-    if (src.includes('f') && !atx.fDone) {
+    if (src.includes('f') && !atx.fDone && !atxOldRef) {
       qf = sb.from('fund_transactions')
         .select('id, date, type, amount, remarks, origin, income_source, fund_id' + rc(true) + ', funds(name, currency)')
         .eq('household_id', CTX.hh.id)
@@ -3082,7 +3176,7 @@ function renderSettings(){
   }
 }
 // the Desk's Settings: a section opens in the pane beside the list (the phone opens it under its row)
-let deskSec = null;
+let deskSec = (() => { try { return new URLSearchParams(location.search).get('sec'); } catch (e) { return null; } })();   // the Desk can open a section (setup list)
 async function openDeskSection(s, row){
   deskSec = s.label;
   document.querySelectorAll('#setRows .setrow.open').forEach(x => x.classList.remove('open'));
@@ -3550,7 +3644,20 @@ async function renderSetCards(box){
         return true;
       };
       kindSel.onchange = async () => { if (await save({ kind: kindSel.value, closing_day: kindSel.value === 'credit_card' ? (parseInt(dayIn.value) || null) : null })) { dayIn.style.display = kindSel.value === 'credit_card' ? '' : 'none'; toast(c.name + ' · ' + (KINDS.find(k => k[0] === kindSel.value) || [])[1] + ' 🐻'); } };
-      dayIn.onchange = async () => { const v = parseInt(dayIn.value); if (dayIn.value && !(v >= 1 && v <= 31)) { toast('closing day is 1–31'); return; } if (await save({ closing_day: dayIn.value ? v : null })) toast(c.name + (dayIn.value ? ' closes on day ' + v : ' · closing day cleared') + ' 🐻'); };
+      dayIn.onchange = async () => {
+        const v = parseInt(dayIn.value); if (dayIn.value && !(v >= 1 && v <= 31)) { toast('closing day is 1–31'); return; }
+        // a card with saved statements keeps them as they are (the Desk lists them first, by their own dates — ENG-03);
+        // only periods not saved yet follow the new day. Said once, before it changes.
+        if (c.closing_day && dayIn.value && v !== c.closing_day && dayIn.dataset.warned !== String(v)) {
+          const n = await sb.from('statements').select('id', { count: 'exact', head: true }).eq('payment_method_id', c.id);
+          if (!n.error && n.count) {
+            dayIn.dataset.warned = String(v);
+            toast(c.name + ' has ' + n.count + (n.count === 1 ? ' saved statement — it keeps' : ' saved statements — they keep') + ' their dates; only new periods follow day ' + v + '. Change it again to confirm.');
+            dayIn.value = c.closing_day; return;
+          }
+        }
+        if (await save({ closing_day: dayIn.value ? v : null })) { c.closing_day = dayIn.value ? v : null; toast(c.name + (dayIn.value ? ' closes on day ' + v : ' · closing day cleared') + ' 🐻'); }
+      };
       curSel.onchange = async () => { if (await save({ currency: curSel.value || null })) toast(c.name + ' · ' + (curSel.value ? curLabel(curSel.value) : 'multi-currency') + ' 🐻'); };
       if (inUse.has(c.id)) {
         [kindSel, curSel].forEach(el => { el.disabled = true; el.style.opacity = '.55'; el.title = 'this one already has purchases — its type and currency stay as they are'; });
@@ -5106,6 +5213,9 @@ function armSaveKey(){ const k = $('saveBtn'); if (k) { k.innerHTML = rfMode ? '
   // grid order matters: 4 columns, + and ✓ span two rows each in the right column
   ['C','÷','×','−','1','2','3','+','4','5','6','7','8','9','✓','.','0','⌫'].forEach(k => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'key'; b.textContent = k;
+    // named for screen readers and voice control: "Save", not "check mark" (CX-12)
+    const NAME = { 'C': 'Clear', '÷': 'Divide', '×': 'Multiply', '−': 'Minus', '+': 'Plus', '✓': 'Save', '.': 'Decimal point', '⌫': 'Delete last digit' };
+    if (NAME[k]) b.setAttribute('aria-label', NAME[k]);
     if (k === '⌫') b.classList.add('del');
     if ('C÷×−+'.includes(k)) b.classList.add('op');
     if (k === '+') b.classList.add('tall');
@@ -5771,7 +5881,7 @@ async function deleteExpense(){
 // from Settings. copy stays tiny: one idea per stop.
 // isNew: the tour version a stop was added or changed in. "What's new" (Settings) walks every isNew stop; the automatic
 // one walks only the stops newer than the version this login last saw. Bump TUT_VERSION with each new batch.
-const TUT_VERSION = '6';
+const TUT_VERSION = '7';
 const TUT_STEPS = [
   { scr:'scr-home', center:true, title:'The idea',
     text:'every month: plan the income, give spending a cap, move the rest into funds. what’s left over is truly free to spend.' },
@@ -5803,12 +5913,16 @@ const TUT_STEPS = [
     title:'Six months back', text:'bars are spending · the dashed line is your plan.' },
   { scr:'scr-travel', el: () => document.querySelector('#scr-travel .iconbtn'), round:true, isNew:4,
     title:'Travel', text:'each trip keeps its own spending and currencies. When it’s over, Send splits it over your travel funds: card lines go to the fund in the card’s currency, at what the card charged (typed on the Desk from the statement); cash goes by the currency you spent. Sent too soon? Undo, and send again.' },
-  { scr:'scr-home', center:true, isNew:4, title:'Refunds',
-    text:'money back on a purchase? open the purchase and tap ↩ Refund — all of it or a part, back on the card or as a transfer. The purchase keeps its full amount (it still matches the statement); only what was used counts, in its own month.' },
-  { scr:'scr-funds', el: () => $('fundTotals'), isNew:2,
-    title:'Funds', text:'Available = what’s left to spend · on cards = charged, not paid yet · in the bank = what the bank shows. Paying a card moves the last two, never Available.' },
+  { scr:'scr-home', center:true, isNew:7, title:'Refunds',
+    text:'money back on a purchase? open the purchase and tap ↩ Refund, just above the keypad — type what came back, pick the day, back on the card or as a transfer. The purchase keeps its full amount (it still matches the statement); only what was used counts, in its own month. + no longer makes a refund on its own line.' },
+  { scr:'scr-home', el: () => $('setupCard').style.display !== 'none' ? $('setupCard') : null, isNew:7, title:'Your setup list',
+    text:'worked out from your data: what’s left before the numbers can be trusted, in the order to do them. Tap one to go where it’s done — it leaves the list when it is.' },
+  { scr:'scr-funds', el: () => $('fundTotals'), isNew:7,
+    title:'Funds', text:'Available = what’s left to spend (tap ⓘ for all three numbers) · on cards = charged, not paid yet · in the bank = what the bank shows. Tap a fund to see how its number is made. Until its cards’ statements are closed, a fund says “not yet checked against statements”.' },
   { scr:'scr-funds', el: () => $('planCard'), isNew:2,
     title:'The monthly ritual', text:'income − budgets − fund top-ups = leftover. Apply it once a month — tap a line to skip it this month. Two phones can’t apply it twice.' },
+  { scr:'scr-settings', el: () => [...document.querySelectorAll('#setRows .setrow')].find(r => r.dataset.sec === 'People'), isNew:7, title:'Inviting your partner',
+    text:'People → invite to sign in → share. The message carries a link with the code and says “add to Home Screen first”; they confirm their email and land straight in your household as themselves.' },
   { scr:'scr-settings', el: () => $('setRows').closest('.card'), isNew:6,
     title:'Settings', text:'people, funds, categories — and Payment methods (cards, bank accounts and cash; where each is offered: Daily · Trip · From a fund) and Default cards (whose comes first). Every list starts with ＋ Add…; archived ones wait folded at the bottom.' },
   { scr:'scr-settings', el: () => [...document.querySelectorAll('#setRows .srow')].find(r => r.textContent.includes('Time zone')), isNew:3,
@@ -5820,6 +5934,15 @@ const TUT_STEPS = [
   { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
     title:'That’s it', text:'add your first expense — the app does the rest 🐻' },
 ];
+// "What's new" as a card on Home: how many stops changed since this login's last tour; Not now = seen (Settings →
+// What's new replays it any time)
+function showNewsCard(){
+  const seen = Number(store.get('tut-v') || 1), n = TUT_STEPS.filter(x => x.isNew && x.isNew > seen).length;
+  if (!n) { store.set('tut-v', TUT_VERSION); return; }
+  $('newsCap').textContent = n + (n === 1 ? ' thing has' : ' things have') + ' changed since your last tour — a short walk, skip any time.';
+  $('newsCard').style.display = 'block';
+}
+function dismissNews(){ $('newsCard').style.display = 'none'; store.set('tut-v', TUT_VERSION); }
 // someone who joined a household (not its owner) gets five stops, not the full tour: adding, the budget, the funds.
 // Setting things up — cards, funds, the Desk — is the owner's job; the full tour stays in Settings → App tutorial
 const JOIN_STEPS = [
@@ -5862,7 +5985,7 @@ function endTutorial(quiet){
   tutEls = null;
   closeSheet();
   go('scr-home');
-  store.set('tut-done', '1'); store.set('tut-v', TUT_VERSION);
+  store.set('tut-done', '1'); store.set('tut-v', TUT_VERSION); if ($('newsCard')) $('newsCard').style.display = 'none';
   if (!quiet) toast('you’re all set — tap + to add your first expense 🐻');
 }
 function tutStep(i){
