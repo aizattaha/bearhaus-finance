@@ -24,7 +24,7 @@ month and after any change to how backups are made.
 - It lives in Aizat's password manager, in the entry **"BearHaus backup passphrase (GitHub BACKUP_PASSPHRASE)"**.
   It was reset on 15 Oct 2026; backups made before then can't be opened.
 - GitHub never shows a secret again. To change it: **save the new one in the password manager first**, then
-  `gh secret set BACKUP_PASSPHRASE -R aizattaha/bearhaus-finance` and paste it. Then run *Backup database*
+  `gh secret set BACKUP_PASSPHRASE --env production -R aizattaha/bearhaus-finance` and paste it. Then run *Backup database*
   by hand, so a backup with the new passphrase exists.
 
 ## Restore, step by step
@@ -119,9 +119,9 @@ Signs: the Money check email lists a *takeover?* line nobody explains (a new log
 password reset), Activity shows changes nobody made, or GitHub/Supabase/Google warn of a new sign-in.
 1. **Supabase** (supabase.com → the project): Authentication → Users → sign out every user (and delete any login
    nobody knows); Project Settings → Database → **Reset database password**. Then put the new password in the
-   password manager and in GitHub: `gh secret set SUPABASE_DB_PASSWORD -R aizattaha/bearhaus-finance`.
+   password manager and in GitHub: `gh secret set SUPABASE_DB_PASSWORD --env production -R aizattaha/bearhaus-finance`.
 2. **The access token:** supabase.com → Account → Access Tokens → revoke the old one, generate a new one,
-   `gh secret set SUPABASE_ACCESS_TOKEN -R aizattaha/bearhaus-finance`.
+   `gh secret set SUPABASE_ACCESS_TOKEN --env production -R aizattaha/bearhaus-finance`.
 3. **The nightly check's login:** set a new `MONITOR_DB_PASSWORD` and run *Monitor login* ("Keys and passwords" below).
 4. **The backup passphrase:** "The passphrase" above (password manager first, then `gh secret set`, then a backup).
 5. **GitHub, Google, Supabase:** change the passwords, check two-step sign-in is still on, look at the security logs
@@ -131,10 +131,14 @@ password reset), Activity shows changes nobody made, or GitHub/Supabase/Google w
    re-enter anything real since then from Activity.
 
 ## Keys and passwords (who holds what, and when they change)
+Since 18 Oct 2026 every secret lives in the GitHub **environment `production`**, which only `main` can use (Settings →
+Environments → production); there are no repository-wide copies. Every `gh secret set` therefore takes `--env production`.
+Copy the command, don't re-run an older one with ↑ — on 18 Oct that put a token into the wrong secret.
+
 | Secret | Used by | Where the value lives | Rotate |
 |---|---|---|---|
-| `SUPABASE_ACCESS_TOKEN` (account-wide, never expires) | deploys, backups; the check only until `MONITOR_DB_PASSWORD` exists | GitHub only | on any suspicion; before going commercial: an expiring token + calendar reminder 2 weeks ahead |
+| `SUPABASE_ACCESS_TOKEN` (account-wide, never expires) | deploys, backups; the check only until `MONITOR_DB_PASSWORD` exists | GitHub only | on any suspicion; before going commercial: an expiring token + calendar reminder 2 weeks ahead (current one: "GitHub BearHaus production", made 18 Oct, never expires) |
 | `SUPABASE_DB_PASSWORD` | deploys, backups (`supabase link`); `tools/ops/run-data-fix.sh` asks for it | password manager + GitHub | on any suspicion (Supabase → Project Settings → Database → Reset) |
-| `MONITOR_DB_PASSWORD` (login `bh_monitor`: runs the check and records a backup, reads nothing) | nightly check, backup heartbeat | GitHub only (nobody needs to see it) | every 6 months, or on suspicion: the one Terminal line in HANDOVER §4, then *Monitor login* |
+| `MONITOR_DB_PASSWORD` (login `bh_monitor`: runs the check and records a backup, reads nothing) | nightly check, backup heartbeat | GitHub only (nobody needs to see it) | every 6 months, or on suspicion: `openssl rand -hex 32 \| tr -d '\n' \| gh secret set MONITOR_DB_PASSWORD --env production -R aizattaha/bearhaus-finance`, then GitHub → Actions → *Monitor login* → Run workflow |
 | `BACKUP_PASSPHRASE` | backups, pre-deploy snapshots | password manager + GitHub | on suspicion; old backups keep the old one |
 | `SUPABASE_PROJECT_ID` | all four workflows | GitHub (not secret: it is in HANDOVER) | with a new project |
