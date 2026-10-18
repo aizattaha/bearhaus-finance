@@ -139,7 +139,8 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
 .meter{height:6px;border-radius:3px;background:var(--field);overflow:hidden}
 .meter i{display:block;height:100%;border-radius:3px;background:var(--series-1)}
 .meter.over i{background:var(--bad)}
-tr.pick{cursor:pointer}tr.pick:hover td{background:var(--field)}tr.pick.on td{background:var(--accent-soft)}
+tr.pick,tr.gpick{cursor:pointer}tr.pick:hover td,tr.gpick:hover td{background:var(--field)}tr.pick.on td,tr.gpick.on td{background:var(--accent-soft)}
+tr.catrow td{background:#FAFBFD}
 .legend{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--ink-soft)}
 tr.fdrow td{background:var(--field);padding:10px 14px 14px;border-radius:0 0 12px 12px}
 .dgrid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
@@ -332,6 +333,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         <select class="descinput" id="ncMonth" style="min-width:180px"></select>
         <select class="descinput" id="ncCardF" style="min-width:220px"></select>
         <select class="descinput" id="ncFundF" style="min-width:200px" title="purchases that count against a fund instead of the month’s budget"></select>
+        <select class="descinput" id="ncCatF" style="min-width:200px" title="a daily category, or a whole group (as the Budget groups them)"></select>
         <input class="descinput" id="ncSearch" placeholder="search descriptions" style="min-width:240px">
         <button class="chip" onclick="openAddTx('nc')">＋ add transaction</button>
         <span class="cap" id="ncMeta"></span>
@@ -352,7 +354,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <button class="btn btn-soft" id="ncRefund" onclick="openRefund()" disabled>↩ Refund selected</button>
           <button class="btn btn-soft" id="ncDel" onclick="deleteSelected()" disabled style="color:var(--bad)">Delete selected</button>
           <span style="flex:1"></span>
-          <button class="btn-tert" id="ncMore" onclick="loadNoCard(false)" style="display:none">Load more</button>
+          <button class="btn-tert" id="ncMore" onclick="ncLoadPage()" style="display:none">Load more</button>
         </div>
       </div>
     </section>
@@ -636,7 +638,7 @@ async function loadContext(){
     sb.from('profiles').select('id, display_name').order('sort_order'),
     sb.from('payment_methods').select('id, name, profile_id, kind, closing_day, currency, travel_only, is_archived, sort_order').order('sort_order'),
     sb.from('funds').select('id, name, country, currency, is_spend_pot, is_leftover_target, pays_trips, sort_order').eq('is_active', true).order('sort_order'),
-    sb.from('categories').select('id, kind, name, group_name, icon, sort_order').eq('is_active', true).order('sort_order'),
+    sb.from('categories').select('id, kind, name, group_name, group_id, icon, sort_order').eq('is_active', true).order('sort_order'),
   ]);
   if (hh.error) { toast('couldn’t load household: ' + hh.error.message); return; }
   CTX = { hh: hh.data, profiles: profiles.data || [], cards: cards.data || [], funds: funds.data || [], cats: cats.data || [] };
@@ -1344,8 +1346,26 @@ async function toggleCloseStatement(){
 // ── no card ─────────────────────────────────────────────────
 const nc = { init: false, rows: [], dOff: 0, tOff: 0, dDone: false, tDone: false, sel: new Set() };
 const NC_PAGE = 100;
+// the category filter: a whole group (g:<id>) or one category (c:<id>), daily purchases only, by id — so a renamed
+// category keeps its history. The Dashboard's Spending card links here with a month, a group or category and "budget only".
+function ncCatOptions(){
+  const groups = {};
+  CTX.cats.filter(c => c.kind === 'daily' && c.name !== 'Payment').forEach(c => { const k = c.group_id || c.group_name; (groups[k] = groups[k] || { name: c.group_name, id: c.group_id, cats: [] }).cats.push(c); });
+  return '<option value="">any category</option>' + Object.values(groups).map(g => '<optgroup label="' + esc(g.name) + '">'
+    + (g.id ? '<option value="g:' + g.id + '">all of ' + esc(g.name) + '</option>' : '')
+    + g.cats.map(c => '<option value="c:' + c.id + '">' + esc(c.icon || '') + ' ' + esc(c.name) + '</option>').join('') + '</optgroup>').join('');
+}
 async function loadNoCard(reset){
   if (reset) { nc.rows = []; nc.dOff = 0; nc.tOff = 0; nc.dDone = false; nc.tDone = false; nc.sel.clear(); }
+  ncBuildFilters();
+  const kf = $('ncCatF').value;
+  if (kf.startsWith('g:') && nc.groupCats !== kf) {   // a group's categories, archived ones too (their purchases still count in it)
+    const gc = await sb.from('categories').select('id').eq('group_id', kf.slice(2));
+    nc.groupIds = (gc.data || []).map(x => x.id); nc.groupCats = kf;
+  }
+  await ncLoadPage();
+}
+function ncBuildFilters(){
   if (!nc.monthsBuilt) {
     nc.monthsBuilt = true;
     let opts = '<option value="">all months</option>';
@@ -1361,11 +1381,16 @@ async function loadNoCard(reset){
     if (new URL(location.href).searchParams.get('rows') === 'funded') $('ncFundF').value = 'any';
     $('ncFundF').onchange = () => loadNoCard(true);
     $('ncAll').onchange = () => { nc.rows.forEach(r => { if ($('ncAll').checked) nc.sel.add(r.key); else nc.sel.delete(r.key); }); renderNoCard(); };
+    $('ncCatF').innerHTML = ncCatOptions();
+    $('ncCatF').onchange = () => loadNoCard(true);
   }
+}
+async function ncLoadPage(){
+  const kf = $('ncCatF').value;
   const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch), cf = $('ncCardF').value, ff = $('ncFundF').value;
   const cashCard = CTX.cards.find(c => c.kind === 'cash');
   const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, is_refund, fund_id, refund_of, refunded';
-  if (ff) nc.tDone = true;   // only daily purchases can count against a fund — a trip's already count against the trip
+  if (ff || kf) nc.tDone = true;   // only daily purchases can count against a fund or a budget category — a trip's count against the trip
   const mk = (t, off, extra) => {
     let qq = sb.from(t).select(sel + (extra || '')).neq('category', 'Payment')
       .order('date', {ascending:false}).range(off, off + NC_PAGE - 1);
@@ -1377,6 +1402,8 @@ async function loadNoCard(reset){
     else if (cf) qq = qq.eq('payment_method_id', cf);
     if (m) qq = qq.gte('date', m).lt('date', addMonths(m, 1));
     if (q) qq = qq.ilike('description', '%' + q + '%');
+    if (kf.startsWith('c:')) qq = qq.eq('category_id', kf.slice(2));
+    else if (kf.startsWith('g:')) qq = qq.in('category_id', nc.groupIds && nc.groupIds.length ? nc.groupIds : ['00000000-0000-0000-0000-000000000000']);
     return qq;
   };
   const [d, t] = await Promise.all([nc.dDone ? null : mk('daily_expenses', nc.dOff), nc.tDone ? null : mk('travel_expenses', nc.tOff, ', trips(name)')]);
@@ -1384,6 +1411,16 @@ async function loadNoCard(reset){
   if (t) { if (t.error) { toast('couldn’t load: ' + t.error.message); return; } nc.tOff += t.data.length; if (t.data.length < NC_PAGE) nc.tDone = true; t.data.forEach(r => nc.rows.push(Object.assign({ kind: 'travel', key: 't:' + r.id }, r))); }
   nc.rows.sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
   renderNoCard();
+}
+// from the Dashboard: one month's purchases in a group or category that count against the budget (as its numbers do)
+function openTxFor(month, catKey, label){
+  ncBuildFilters();
+  if (catKey && ![...$('ncCatF').options].some(o => o.value === catKey)) {   // an archived category with spending that month
+    const o = document.createElement('option'); o.value = catKey; o.textContent = label || 'that category'; $('ncCatF').appendChild(o);
+  }
+  $('ncMonth').value = month; $('ncCatF').value = catKey || ''; $('ncFundF').value = 'budget'; $('ncCardF').value = ''; $('ncSearch').value = '';
+  nc.init = true; go('nocard'); loadNoCard(true);
+  toast('showing ' + (label || 'those') + ' · ' + monthName(month) + ' · counted against the budget');
 }
 function renderNoCard(){
   const body = $('ncRows');
@@ -1865,6 +1902,7 @@ async function loadDashboard(){
   if (err) { $('dashBody').innerHTML = '<p class="cap">couldn’t load the dashboard: ' + esc(err.message) + '</p>'; return; }
   const funds = (money.data || []).filter(f => f.is_active);
   const base = (funds[0] || {}).currency || curs[0] || 'AUD';
+  dash.cats = {};
   dash.data = { hist: hist.data || [], funds, curs, base, bud: Object.fromEntries(curs.map((c, i) => [c, bud[i].data])), hb: hb.error ? null : (hb.data || [])[0] || null };
   if (!dash.cur || !curs.includes(dash.cur)) dash.cur = base;
   renderDashboard();
@@ -1943,30 +1981,43 @@ function lineChart(host, { labels, series, cur, height = 200, zero = false, mark
   });
   hit.addEventListener('pointerleave', () => { xh.style.display = 'none'; series.forEach((sr, k) => svg.querySelector('.xd' + k).style.display = 'none'); vizTip(null); });
 }
-// spending per month (bars from zero) with the plan as a dashed reference line; each bar is its own hover target
-function barPlanChart(host, { labels, spent, plan, cur, height = 220 }){
+// spending per month (bars from zero) with the plan as a dashed reference line; each bar is its own hover target.
+// sel = the month shown in the table below (a soft band behind it, its label bold); onPick(i) = click, Enter or Space
+// on a month. Every month is a keyboard stop (Tab) whose tooltip says the same as the hover one.
+function barPlanChart(host, { labels, spent, plan, cur, height = 220, sel = null, onPick = null }){
   const W = Math.max(host.clientWidth, 280), H = height, L = 58, R = 12, T = 10, B = 24;
   const hiV = Math.max(...spent, ...plan.filter(v => v != null), 1), ticks = niceTicks(0, hiV * 1.05, 4), hi = ticks[ticks.length - 1];
   const band = (W - L - R) / labels.length, bw = Math.min(24, band * 0.62), x = i => L + band * i + band / 2, y = v => T + (hi - v) / hi * (H - T - B);
   const every = Math.ceil(labels.length / Math.max(2, Math.floor((W - L - R) / 56)));
-  let g = ticks.map(t => '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="#E6E5E5" stroke-width="1"/><text x="' + (L - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + esc(compact(t, cur)) + '</text>').join('');
+  let g = (sel != null ? '<rect x="' + (L + band * sel + 2) + '" y="' + T + '" width="' + (band - 4) + '" height="' + (H - T - B) + '" rx="6" fill="#1F63B8" fill-opacity=".09"/>' : '')
+    + ticks.map(t => '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="#E6E5E5" stroke-width="1"/><text x="' + (L - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + esc(compact(t, cur)) + '</text>').join('');
   spent.forEach((v, i) => {
     const top = y(Math.max(v, 0)), h = Math.max(y(0) - top, 0), x0 = x(i) - bw / 2, r = Math.min(4, h);
     const over = plan[i] != null && plan[i] > 0 && v > plan[i] + 0.005;
     g += h > 0 ? '<path d="M' + x0 + ',' + y(0) + 'V' + (top + r) + 'Q' + x0 + ',' + top + ' ' + (x0 + r) + ',' + top + 'H' + (x0 + bw - r) + 'Q' + (x0 + bw) + ',' + top + ' ' + (x0 + bw) + ',' + (top + r) + 'V' + y(0) + 'Z" fill="' + (over ? '#eb6834' : '#1F63B8') + '"/>' : '';
-    if (i % every === 0 || i === labels.length - 1) g += '<text x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + esc(monLabel(labels[i], i === 0 || labels[i].slice(5, 7) === '01')) + '</text>';
+    if (i % every === 0 || i === labels.length - 1 || i === sel) g += '<text x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle"' + (i === sel ? ' style="fill:var(--ink);font-weight:600"' : '') + '>' + esc(monLabel(labels[i], i === 0 || i === sel || labels[i].slice(5, 7) === '01')) + '</text>';
   });
   const pp = plan.map((v, i) => v == null ? null : [x(i), y(v)]);
   let path = ''; pp.forEach((p, i) => { if (!p) return; path += (i && pp[i - 1] ? 'L' : 'M') + p[0] + ',' + p[1]; });
   if (path) g += '<path d="' + path + '" fill="none" stroke="#55657D" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>';
-  g += labels.map((m, i) => '<rect class="bh" data-i="' + i + '" x="' + (L + band * i) + '" y="' + T + '" width="' + band + '" height="' + (H - T - B) + '" fill="transparent"/>').join('');
-  host.innerHTML = '<svg class="viz" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="img" aria-label="spending per month against the plan"></svg>';
+  const longMon = m => new Date(m + 'T00:00:00').toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+  g += labels.map((m, i) => '<rect class="bh" data-i="' + i + '" x="' + (L + band * i) + '" y="' + T + '" width="' + band + '" height="' + (H - T - B) + '" fill="transparent"'
+    + (onPick ? ' tabindex="0" role="button" style="cursor:pointer;outline:none" aria-pressed="' + (i === sel) + '" aria-label="' + esc(longMon(m) + ': ' + fmtMoney(spent[i], cur) + ' spent' + (plan[i] != null ? ', ' + fmtMoney(plan[i], cur) + ' planned' : ', no plan') + ' — show its groups') + '"' : '') + '/>').join('');
+  host.innerHTML = '<svg class="viz" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="group" aria-label="spending per month against the plan — pick a month to see its groups"></svg>';
   const svg = host.querySelector('svg'); svg.innerHTML = g;
+  const tip = i => '<div class="cap">' + esc(longMon(labels[i])) + '</div><div><span class="k" style="background:' + (plan[i] && spent[i] > plan[i] ? '#eb6834' : '#1F63B8') + '"></span><b>' + esc(fmtMoney(spent[i], cur)) + '</b> <span class="cap">spent</span></div>'
+    + (plan[i] != null ? '<div><span class="k" style="background:var(--ink-soft)"></span><b>' + esc(fmtMoney(plan[i], cur)) + '</b> <span class="cap">planned</span></div>' : '<div class="cap">no plan that month</div>')
+    + (onPick && i !== sel ? '<div class="cap" style="margin-top:2px">click to see its groups</div>' : '');
   svg.querySelectorAll('.bh').forEach(b => {
-    b.addEventListener('pointermove', ev => { const i = +b.dataset.i; b.setAttribute('fill', 'rgba(26,43,68,.04)');
-      vizTip(ev, '<div class="cap">' + esc(monLabel(labels[i], true)) + '</div><div><span class="k" style="background:' + (plan[i] && spent[i] > plan[i] ? '#eb6834' : '#1F63B8') + '"></span><b>' + esc(fmtMoney(spent[i], cur)) + '</b> <span class="cap">spent</span></div>'
-        + (plan[i] != null ? '<div><span class="k" style="background:var(--ink-soft)"></span><b>' + esc(fmtMoney(plan[i], cur)) + '</b> <span class="cap">planned</span></div>' : '<div class="cap">no plan that month</div>')); });
+    const i = +b.dataset.i;
+    b.addEventListener('pointermove', ev => { b.setAttribute('fill', 'rgba(26,43,68,.04)'); vizTip(ev, tip(i)); });
     b.addEventListener('pointerleave', () => { b.setAttribute('fill', 'transparent'); vizTip(null); });
+    if (!onPick) return;
+    // keyboard: the focused month shows the same tooltip, above its bar, and a visible ring
+    b.addEventListener('focus', () => { const r = b.getBoundingClientRect(); b.setAttribute('stroke', '#1F63B8'); b.setAttribute('stroke-width', '2'); vizTip({ clientX: r.left + r.width / 2, clientY: r.top + 30 }, tip(i)); });
+    b.addEventListener('blur', () => { b.removeAttribute('stroke'); vizTip(null); });
+    b.addEventListener('click', () => { vizTip(null); onPick(i, false); });
+    b.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); vizTip(null); onPick(i, true); } });
   });
 }
 const spark = (vals, color) => {
@@ -2100,18 +2151,33 @@ function renderDashboard(){
     + '<div><p class="cap">months over the plan</p><p class="h2 num">' + overN + ' <span class="cap">of ' + full.filter(m => planBy[m]).length + ' with a plan</span></p></div>'
     + '</div><div class="legend" style="margin-top:12px"><span><span class="k" style="background:var(--series-1);height:8px;width:10px;border-radius:2px"></span>spent</span><span><span class="k" style="background:var(--series-2);height:8px;width:10px;border-radius:2px"></span>spent, over the plan</span><span><span class="k" style="background:var(--ink-soft)"></span>plan</span></div>'
     + '<div id="budChartD" style="margin-top:6px"></div>';
-  // by group: this month against its line, the average, the trend
+  // by group: the picked month (a bar clicked — this month until then) against its line, the average, the trend;
+  // a group opens to its categories that month (budget_summary for that month — SQL sums), each with its Transactions
+  const sm = dash.selMonth && bm.includes(dash.selMonth) ? dash.selMonth : tm;
   const groups = (B.groups || []).filter(g => g.active || (B.spend || []).some(r => r.group_id === g.id));
   const gSpent = (gid, m) => (B.spend || []).filter(r => r.group_id === gid && r.month === m).reduce((t, r) => t + Number(r.amount), 0);
   const gPlan = (gid, m) => (B.budget || []).filter(r => r.group_id === gid && r.month === m).reduce((t, r) => t + Number(r.amount), 0);
   const rows = groups.map(g => {
-    const s0 = gSpent(g.id, tm), p0 = gPlan(g.id, tm), av = full.length ? full.reduce((t, m) => t + gSpent(g.id, m), 0) / full.length : 0;
+    const s0 = gSpent(g.id, sm), p0 = gPlan(g.id, sm), av = full.length ? full.reduce((t, m) => t + gSpent(g.id, m), 0) / full.length : 0;
     return { g, s0, p0, av, trend: bm.map(m => gSpent(g.id, m)) };
   }).filter(r => r.s0 || r.p0 || r.av);
-  html += '<table style="margin-top:14px"><thead><tr><th>Group</th><th class="amt">' + esc(monLabel(tm)) + ' spent</th><th class="amt">planned</th><th style="width:22%">used</th><th class="amt">average month</th><th style="width:110px">trend</th></tr></thead><tbody>'
-    + rows.map(r => '<tr><td><span class="dsc">' + esc(r.g.icon || '🏷️') + ' ' + esc(r.g.name) + '</span></td><td class="amt">' + esc(fmtMoney(r.s0, dash.cur)) + '</td><td class="amt cap">' + (r.p0 ? esc(fmtMoney(r.p0, dash.cur)) : '—') + '</td>'
+  const smName = new Date(sm + 'T00:00:00').toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+  const ck = sm + '|' + dash.cur, cats = (dash.cats || {})[ck];
+  if (dash.openGroup && !cats) loadDashCats(sm, dash.cur);   // fetched once per month and currency, then drawn again
+  html += '<div class="row" style="justify-content:space-between;margin-top:14px;gap:10px"><p class="lbl" id="budSel">Groups · ' + esc(smName) + (sm === tm ? ' <span class="cap">so far</span>' : '') + '</p>'
+    + '<p class="cap">' + (sm === tm ? 'click a month on the chart to see it here · click a group for its categories' : '<button class="btn-tert" id="budBack" style="padding:0">← back to this month</button> · click a group for its categories') + '</p></div>'
+    + '<table style="margin-top:4px"><thead><tr><th>Group</th><th class="amt">spent</th><th class="amt">planned</th><th style="width:20%">used</th><th class="amt">average month</th><th style="width:110px">trend</th><th style="width:118px"></th></tr></thead><tbody>'
+    + rows.map(r => { const open = dash.openGroup === r.g.id;
+      return '<tr class="gpick' + (open ? ' on' : '') + '" data-g="' + r.g.id + '" tabindex="0" aria-expanded="' + open + '"><td><span class="dsc">' + esc(r.g.icon || '🏷️') + ' ' + esc(r.g.name) + ' <span class="cap">' + (open ? '▾' : '▸') + '</span></span></td><td class="amt">' + esc(fmtMoney(r.s0, dash.cur)) + '</td><td class="amt cap">' + (r.p0 ? esc(fmtMoney(r.p0, dash.cur)) : '—') + '</td>'
       + '<td>' + (r.p0 ? '<div class="meter' + (r.s0 > r.p0 ? ' over' : '') + '"><i style="width:' + Math.min(100, r.s0 / r.p0 * 100).toFixed(1) + '%"></i></div>' : '') + '</td>'
-      + '<td class="amt">' + esc(fmtMoney(r.av, dash.cur)) + '</td><td>' + spark(r.trend, '#1F63B8') + '</td></tr>').join('')
+      + '<td class="amt">' + esc(fmtMoney(r.av, dash.cur)) + '</td><td>' + spark(r.trend, '#1F63B8') + '</td>'
+      + '<td style="text-align:right"><button class="btn-tert txg" data-k="g:' + r.g.id + '" data-n="' + esc(r.g.name) + '" style="padding:2px 4px;font-size:12px">Transactions ›</button></td></tr>'
+      + (!open ? '' : !cats ? '<tr class="fdrow"><td colspan="7" class="cap"><span class="spin"></span> loading ' + esc(r.g.name) + '…</td></tr>'
+        : (cats.filter(c => c.group_id === r.g.id).map(c => '<tr class="fdrow catrow"><td style="padding-left:30px"><span class="dsc">' + esc(c.icon || '🛍️') + ' ' + esc(c.name) + '</span></td>'
+            + '<td class="amt">' + (Math.abs(Number(c.amount)) > 0.005 || !c.from_funds ? esc(fmtMoney(Number(c.amount), dash.cur)) : '<span class="cap">—</span>') + '</td>'
+            + '<td colspan="4" class="cap">' + (c.from_funds ? c.from_funds + (c.from_funds === 1 ? ' purchase' : ' purchases') + ' paid from a fund — listed, not counted' : '') + '</td>'
+            + '<td style="text-align:right"><button class="btn-tert txc" data-k="c:' + c.category_id + '" data-n="' + esc(c.name) + '" style="padding:2px 4px;font-size:12px">Transactions ›</button></td></tr>').join('')
+          || '<tr class="fdrow"><td colspan="7" class="cap" style="padding-left:30px">nothing in ' + esc(r.g.name) + ' in ' + esc(smName) + '</td></tr>')); }).join('')
     + '</tbody></table></div>';
 
   // ── every fund: now, this month, the period, the trend; click one for its own line ──
@@ -2150,7 +2216,16 @@ function renderDashboard(){
     const fs = D.funds.filter(f => f.country === cc);
     lineChart(el, { labels: months, cur: curOf(cc), marker: potMark(fs.some(f => f.is_spend_pot)), series: [{ name: 'Net worth', color: '#1F63B8', values: months.map(m => sumAt(fs, m, 'balance')) }] });
   });
-  if ($('budChartD')) barPlanChart($('budChartD'), { labels: bm, spent, plan, cur: dash.cur });
+  if ($('budChartD')) barPlanChart($('budChartD'), { labels: bm, spent, plan, cur: dash.cur, sel: bm.indexOf(sm),
+    onPick: (i, byKey) => { dash.selMonth = bm[i] === tm ? null : bm[i]; renderDashboard(); const t = $('budSel'); if (t) t.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      if (byKey) { const f = document.querySelector('#budChartD .bh[data-i="' + i + '"]'); if (f) f.focus({ preventScroll: true }); } } });
+  if ($('budBack')) $('budBack').onclick = () => { dash.selMonth = null; renderDashboard(); };
+  box.querySelectorAll('tr.gpick').forEach(tr => {
+    const toggle = () => { dash.openGroup = dash.openGroup === tr.dataset.g ? null : tr.dataset.g; renderDashboard(); };
+    tr.onclick = ev => { if (ev.target.closest('button')) return; toggle(); };
+    tr.onkeydown = ev => { if (ev.target === tr && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); toggle(); } };
+  });
+  box.querySelectorAll('.txg, .txc').forEach(b => b.onclick = ev => { ev.stopPropagation(); openTxFor(sm, b.dataset.k, b.dataset.n); });
   box.querySelectorAll('.fdc').forEach(el => {
     const f = D.funds.find(x => x.fund_id === el.dataset.f);
     lineChart(el, { labels: months, cur: f.currency, height: 180, marker: potMark(f.is_spend_pot), series: [
@@ -2184,6 +2259,19 @@ function renderDashboard(){
   box.querySelectorAll('#nwx .xs-load').forEach(b => b.onclick = () => { const st0 = dashSets()[Number(b.dataset.i)]; if (st0) savePick(new Set(st0.funds)); });
   box.querySelectorAll('#nwx .xs-del').forEach(b => b.onclick = () => { const all = dashSets(); const gone = all.splice(Number(b.dataset.i), 1)[0]; store.set('dash-sets', JSON.stringify(all)); toast('forgot “' + (gone || {}).name + '”'); renderDashboard(); });
 }
+// a month's categories for the open group: budget_summary for that month (one month), cached per month and currency
+const dashCatsBusy = new Set();
+async function loadDashCats(m, cur){
+  const k = m + '|' + cur;
+  dash.cats = dash.cats || {};
+  if (dash.cats[k] || dashCatsBusy.has(k)) return;
+  dashCatsBusy.add(k);
+  const r = await sb.rpc('budget_summary', { p_month: m, p_currency: cur, p_months: 1 });
+  dashCatsBusy.delete(k);
+  if (r.error) { toast('couldn’t load the categories: ' + r.error.message); return; }
+  dash.cats[k] = (r.data && r.data.cats) || [];
+  renderDashboard();
+}
 let dashResizeT = null;
 window.addEventListener('resize', () => { clearTimeout(dashResizeT); dashResizeT = setTimeout(renderDashboard, 150); });
 
@@ -2191,12 +2279,13 @@ window.addEventListener('resize', () => { clearTimeout(dashResizeT); dashResizeT
 // first visit per login, replayable from the menu. One idea per stop; a stop whose spot isn't on screen yet
 // (no card picked, no statement) shows its card in the middle instead.
 // the tour runs once per login per version: 2 Dashboard and Settings joined; 3 Settings and the add form laid out for
-// the Desk, pot swap's "same fund" (18 Oct)
-const DESK_TOUR_V = '3';
+// the Desk, pot swap's "same fund" (18 Oct); 4 the Spending card drills into a month, a group, a category (18 Oct)
+const DESK_TOUR_V = '4';
 const DESK_TOUR = [
   { center: true, title: 'The Desk', text: 'the big-screen side of BearHaus: check statements, record card payments, tidy many rows at once and see every fund. Same login, same numbers as the phone.' },
   { scr: 'dashboard', el: () => document.querySelector('nav .nv[data-scr="dashboard"]'), title: 'Dashboard', text: 'where the Desk opens: net worth per country and in total, spending against the plan month by month, and how each fund is growing or shrinking. The line at the top says whether last night’s money check and backup ran — green is fine, red needs you.' },
   { scr: 'dashboard', el: () => $('dashPeriod'), title: 'Pick the period', text: '6, 12 or 24 months. Click a fund in the table to see its own line.' },
+  { scr: 'dashboard', el: () => $('budChartD'), title: 'Any month, any category', text: 'hover a month for what was spent and planned; click it and the groups below show that month. Click a group for its categories — Transactions › lists the purchases behind each number.' },
   { scr: 'statements', el: () => document.querySelector('nav .nv[data-scr="statements"]'), title: 'Statements', text: 'each card and bank account, checked against its statement, one period at a time.' },
   { scr: 'statements', el: () => $('stCard').closest('.row') || $('stCard'), title: 'Pick a card, then the period', text: 'archived cards are listed too — for their last statement.' },
   { scr: 'statements', el: () => $('stOpening').style.display !== 'none' ? $('stOpening') : null, title: 'First time for each card', text: 'say what the card owed on the day BearHaus started counting, and which fund set that money aside. Once per card.' },
