@@ -105,6 +105,10 @@ begin
   for r in execute 'explain select id from public.expenses order by date desc limit 300' loop s := s || r."QUERY PLAN" || E'\n'; end loop;
   assert s ~ 'Index Cond: \(household_id = ANY', 'the history query does not use the household index:' || E'\n' || s;
   s := '';
+  -- the whole-ledger list reads both tables through a household index (E41)
+  for r in execute format('explain select id from public.money_lines where household_id = %L and date >= %L', current_setting('ci.hh1'), v_month) loop s := s || r."QUERY PLAN" || E'\n'; end loop;
+  assert s ~ 'on expenses' and s ~ 'on fund_transactions' and s !~ 'Seq Scan on (expenses|fund_transactions_all)', 'money_lines scans a whole ledger:' || E'\n' || s;
+  s := '';
   -- the Desk's Activity page names its household (an explicit filter keeps the newest-first order in the index)
   for r in execute format('explain select id from public.audit_log where household_id = %L order by id desc limit 50', current_setting('ci.hh1'))
   loop s := s || r."QUERY PLAN" || E'\n'; end loop;
@@ -120,6 +124,8 @@ begin
       ('select * from public.statement_balances where statement_id = ''' || current_setting('ci.stmt1') || '''', 150),
       ('select * from public.card_balances', 150),
       ('select id from public.expenses order by date desc limit 300', 100),
+      ('select public.ledger_page()', 400),
+      ('select public.ledger_page(''' || v_month || ''')', 200),
       ('select id from public.audit_log where household_id = ''' || current_setting('ci.hh1') || ''' order by id desc limit 50', 100)
   loop
     execute 'explain (analyze, format json) ' || q into j;
