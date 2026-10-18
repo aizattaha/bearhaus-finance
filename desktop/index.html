@@ -140,7 +140,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:p
 .meter i{display:block;height:100%;border-radius:3px;background:var(--series-1)}
 .meter.over i{background:var(--bad)}
 tr.pick,tr.gpick{cursor:pointer}tr.pick:hover td,tr.gpick:hover td{background:var(--field)}tr.pick.on td,tr.gpick.on td{background:var(--accent-soft)}
-tr.catrow td{background:#FAFBFD}
+tr.catrow td,tr.fleg td{background:#FAFBFD}tr.fev.on td{background:var(--accent-soft)}
 .legend{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--ink-soft)}
 tr.fdrow td{background:var(--field);padding:10px 14px 14px;border-radius:0 0 12px 12px}
 .dgrid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
@@ -326,11 +326,16 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <!-- NO CARD -->
     <section class="screen" id="scr-nocard">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
-        <div><p class="cap">Browse &amp; bulk edit</p><h1 class="h1">Transactions</h1></div>
-        <p class="cap">click a row to edit everything on it (the phone’s own edit sheet) · tick several → <b>Edit selected</b>, <b>Refund selected</b> or <b>Delete selected</b> · a row with no card can never sit on a statement</p>
+        <div><p class="cap">Every money event · browse &amp; bulk edit</p><h1 class="h1">Transactions</h1></div>
+        <p class="cap">purchases, refunds, settle-ups, incomes, transfers, pot swaps, card payments, trip sends and each month’s plan — a transfer, swap, card payment or plan is one line: click it for its sides · click a purchase to edit it (the phone’s own edit sheet) · tick purchases → <b>Edit selected</b>, <b>Refund selected</b> or <b>Delete selected</b></p>
       </div>
       <div class="toolbar">
         <select class="descinput" id="ncMonth" style="min-width:180px"></select>
+        <select class="descinput" id="ncKindF" style="min-width:170px" title="what kind of money event">
+          <option value="">everything</option><option value="purchases">🛍️ purchases &amp; refunds</option><option value="trip">✈️ trip lines</option>
+          <option value="income">💵 income</option><option value="transfer">⇄ transfers</option><option value="pot_swap">⇄ pot swaps</option>
+          <option value="card_payment">💳 card payments</option><option value="trip_send">✈️ trip sends</option><option value="plan">🎯 monthly plans</option>
+          <option value="fund_out">💰 money out of a fund</option><option value="settle_up">🤝 settle-ups</option></select>
         <select class="descinput" id="ncCardF" style="min-width:220px"></select>
         <select class="descinput" id="ncFundF" style="min-width:200px" title="purchases that count against a fund instead of the month’s budget"></select>
         <select class="descinput" id="ncCatF" style="min-width:200px" title="a daily category, or a whole group (as the Budget groups them)"></select>
@@ -343,7 +348,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
           <table>
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="ncAll"></th>
-              <th style="width:104px">Date</th><th>Description</th><th style="width:124px">Category</th><th class="c-who" style="width:76px">Who</th><th style="width:140px">Card</th><th class="c-src" style="width:60px">Source</th><th class="amt" style="width:108px">Amount</th>
+              <th style="width:104px">Date</th><th>Description</th><th style="width:124px">Category</th><th class="c-who" style="width:76px">Who</th><th style="width:140px">Card</th><th class="c-src" style="width:96px">Kind</th><th class="amt" style="width:108px">Amount</th>
             </tr></thead>
             <tbody id="ncRows"><tr><td colspan="7" class="empty">loading…</td></tr></tbody>
           </table>
@@ -1344,8 +1349,16 @@ async function toggleCloseStatement(){
 }
 
 // ── no card ─────────────────────────────────────────────────
-const nc = { init: false, rows: [], dOff: 0, tOff: 0, dDone: false, tDone: false, sel: new Set() };
+// Transactions = the whole ledger (18 Oct 2026, E41). ledger_page (SQL) returns events — a purchase, an income, a
+// transfer's two sides, a card payment's legs, a pot swap's rows, a month's plan — page by page, each with all its
+// rows, plus the count and per-currency sums of what matched. The purchases among them keep their old shape in nc.rows,
+// so Edit / Refund / Delete selected work as before; fund rows open in the phone's edit sheet (no new write path).
+const nc = { init: false, events: [], rows: [], off: 0, done: false, sel: new Set(), open: new Set(), total: 0, sums: [] };
 const NC_PAGE = 100;
+const NC_KINDS = { purchases: ['purchase', 'refund'], trip: ['trip'], settle_up: ['settle_up'], income: ['income'], transfer: ['transfer'],
+  pot_swap: ['pot_swap'], card_payment: ['card_payment'], trip_send: ['trip_send'], plan: ['plan'], fund_out: ['money_out', 'allocation'] };
+const NC_KIND_LBL = { purchase: 'purchase', refund: 'refund', trip: 'trip', settle_up: 'settle-up', income: 'income', money_out: 'money out',
+  allocation: 'allocation', plan: 'plan', transfer: 'transfer', pot_swap: 'pot swap', card_payment: 'card payment', trip_send: 'trip send' };
 // the category filter: a whole group (g:<id>) or one category (c:<id>), daily purchases only, by id — so a renamed
 // category keeps its history. The Dashboard's Spending card links here with a month, a group or category and "budget only".
 function ncCatOptions(){
@@ -1356,13 +1369,8 @@ function ncCatOptions(){
     + g.cats.map(c => '<option value="c:' + c.id + '">' + esc(c.icon || '') + ' ' + esc(c.name) + '</option>').join('') + '</optgroup>').join('');
 }
 async function loadNoCard(reset){
-  if (reset) { nc.rows = []; nc.dOff = 0; nc.tOff = 0; nc.dDone = false; nc.tDone = false; nc.sel.clear(); }
+  if (reset) { nc.events = []; nc.rows = []; nc.off = 0; nc.done = false; nc.sel.clear(); nc.open.clear(); }
   ncBuildFilters();
-  const kf = $('ncCatF').value;
-  if (kf.startsWith('g:') && nc.groupCats !== kf) {   // a group's categories, archived ones too (their purchases still count in it)
-    const gc = await sb.from('categories').select('id').eq('group_id', kf.slice(2));
-    nc.groupIds = (gc.data || []).map(x => x.id); nc.groupCats = kf;
-  }
   await ncLoadPage();
 }
 function ncBuildFilters(){
@@ -1383,33 +1391,31 @@ function ncBuildFilters(){
     $('ncAll').onchange = () => { nc.rows.forEach(r => { if ($('ncAll').checked) nc.sel.add(r.key); else nc.sel.delete(r.key); }); renderNoCard(); };
     $('ncCatF').innerHTML = ncCatOptions();
     $('ncCatF').onchange = () => loadNoCard(true);
+    $('ncKindF').onchange = () => loadNoCard(true);
   }
 }
 async function ncLoadPage(){
-  const kf = $('ncCatF').value;
-  const m = $('ncMonth').value, q = $('ncSearch').value.trim().replace(/[%_]/g, ch => '\\' + ch), cf = $('ncCardF').value, ff = $('ncFundF').value;
-  const cashCard = CTX.cards.find(c => c.kind === 'cash');
-  const sel = 'id, date, description, category, amount, currency, payer_profile_id, payment_method_id, comments, reconciled_at, reconciled_by, is_refund, fund_id, refund_of, refunded';
-  if (ff || kf) nc.tDone = true;   // only daily purchases can count against a fund or a budget category — a trip's count against the trip
-  const mk = (t, off, extra) => {
-    let qq = sb.from(t).select(sel + (extra || '')).neq('category', 'Payment')
-      .order('date', {ascending:false}).range(off, off + NC_PAGE - 1);
-    if (ff === 'any') qq = qq.not('fund_id', 'is', null);
-    else if (ff === 'budget') qq = qq.is('fund_id', null);
-    else if (ff) qq = qq.eq('fund_id', ff);
-    if (cf === 'none') qq = qq.is('payment_method_id', null);
-    else if (cf === 'cash') qq = cashCard ? qq.eq('payment_method_id', cashCard.id) : qq.eq('payment_method_id', '00000000-0000-0000-0000-000000000000');
-    else if (cf) qq = qq.eq('payment_method_id', cf);
-    if (m) qq = qq.gte('date', m).lt('date', addMonths(m, 1));
-    if (q) qq = qq.ilike('description', '%' + q + '%');
-    if (kf.startsWith('c:')) qq = qq.eq('category_id', kf.slice(2));
-    else if (kf.startsWith('g:')) qq = qq.in('category_id', nc.groupIds && nc.groupIds.length ? nc.groupIds : ['00000000-0000-0000-0000-000000000000']);
-    return qq;
-  };
-  const [d, t] = await Promise.all([nc.dDone ? null : mk('daily_expenses', nc.dOff), nc.tDone ? null : mk('travel_expenses', nc.tOff, ', trips(name)')]);
-  if (d) { if (d.error) { toast('couldn’t load: ' + d.error.message); return; } nc.dOff += d.data.length; if (d.data.length < NC_PAGE) nc.dDone = true; d.data.forEach(r => nc.rows.push(Object.assign({ kind: 'daily', key: 'd:' + r.id }, r))); }
-  if (t) { if (t.error) { toast('couldn’t load: ' + t.error.message); return; } nc.tOff += t.data.length; if (t.data.length < NC_PAGE) nc.tDone = true; t.data.forEach(r => nc.rows.push(Object.assign({ kind: 'travel', key: 't:' + r.id }, r))); }
-  nc.rows.sort((a, b) => b.date > a.date ? 1 : b.date < a.date ? -1 : 0);
+  if (nc.busy) return; nc.busy = true;
+  const cf = $('ncCardF').value, cash = CTX.cards.find(c => c.kind === 'cash');
+  const q = $('ncSearch').value.trim().replace(/[%_\\]/g, ch => '\\' + ch);
+  const { data, error } = await sb.rpc('ledger_page', {
+    p_month: $('ncMonth').value || null, p_kinds: NC_KINDS[$('ncKindF').value] || null,
+    p_card: cf === 'cash' ? (cash ? cash.id : '00000000-0000-0000-0000-000000000000') : (cf || null),
+    p_fund: $('ncFundF').value || null, p_cat: $('ncCatF').value || null, p_search: q || null, p_limit: NC_PAGE, p_offset: nc.off });
+  nc.busy = false;
+  if (error) { toast('couldn’t load: ' + error.message); return; }
+  const evs = (data && data.events) || [];
+  nc.total = data ? data.total : 0; nc.sums = (data && data.sums) || []; nc.off += evs.length; nc.done = !evs.length || nc.off >= nc.total;
+  evs.forEach(ev => {
+    ev.legs.forEach(l => { if (l.src !== 'expense') return;
+      // a purchase keeps the shape the bulk actions, refunds and the edit sheet expect
+      l.r = { kind: l.row, key: (l.row === 'travel' ? 't:' : 'd:') + l.id, id: l.id, date: l.date, description: l.description, category: l.category,
+              amount: l.amount, currency: l.currency, payer_profile_id: l.payer_profile_id, payment_method_id: l.payment_method_id, comments: l.comments,
+              reconciled_at: l.reconciled_at, reconciled_by: l.reconciled_by, is_refund: l.is_refund, fund_id: l.named_fund_id, refund_of: l.refund_of,
+              refunded: l.refunded, pot_swap_id: l.pot_swap_id, trips: l.trip_name ? { name: l.trip_name } : null };
+      nc.rows.push(l.r); });
+    nc.events.push(ev);
+  });
   renderNoCard();
 }
 // from the Dashboard: one month's purchases in a group or category that count against the budget (as its numbers do)
@@ -1418,33 +1424,75 @@ function openTxFor(month, catKey, label){
   if (catKey && ![...$('ncCatF').options].some(o => o.value === catKey)) {   // an archived category with spending that month
     const o = document.createElement('option'); o.value = catKey; o.textContent = label || 'that category'; $('ncCatF').appendChild(o);
   }
-  $('ncMonth').value = month; $('ncCatF').value = catKey || ''; $('ncFundF').value = 'budget'; $('ncCardF').value = ''; $('ncSearch').value = '';
+  $('ncMonth').value = month; $('ncCatF').value = catKey || ''; $('ncFundF').value = 'budget'; $('ncKindF').value = ''; $('ncCardF').value = ''; $('ncSearch').value = '';
   nc.init = true; go('nocard'); loadNoCard(true);
   toast('showing ' + (label || 'those') + ' · ' + monthName(month) + ' · counted against the budget');
 }
+// one line per event: a purchase as before; a fund event says what moved where, and a multi-row one opens to its rows
+function ncFundLine(ev){
+  const L = ev.legs, k = ev.kind, fname = l => l.fund_name || fundName(l.fund_id), card = id => (cardById(id) || {}).name || '';
+  const amt = (ev.amounts || []).map(a => (Math.abs(a.net) < 0.005 ? '⇄ ' : a.net > 0 ? '+' : '−') + fmtMoney(a.amount, a.currency)).join(' · ');
+  const tagRemark = r => (r || '').replace(/^Transfer [→←] [^·]*(·\s*)?/, '').trim();
+  const outs = L.filter(l => l.signed < 0), ins = L.filter(l => l.signed > 0);
+  const fromTo = (o, i) => [...new Set(o.map(fname))].join(', ') + ' → ' + [...new Set(i.map(fname))].join(', ');
+  let desc, where = '', cardTxt = '';
+  if (k === 'plan') { desc = 'Plan applied · ' + monthName(ev.date.slice(0, 7) + '-01'); where = L.length + (L.length === 1 ? ' fund' : ' funds'); }
+  else if (k === 'transfer') { desc = (outs.length && ins.length ? fromTo(outs, ins) : fname(L[0])) + (tagRemark(L[0].description) ? ' · ' + tagRemark(L[0].description) : ''); where = 'between funds'; }
+  else if (k === 'pot_swap') { const t = (L[0].description || '').split('Pot swap · ')[1] || ''; desc = 'Pot swap · ' + t.split(' · ')[0]; where = [...new Set(L.map(l => l.currency))].join(' / '); }
+  else if (k === 'card_payment') { cardTxt = card(L[0].payment_method_id); desc = 'Card payment · ' + (cardTxt || 'a card'); where = 'from ' + [...new Set(L.map(fname))].join(', '); }
+  else if (k === 'trip_send') { desc = L[0].description || ('Trip send · ' + (L[0].trip_name || '')); where = fname(L[0]); }
+  else { desc = L[0].description || NC_KIND_LBL[k]; where = (L[0].signed > 0 ? '→ ' : '← ') + fname(L[0]); cardTxt = L[0].payment_method_id ? card(L[0].payment_method_id) : ''; }
+  return { desc, where, cardTxt, amt, plus: (ev.amounts || []).every(a => a.net > 0.005) };
+}
 function renderNoCard(){
-  const body = $('ncRows');
-  if (!nc.rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">' + ($('ncCardF').value === 'none' ? 'every row here has a card 🐻' : 'nothing matches') + '</td></tr>'; }
-  else body.innerHTML = nc.rows.map(r => { const c = cardById(r.payment_method_id); return '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + (r.reconciled_at ? ' recd' : '') + (!r.refund_of && Number(r.refunded || 0) >= Number(r.amount) - 0.005 && Number(r.refunded || 0) > 0 ? ' refunded' : '') + '" data-key="' + r.key + '">'
-    + '<td><input type="checkbox" class="rowck"' + (nc.sel.has(r.key) ? ' checked' : '') + '></td>'
-    + '<td class="num">' + fmtD(r.date) + '</td>'
-    + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + fundTag(r) + '</span></td>'
-    + '<td class="ell">' + esc(r.category) + '</td><td class="ell c-who">' + esc(who(r.payer_profile_id)) + '</td>'
-    + '<td class="ell" title="' + esc(c ? c.name : '') + '">' + (c ? esc(c.name) : '<span class="tag warn">no card</span>') + (r.reconciled_at ? ' <span title="reconciled">🔒</span>' : '') + '</td>'
-    + '<td class="c-src"><span class="tag">' + (r.kind === 'travel' ? 'trip' : 'daily') + '</span></td>'
-    + '<td class="amt"' + (r.is_refund || r.category === 'Payment' ? ' style="color:var(--good)"' : '') + '>' + (r.is_refund || r.category === 'Payment' ? '+' : '−') + fmtMoney(r.amount, r.currency) + '</td></tr>'; }).join('');
+  const body = $('ncRows'), live = new Set(nc.rows);
+  const evs = nc.events.filter(ev => !ev.legs.some(l => l.r) || ev.legs.some(l => l.r && live.has(l.r)));
+  if (!evs.length) { body.innerHTML = '<tr><td colspan="8" class="empty">' + ($('ncCardF').value === 'none' ? 'every purchase here has a card 🐻' : 'nothing matches') + '</td></tr>'; }
+  else body.innerHTML = evs.map(ev => {
+    const pr = ev.legs.length === 1 && ev.legs[0].r;
+    if (pr) { const r = pr, c = cardById(r.payment_method_id); return '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + (r.reconciled_at ? ' recd' : '') + (!r.refund_of && Number(r.refunded || 0) >= Number(r.amount) - 0.005 && Number(r.refunded || 0) > 0 ? ' refunded' : '') + '" data-key="' + r.key + '">'
+      + '<td><input type="checkbox" class="rowck"' + (nc.sel.has(r.key) ? ' checked' : '') + '></td>'
+      + '<td class="num">' + fmtD(r.date) + '</td>'
+      + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + fundTag(r) + (r.pot_swap_id ? ' <span class="tag">⇄ swapped</span>' : '') + '</span></td>'
+      + '<td class="ell">' + esc(r.category) + '</td><td class="ell c-who">' + esc(who(r.payer_profile_id)) + '</td>'
+      + '<td class="ell" title="' + esc(c ? c.name : '') + '">' + (c ? esc(c.name) : '<span class="tag warn">no card</span>') + (r.reconciled_at ? ' <span title="reconciled">🔒</span>' : '') + '</td>'
+      + '<td class="c-src"><span class="tag">' + esc(NC_KIND_LBL[ev.kind] || ev.kind) + '</span></td>'
+      + '<td class="amt"' + (r.is_refund || r.category === 'Payment' ? ' style="color:var(--good)"' : '') + '>' + (r.is_refund || r.category === 'Payment' ? '+' : '−') + fmtMoney(r.amount, r.currency) + '</td></tr>'; }
+    const f = ncFundLine(ev), many = ev.legs.length > 1, open = nc.open.has(ev.key);
+    return '<tr class="fev' + (open ? ' on' : '') + '" data-ev="' + esc(ev.key) + '"' + (many ? ' aria-expanded="' + open + '"' : '') + '>'
+      + '<td></td><td class="num">' + fmtD(ev.date) + '</td>'
+      + '<td><span class="dsc">' + esc(f.desc) + (many ? ' <span class="cap">' + (open ? '▾' : '▸') + ' ' + ev.legs.length + ' rows</span>' : '') + '</span></td>'
+      + '<td class="ell cap" title="' + esc(f.where) + '">' + esc(f.where) + '</td><td class="c-who"></td>'
+      + '<td class="ell">' + esc(f.cardTxt) + (ev.legs.some(l => l.reconciled_by === 'manual') ? ' <span title="reconciled">🔒</span>' : '') + '</td>'
+      + '<td class="c-src"><span class="tag blue">' + esc(NC_KIND_LBL[ev.kind] || ev.kind) + '</span></td>'
+      + '<td class="amt"' + (f.plus ? ' style="color:var(--good)"' : '') + '>' + esc(f.amt) + '</td></tr>'
+      + (!open ? '' : ev.legs.map(l => '<tr class="fleg" data-leg="' + l.id + '" data-src="' + l.src + '"><td></td><td class="num cap">' + fmtD(l.date) + '</td>'
+          + '<td style="padding-left:28px"><span class="dsc cap">' + esc(l.description || '') + '</span></td><td class="ell">' + esc(l.fund_name || fundName(l.fund_id)) + '</td><td class="c-who"></td>'
+          + '<td class="ell cap">' + esc(l.payment_method_id ? ((cardById(l.payment_method_id) || {}).name || '') : '') + '</td><td class="c-src"></td>'
+          + '<td class="amt cap"' + (l.signed > 0 ? ' style="color:var(--good)"' : '') + '>' + (l.signed > 0 ? '+' : '−') + fmtMoney(l.amount, l.currency) + '</td></tr>').join(''));
+  }).join('');
   body.querySelectorAll('.rowck').forEach(ck => ck.onchange = ev => {
     const key = ev.target.closest('tr').dataset.key;
     if (ev.target.checked) nc.sel.add(key); else nc.sel.delete(key);
     ev.target.closest('tr').classList.toggle('sel', ev.target.checked); updateNcBar();
   });
-  // a click anywhere else on the row opens it in the phone's edit sheet: amount, date, category, card, payer, note…
+  // a purchase opens in the phone's edit sheet: amount, date, category, card, payer, note…
   body.querySelectorAll('tr[data-key]').forEach(tr => {
     tr.style.cursor = 'pointer'; tr.title = 'click to edit this transaction';
     tr.onclick = ev => { if (ev.target.closest('input')) return; const r = nc.rows.find(x => x.key === tr.dataset.key); if (r) openEditTx(r); };
   });
-  $('ncMore').style.display = nc.dDone && nc.tDone ? 'none' : 'inline';
-  $('ncMeta').textContent = nc.rows.length + ' rows loaded' + (nc.dDone && nc.tDone ? '' : ' · more below');
+  // a fund event: one row opens its edit sheet; several open to their rows (each opens its own sheet)
+  body.querySelectorAll('tr.fev').forEach(tr => {
+    const ev = nc.events.find(x => x.key === tr.dataset.ev); if (!ev) return;
+    tr.style.cursor = 'pointer';
+    if (ev.legs.length === 1) { const l = ev.legs[0]; tr.title = 'click to open it'; tr.onclick = () => openEditTx({ kind: 'fund', id: l.id }); return; }
+    tr.title = 'click to see its rows';
+    tr.onclick = () => { if (nc.open.has(ev.key)) nc.open.delete(ev.key); else nc.open.add(ev.key); renderNoCard(); };
+  });
+  body.querySelectorAll('tr.fleg').forEach(tr => { tr.style.cursor = 'pointer'; tr.title = 'click to open this row'; tr.onclick = () => openEditTx({ kind: 'fund', id: tr.dataset.leg }); });
+  $('ncMore').style.display = nc.done ? 'none' : 'inline';
+  const sums = nc.sums.map(x => [x.spent != null && Math.abs(x.spent) > 0.005 ? 'spent ' + fmtMoney(x.spent, x.currency) : '', x.income ? 'income ' + fmtMoney(x.income, x.currency) : ''].filter(Boolean).join(' · ')).filter(Boolean);
+  $('ncMeta').textContent = nc.total + (nc.total === 1 ? ' line' : ' lines') + (nc.done ? '' : ' · ' + nc.events.length + ' shown') + (sums.length ? ' · ' + sums.join(' · ') : '');
   updateNcBar();
 }
 function updateNcBar(){
@@ -2279,8 +2327,9 @@ window.addEventListener('resize', () => { clearTimeout(dashResizeT); dashResizeT
 // first visit per login, replayable from the menu. One idea per stop; a stop whose spot isn't on screen yet
 // (no card picked, no statement) shows its card in the middle instead.
 // the tour runs once per login per version: 2 Dashboard and Settings joined; 3 Settings and the add form laid out for
-// the Desk, pot swap's "same fund" (18 Oct); 4 the Spending card drills into a month, a group, a category (18 Oct)
-const DESK_TOUR_V = '4';
+// the Desk, pot swap's "same fund" (18 Oct); 4 the Spending card drills into a month, a group, a category (18 Oct);
+// 5 Transactions shows the whole ledger (18 Oct)
+const DESK_TOUR_V = '5';
 const DESK_TOUR = [
   { center: true, title: 'The Desk', text: 'the big-screen side of BearHaus: check statements, record card payments, tidy many rows at once and see every fund. Same login, same numbers as the phone.' },
   { scr: 'dashboard', el: () => document.querySelector('nav .nv[data-scr="dashboard"]'), title: 'Dashboard', text: 'where the Desk opens: net worth per country and in total, spending against the plan month by month, and how each fund is growing or shrinking. The line at the top says whether last night’s money check and backup ran — green is fine, red needs you.' },
@@ -2294,7 +2343,7 @@ const DESK_TOUR = [
   { scr: 'statements', el: () => $('stTotal').closest('.card'), title: 'Do the totals agree?', text: 'type the statement’s new spend (and opening and closing). The check says if something is missing in the app, or ticked that shouldn’t be.' },
   { scr: 'statements', el: () => $('stClose'), title: 'Close it', text: 'when the totals agree, close the statement — that period locks.' },
   { scr: 'statements', el: () => $('stPay').style.display !== 'none' ? $('stPay') : null, title: 'Record the payment', text: 'what you paid, from which fund, and the date. A future date shows as scheduled until that day. Paying lowers In the bank and Owed on cards — never Available.' },
-  { scr: 'nocard', el: () => document.querySelector('nav .nv[data-scr="nocard"]'), title: 'Transactions', text: 'every row in one list. Filter, then change the category, card or fund of many rows at once.' },
+  { scr: 'nocard', el: () => document.querySelector('nav .nv[data-scr="nocard"]'), title: 'Transactions', text: 'every money event in one list — purchases, incomes, transfers, pot swaps, card payments, trip sends and each month’s plan. A transfer, swap, card payment or plan is one line: click it for its sides. Filter by month, kind, card, fund or category; tick purchases to change many at once.' },
   { scr: 'nocard', el: () => $('ncRefund'), title: 'Refund against the purchase', text: 'tick what was refunded → Refund selected: all of it or a part, back on the card or as a transfer. The purchase keeps its full amount for the statement; only what was used counts, in its own month.' },
   { scr: 'swap', el: () => document.querySelector('nav .nv[data-scr="swap"]'), title: 'Pot swap', text: 'spent in one currency but the money came from another? record the swap and its rate here. A country where nothing needs to move? pick “same fund” and that side is skipped.' },
   { scr: 'pots', el: () => document.querySelector('nav .nv[data-scr="pots"]'), title: 'Pots 🍯', text: 'every fund in one place — Available, owed on cards, in the bank, cleared, pending — and every card’s balance.' },
