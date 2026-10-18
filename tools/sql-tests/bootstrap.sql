@@ -23,7 +23,8 @@ begin
     email text unique,
     created_at timestamptz not null default now(),
     recovery_sent_at timestamptz,        -- the nightly check's takeover signals read these two (Bundle B)
-    email_change_sent_at timestamptz
+    email_change_sent_at timestamptz,
+    raw_user_meta_data jsonb             -- the sign-up data (an invite code); the households guard reads it (Bundle C)
   );
   -- auth.uid() / auth.role() read the JWT claims the way PostgREST sets them; tests set them with set_config
   create function auth.uid() returns uuid language sql stable as $f$

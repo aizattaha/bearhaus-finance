@@ -369,6 +369,19 @@ begin
   assert not exists (select 1 from jsonb_array_elements(t->'fronted') f where f->>'currency' = 'AUD'), 'the sent A$ lines are settled';
 end $$;
 
+-- ── 6b · fund_explain (Bundle C): its parts add up to fund_money for every fund of the big household ──
+do $$
+declare f record; x jsonb;
+begin
+  for f in select fund_id, balance from public.fund_money where household_id = current_setting('ci.hh')::uuid loop
+    x := public.fund_explain(f.fund_id);
+    assert (x->'all'->>'money_in')::numeric - (x->'all'->>'moved_out')::numeric - (x->'all'->>'purchases')::numeric = f.balance,
+           'fund_explain all-time parts for ' || f.fund_id;
+    assert (x->'month'->>'opening')::numeric + (x->'month'->>'money_in')::numeric - (x->'month'->>'moved_out')::numeric
+           - (x->'month'->>'purchases')::numeric = f.balance, 'fund_explain this month''s parts for ' || f.fund_id;
+  end loop;
+end $$;
+
 -- ── 7 · a viewer reads; an outsider reads nothing ───────────────────────
 reset role;
 insert into public.household_members (household_id, user_id, role) values (:'hh', 'ffffffff-0000-4000-8000-000000000002', 'viewer');
