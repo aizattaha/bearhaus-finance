@@ -143,6 +143,19 @@ body{font-family:'Poppins',Futura,'Century Gothic',-apple-system,sans-serif;back
 .srow{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 0}
 .srow+.srow{border-top:1px solid var(--field)}
 .srow .edit{color:var(--primary);background:var(--accent-soft);border:none;border-radius:8px;width:26px;height:26px;font-size:12px;cursor:pointer;flex-shrink:0}
+/* every Settings list (18 Oct): "＋ Add …" on top opens its form; archived rows fold under "Archived …" at the bottom */
+.rowicon.sm{width:32px;height:32px;font-size:15px}
+.ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.addbtn{margin:2px 0 6px;padding:10px 14px}
+.addbtn .rowicon{width:32px;height:32px;font-size:17px;font-weight:600;color:var(--primary);background:#fff}
+.addbtn .chev,.archgrp summary .chev{margin-left:auto;color:var(--ink-soft);transition:transform .15s}
+.addbtn.open .chev,.archgrp[open] summary .chev{transform:rotate(90deg)}
+.addform{display:none;padding:2px 0 12px}
+.addform.open{display:block}
+.archgrp{margin-top:12px;border-top:1px solid var(--muted)}
+.archgrp summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:48px;cursor:pointer}
+.archgrp summary::-webkit-details-marker{display:none}
+.archgrp summary .rowicon{background:var(--field)}
 .tag{font-size:10px;font-weight:500;border-radius:999px;padding:2px 8px;background:var(--muted);color:var(--ink-soft);flex-shrink:0;white-space:nowrap}
 .tag.blue{background:var(--accent-soft);color:var(--primary)}
 
@@ -275,6 +288,30 @@ html.embed-sheet .sheet{transform:translate(-50%,0)!important;transition:none}
 /* inside the Desk's Settings page: only the Settings screen (the Desk has its own menu and sign-out) */
 html.embed-settings .tabbar, html.embed-settings .fab, html.embed-settings #scr-settings > div:first-child > .btn-tert, html.embed-settings #scr-settings > .btn-tert{display:none!important}
 html.embed-settings #app{max-width:600px}
+#setPaneCard{display:none}
+/* the Desk layout (&layout=desk, E38): same rows and buttons, laid out for a big screen */
+html.embed-desk.embed-settings #app{max-width:1180px;padding:0 8px}
+html.embed-desk .setgrid{display:grid;grid-template-columns:minmax(260px,330px) minmax(0,1fr);gap:18px;align-items:start}
+html.embed-desk #setListCard{position:sticky;top:12px}
+html.embed-desk.embed-settings #scr-settings > div:first-child{display:none}
+html.embed-desk #tzRow{flex-wrap:wrap}
+html.embed-desk #tzRow select{max-width:none!important;flex:1 1 100%;margin-left:50px}
+html.embed-desk #setPaneCard{display:block;min-height:320px;padding:18px 24px 22px}
+html.embed-desk #setPane{max-width:860px;margin-top:6px}
+html.embed-desk #setRows .setbody{display:none!important}
+html.embed-desk #setRows .setrow .chev{transform:none}
+html.embed-desk #setRows .setrow.open{background:var(--accent-soft);border-radius:14px;margin:0 -10px;padding:4px 10px;width:calc(100% + 20px)}
+html.embed-desk #setRows .setrow.open .lbl{color:var(--primary)}
+html.embed-desk #setRows .setrow.open + .setbody + .setrow, html.embed-desk #setRows .setrow.open + .setrow{border-top-color:transparent}
+html.embed-desk .sheet{max-width:none!important;width:100%}
+html.embed-desk .sheet.full{padding:14px 392px 0 28px}
+html.embed-desk #dock{position:fixed;top:14px;right:24px;bottom:14px;width:344px;height:auto;margin:0;padding:0;border-top:none;border-left:1px solid var(--field)}
+html.embed-desk .dockpane{padding:6px 0 4px 20px}
+html.embed-desk #dock-pad .keypad{height:min(400px,100%);margin-top:auto}
+html.embed-desk #dock-pad::before{content:"type the amount on your keyboard — Enter saves · or use the keypad";font-size:12px;line-height:16px;color:var(--ink-soft);padding:2px 0 10px}
+html.embed-desk #rowCatCard{display:flex;gap:12px}
+html.embed-desk #rowCatCard>.f-sec{flex:1 1 0}
+html.embed-desk #descInput{font-size:16px}
 /* ── first-run tutorial ────────────────────── */
 .tut-block{position:fixed;inset:0;z-index:39}
 .tut-hole{position:fixed;z-index:40;border-radius:18px;box-shadow:0 0 0 9999px rgba(26,43,68,.55);pointer-events:none;transition:all .25s cubic-bezier(.4,0,.2,1)}
@@ -577,7 +614,8 @@ input[type="date"].descinput{min-width:0}
         <h2 class="h1" style="margin-top:6px">Settings</h2>
         <p class="cap" id="hhLabel">🐻 …</p>
       </div>
-      <div class="card" style="padding-top:8px;padding-bottom:8px"><div id="setRows"></div></div>
+      <div class="setgrid"><div class="card" id="setListCard" style="padding-top:8px;padding-bottom:8px"><div id="setRows"></div></div>
+        <div class="card" id="setPaneCard"><p class="h2" id="setPaneTitle"></p><div id="setPane"></div></div></div>
       <button class="btn-tert" style="align-self:center" onclick="signOut()">Sign out</button>
     </section>
   </div>
@@ -702,10 +740,16 @@ const EMBED = (() => {
   const q = new URLSearchParams(location.search), kind = q.get('embed');
   if (!['add', 'settings', 'edit'].includes(kind) || window.parent === window) return null;
   try { if (window.parent.location.origin !== location.origin) return null; } catch (e) { return null; }
-  return { kind, mode: q.get('mode') || 'daily', date: q.get('date'), card: q.get('card'), id: q.get('id'), rowKind: q.get('row'), archived: new Set() };
+  return { kind, mode: q.get('mode') || 'daily', date: q.get('date'), card: q.get('card'), id: q.get('id'), rowKind: q.get('row'), archived: new Set(),
+           desk: q.get('layout') === 'desk' };
 })();
+// &layout=desk (Aizat, 18 Oct — DECISIONS E38): the same screen, the same code and saves, laid out for a big screen —
+// Settings as a section list with the open section beside it, the add form with its keypad / pickers / calendar
+// in a column on the right. Only the CSS (html.embed-desk) and the Settings section switch differ.
+const DESK_LAYOUT = !!(EMBED && EMBED.desk);
 // ?embed=edit&row=daily|travel|fund&id=… : the Desk opens one transaction in this app's own edit sheet
 if (EMBED) document.documentElement.classList.add('embed-' + EMBED.kind, EMBED.kind === 'settings' ? 'embed-page' : 'embed-sheet');
+if (DESK_LAYOUT) document.documentElement.classList.add('embed-desk');
 function embedSay(msg){ if (EMBED) try { window.parent.postMessage(Object.assign({ bh: EMBED.kind }, msg), location.origin); } catch (e) {} }
 let toastTimer = null;
 const VIEW_ONLY_MSG = 'this login is view-only — you can see everything, change nothing';
@@ -2799,6 +2843,47 @@ function editInline(row, initial, onSave){
   ok.onclick = () => { const v = input.value.trim(); if (!v) { toast('can’t be empty'); return; } onSave(v); };
   input.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); ok.click(); } };
 }
+// every Settings list has one shape (Aizat, 18 Oct): a long "＋ Add …" button on top that opens the list's form (shown
+// only once tapped), then the live rows, then the archived ones folded under "Archived …" at the bottom. `form(wrap)`
+// builds the add form into the hidden wrap; the caller appends its rows to box after this, then calls .archived().
+const setListOpen = new Set();   // "Archived …" folds that are open, so a restore (which redraws the list) keeps them open
+function setList(box, label, form){
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'choice addbtn';
+  btn.innerHTML = '<div class="rowicon">＋</div><span class="lbl">' + esc(label) + '</span><span class="chev">›</span>';
+  btn.setAttribute('aria-expanded', 'false');
+  const wrap = document.createElement('div'); wrap.className = 'addform';
+  btn.onclick = () => {
+    const open = wrap.classList.toggle('open');
+    btn.classList.toggle('open', open); btn.setAttribute('aria-expanded', String(open));
+    const first = open && wrap.querySelector('input:not([type=checkbox]),select'); if (first) first.focus();
+  };
+  box.appendChild(btn); box.appendChild(wrap);
+  form(wrap);
+  return {
+    archived(title, items, render){
+      if (!items.length) return;
+      const d = document.createElement('details'); d.className = 'archgrp'; d.open = setListOpen.has(title);
+      d.innerHTML = '<summary><div class="rowicon sm">🗄️</div><span class="lbl">' + esc(title) + '</span><span class="tag">' + items.length + '</span><span class="chev">›</span></summary>';
+      d.ontoggle = () => { if (d.open) setListOpen.add(title); else setListOpen.delete(title); };
+      const inner = document.createElement('div'); d.appendChild(inner);
+      items.forEach(x => render(x, inner));
+      box.appendChild(d);
+    },
+  };
+}
+// one row look for every Settings list: icon · name (a caption under it) · tags · ✎ — then the row's own buttons
+function setRow(icon, name, capHtml, tagsHtml, rename){
+  const d = document.createElement('div'); d.className = 'srow';
+  d.innerHTML = '<div class="rowicon sm">' + esc(icon || '') + '</div>'
+    + '<div style="flex:1;min-width:0"><div class="lbl ell">' + esc(name) + '</div>' + (capHtml ? '<div class="cap">' + capHtml + '</div>' : '') + '</div>'
+    + (tagsHtml || '') + (rename === false ? '' : '<button class="edit" aria-label="Rename">✎</button>');
+  return d;
+}
+function rowBtn(text, onClick, color){
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-tert';
+  b.style.cssText = 'font-size:11px;padding:2px 6px' + (color ? ';color:' + color : ''); b.textContent = text; b.onclick = onClick;
+  return b;
+}
 
 function renderSettings(){
   const box = $('setRows'); box.innerHTML = '';
@@ -2813,7 +2898,7 @@ function renderSettings(){
   });
   box.appendChild(hhRow);
   // the household's "today" (sprint 2): which day a purchase counts in, for every number in both apps
-  const tzRow = document.createElement('div'); tzRow.className = 'srow';
+  const tzRow = document.createElement('div'); tzRow.className = 'srow'; tzRow.id = 'tzRow';
   const tzNow = (CTX.hh && CTX.hh.timezone) || 'Australia/Melbourne';
   const zones = (() => { try { return Intl.supportedValuesOf('timeZone'); } catch (e) { return ['Australia/Melbourne', 'Australia/Sydney', 'Australia/Brisbane', 'Australia/Adelaide', 'Australia/Perth', 'Asia/Singapore', 'Asia/Kuala_Lumpur', 'Asia/Jakarta', 'Asia/Bangkok', 'Asia/Tokyo', 'Europe/London']; } })();
   tzRow.innerHTML = '<div class="rowicon">🕐</div><div style="flex:1;min-width:0"><div class="lbl">Time zone</div><div class="cap">decides which day “today” is for every number</div></div>';
@@ -2829,7 +2914,7 @@ function renderSettings(){
   const sections = [
     { icon:'👥', label:'People', cap: (CTX.profiles || []).map(p => p.display_name).join(' · ') || '…', render: renderSetPeople },
     { icon:'💰', label:'Funds', cap: 'rename · archive · travel & leftover funds', render: renderSetFunds },
-    { icon:'💳', label:'Payment cards', cap: 'per-person · where each card is offered · archivable', render: renderSetCards },
+    { icon:'💳', label:'Payment methods', cap: 'cards, bank accounts and cash · per person · where each is offered', render: renderSetCards },
   ].concat([{ icon:'⭐', label:'Default cards', cap: 'the card each person starts on — daily · trip · from a fund', render: renderSetCardDefaults }], [
     { icon:'🏷️', label:'Categories', cap: 'add · rename · archive', render: renderSetCategories },
     { icon:'💵', label:'Income', cap: 'part of the monthly plan', render: renderSetIncome },
@@ -2838,10 +2923,11 @@ function renderSettings(){
   ]);
   sections.forEach(s => {
     const row = document.createElement('button');
-    row.type = 'button'; row.className = 'setrow';
+    row.type = 'button'; row.className = 'setrow'; row.dataset.sec = s.label;
     row.innerHTML = '<div class="rowicon">' + s.icon + '</div><div style="min-width:0"><div class="lbl">' + s.label + '</div><div class="cap">' + esc(s.cap) + '</div></div><span class="chev">›</span>';
     const body = document.createElement('div'); body.className = 'setbody';
     row.onclick = async () => {
+      if (DESK_LAYOUT) return openDeskSection(s, row);
       const open = body.classList.toggle('open');
       row.classList.toggle('open', open);
       if (open) { body.innerHTML = '<p class="cap">loading…</p>'; await s.render(body); }
@@ -2869,6 +2955,21 @@ function renderSettings(){
   news.innerHTML = '<div class="rowicon">✨</div><div style="min-width:0"><div class="lbl">What’s new</div><div class="cap">only the stops that changed since the last tour</div></div><span class="chev">›</span>';
   news.onclick = () => { go('scr-home'); setTimeout(() => startTutorial('all'), 150); };
   if (!EMBED) box.appendChild(news);
+  if (DESK_LAYOUT) {   // the Desk keeps a section open beside the list — the last one, else the first
+    const rows = [...box.querySelectorAll('.setrow')];
+    const again = rows.find(r => r.dataset.sec === deskSec) || rows[0];
+    if (again) again.click();
+  }
+}
+// the Desk's Settings: a section opens in the pane beside the list (the phone opens it under its row)
+let deskSec = null;
+async function openDeskSection(s, row){
+  deskSec = s.label;
+  document.querySelectorAll('#setRows .setrow.open').forEach(x => x.classList.remove('open'));
+  row.classList.add('open');
+  $('setPaneTitle').textContent = s.icon + ' ' + s.label;
+  const body = $('setPane'); body.innerHTML = '<p class="cap">loading…</p>';
+  await s.render(body);
 }
 
 // the bin: anything deleted in the last 30 days, restorable (older databases have no bin)
@@ -2948,12 +3049,18 @@ async function renderSetPeople(box){
   const myRow = members && members.find(m => m.user_id === myId);
   const iAmOwner = !!(myRow && myRow.role === 'owner');
   const canInvite = !!(myRow && myRow.role !== 'viewer');
+  setList(box, 'Add person', af => {
+    af.appendChild(addRowEl('new person’s name', async v => {
+      const r = await sb.from('profiles').insert({ household_id: CTX.hh.id, display_name: v, sort_order: CTX.profiles.length });
+      if (r.error) { toast('couldn’t add: ' + r.error.message); return; }
+      await loadContext(); renderSetPeople(box); toast(v + ' added 🐻');
+    }));
+  });
   (CTX.profiles || []).forEach(p => {
-    const d = document.createElement('div'); d.className = 'srow';
     const m = members && members.find(x => x.profile_id === p.id);
     const open = invites.find(x => x.profile_id === p.id);
     const status = m ? '<span class="tag ' + (m.user_id === myId ? 'blue' : '') + '">' + (m.user_id === myId ? 'you' : m.role === 'viewer' ? 'can view' : 'has a login') + '</span>' : '';
-    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">👤</div><span class="lbl" style="flex:1;min-width:0">' + esc(p.display_name) + '</span>' + status + '<button class="edit" aria-label="Rename">✎</button>';
+    const d = setRow('👤', p.display_name, '', status);
     if (members) {
       if (!m && myRow && !myRow.profile_id) {
         const meBtn = document.createElement('button'); meBtn.className = 'btn-tert'; meBtn.style.cssText = 'font-size:11px;padding:2px 6px'; meBtn.textContent = 'that’s me';
@@ -3014,11 +3121,6 @@ async function renderSetPeople(box){
   };
   jd.appendChild(jbtn);
   box.appendChild(jd);
-  box.appendChild(addRowEl('new person’s name', async v => {
-    const r = await sb.from('profiles').insert({ household_id: CTX.hh.id, display_name: v, sort_order: CTX.profiles.length });
-    if (r.error) { toast('couldn’t add: ' + r.error.message); return; }
-    await loadContext(); renderSetPeople(box); toast(v + ' added 🐻');
-  }));
   if (members && canInvite) {
     const vrow = document.createElement('div'); vrow.className = 'srow';
     const openView = invites.find(x => !x.profile_id);
@@ -3054,6 +3156,138 @@ async function renderSetFunds(box){
   if (r.error) { box.innerHTML = '<p class="cap">couldn’t load: ' + esc(r.error.message) + '</p>'; return; }
   const funds = r.data || [], active = funds.filter(f => f.is_active);
   box.innerHTML = '';
+  const countries = [...new Set(funds.map(f => f.country))];
+  const L = setList(box, 'Add fund', af => {
+    af.innerHTML = '<input class="descinput" placeholder="new fund name" style="width:100%">'
+      + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">'
+      + '<select class="descinput" style="flex:1;min-width:0" id="afCountry"></select>'
+      + '<select class="descinput" style="flex:1;min-width:0" id="afGroup"></select>'
+      + '<button class="btn-mini" type="button" id="afAdd">Add</button></div>'
+      + '<div id="afNew" style="display:none;gap:8px;margin-top:8px">'
+      + '<input class="descinput" id="afCC" placeholder="country label — e.g. TH" style="flex:1;min-width:0">'
+      + '<input class="descinput" id="afCur" placeholder="currency — e.g. THB" style="flex:1;min-width:0"></div>'
+      + '<input class="descinput" id="afNewGroup" placeholder="new group name" style="display:none;margin-top:8px;width:100%">';
+    const cSel = af.querySelector('#afCountry');
+    const gSel = af.querySelector('#afGroup');
+    cSel.innerHTML = countries.map(c => '<option>' + esc(c) + '</option>').join('') + '<option value="__new__">+ new country…</option>';
+    const refreshGroups = () => {
+      const gs = cSel.value === '__new__' ? []
+        : [...new Set(funds.filter(f => f.country === cSel.value && f.group_name).map(f => f.group_name))];
+      gSel.innerHTML = '<option value="">— no group —</option>'
+        + gs.map(g => '<option>' + esc(g) + '</option>').join('')
+        + '<option value="__newg__">+ new group…</option>';
+      af.querySelector('#afNewGroup').style.display = 'none';
+    };
+    gSel.onchange = () => { af.querySelector('#afNewGroup').style.display = gSel.value === '__newg__' ? 'block' : 'none'; };
+    cSel.onchange = () => {
+      af.querySelector('#afNew').style.display = cSel.value === '__new__' ? 'flex' : 'none';
+      refreshGroups();
+    };
+    // typing a known country code fills its currency automatically (Phase 6)
+    af.querySelector('#afCC').addEventListener('input', e => {
+      const known = COUNTRY_CUR[e.target.value.trim().toUpperCase()];
+      if (known) af.querySelector('#afCur').value = known;
+    });
+    refreshGroups();
+    af.querySelector('#afAdd').onclick = async () => {
+      if (!guard(af.querySelector('#afAdd'))) return;
+      const v = af.firstChild.value.trim();
+      if (!v) { toast('type a name first'); return; }
+      let cc = cSel.value, cur;
+      if (cc === '__new__') {
+        cc = af.querySelector('#afCC').value.trim().toUpperCase();
+        cur = af.querySelector('#afCur').value.trim().toUpperCase();
+        if (!cc || !cur) { toast('give the new country a label and a currency'); return; }
+      } else {
+        cur = (funds.find(f => f.country === cc) || {}).currency || 'AUD';
+      }
+      let grp = gSel.value === '__newg__' ? af.querySelector('#afNewGroup').value.trim() : (gSel.value === '__new__' ? '' : gSel.value);
+      if (gSel.value === '__newg__' && !grp) { toast('give the new group a name'); return; }
+      const i = await sb.from('funds').insert({ household_id: CTX.hh.id, name: v, country: cc, currency: cur, group_name: grp || '', sort_order: funds.length });
+      if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
+      await loadContext(); stale.funds = true;
+      renderSetFunds(box); toast(v + ' added 🐻');
+    };
+  });
+  const setActive = async (f, v) => {
+    if (!v) {
+      const bal = await sb.from('fund_balances').select('balance').eq('fund_id', f.id).maybeSingle();
+      const b0 = bal.data ? Number(bal.data.balance) : 0;
+      if (Math.abs(b0) >= 0.005) { toast(f.name + ' still holds ' + fmtMoney(b0, f.currency) + ' — move it to another fund first (+ → Transfer), then archive'); return; }
+    }
+    const u = await sb.from('funds').update({ is_active: v }).eq('id', f.id);
+    if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+    await loadContext(); stale.funds = true;
+    renderSetFunds(box); toast(f.name + (v ? ' restored' : ' archived') + ' 🐻');
+  };
+  const addFundRow = (f, into) => {
+    const d = setRow(f.icon || fundIcon(f.name), f.name, '',
+      (f.is_leftover_target ? '<span class="tag blue">leftover</span>' : '')
+      + (f.pays_trips || (CTX.hh && CTX.hh.travel_fund_id === f.id) ? '<span class="tag blue">travel</span>' : ''));
+    d.querySelector('.edit').onclick = () => editInline(d, f.name, async v => {
+      // keep the icon the fund has today, whatever the new name would suggest
+      const patch = { name: v }; if (!f.icon) patch.icon = fundIcon(f.name);
+      const u = await sb.from('funds').update(patch).eq('id', f.id);
+      if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+      await loadContext(); stale.funds = true;
+      renderSetFunds(box); toast('renamed 🐻');
+    });
+    d.appendChild(rowBtn('Archive', () => setActive(f, false)));
+    d.appendChild(detailToggle(d, line => {
+      const save = async (patch, msg) => {
+        const u = await sb.from('funds').update(patch).eq('id', f.id);
+        if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+        await loadContext(); stale.funds = true; renderSetFunds(box); toast(msg + ' 🐻');
+      };
+      line.appendChild(iconInput(f.icon || fundIcon(f.name), v => save({ icon: v }, f.name + ' · icon ' + v)));
+      const gs = [...new Set(funds.filter(x => x.country === f.country && x.group_name).map(x => x.group_name))];
+      const g = document.createElement('select'); g.className = 'descinput'; g.style.cssText = 'flex:1;min-width:120px;padding:6px 8px;font-size:12px'; g.setAttribute('aria-label', 'Group');
+      g.innerHTML = '<option value="">— no group —</option>' + gs.map(x => '<option' + (x === f.group_name ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '<option value="__newg__">+ new group…</option>';
+      g.onchange = () => {
+        if (g.value !== '__newg__') { save({ group_name: g.value }, f.name + ' → ' + (g.value || 'no group')); return; }
+        // a new group: typed inline, like everything else in Settings (no pop-ups)
+        const ni = document.createElement('input'); ni.className = 'descinput'; ni.placeholder = 'new group name'; ni.style.cssText = 'flex:1;min-width:120px;padding:6px 8px;font-size:12px';
+        const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'btn-mini'; ok.textContent = 'Save';
+        const go2 = () => { const v = ni.value.trim(); if (v) save({ group_name: v }, f.name + ' → ' + v); };
+        ok.onclick = go2; ni.onkeydown = ev => { if (ev.key === 'Enter') go2(); };
+        g.replaceWith(ni); ni.after(ok); ni.focus();
+      };
+      line.appendChild(g);
+      line.appendChild(upDown(async dir => { if (await moveRow('funds', funds, f, dir, (x, y) => x.country === y.country && (x.group_name || '') === (y.group_name || ''))) { await loadContext(); stale.funds = true; renderSetFunds(box); } }));
+      line.appendChild(capEl('order sets the list everywhere — and the first spending pot of a currency is its default'));
+    }));
+    into.appendChild(d);
+  };
+  const list = document.createElement('div');
+  countries.forEach(cc => {
+    const ch = document.createElement('p');
+    ch.className = 'lbl'; ch.style.cssText = 'margin-top:14px';
+    ch.textContent = cc;
+    const cfunds = active.filter(f => f.country === cc);
+    if (!cfunds.length) return;
+    list.appendChild(ch);
+    const groups = {};
+    cfunds.forEach(f => { const g = f.group_name || 'Other'; (groups[g] = groups[g] || []).push(f); });
+    Object.keys(groups).sort((a, b) =>
+      Math.min(...groups[a].map(x => x.sort_order)) - Math.min(...groups[b].map(x => x.sort_order))
+    ).forEach(g => {
+      const gh = document.createElement('p');
+      gh.className = 'cap';
+      gh.style.cssText = 'letter-spacing:.05em;text-transform:uppercase;margin:8px 0 0';
+      gh.textContent = g;
+      list.appendChild(gh);
+      groups[g].forEach(f => addFundRow(f, list));
+    });
+  });
+  box.appendChild(list);
+  L.archived('Archived funds', funds.filter(f => !f.is_active), (f, into) => {
+    const d = setRow(f.icon || fundIcon(f.name), f.name, esc(f.country + (f.group_name ? ' · ' + f.group_name : '')), '', false);
+    d.appendChild(rowBtn('Restore', () => setActive(f, true)));
+    into.appendChild(d);
+  });
+  // how the funds are used: trips, leftovers, spending pots
+  const hp = document.createElement('p'); hp.className = 'lbl'; hp.style.marginTop = '18px'; hp.textContent = 'How the funds are used';
+  box.appendChild(hp);
   // a travel fund per currency: trip spending on a card settles in the card's currency, the rest in the currency it was
   // spent in; a currency with no travel fund is converted into the main one (the first, ★)
   const main = funds.find(f => f.id === CTX.hh.travel_fund_id);
@@ -3068,7 +3302,6 @@ async function renderSetFunds(box){
       }, '— none —')));
   });
   box.appendChild(capEl('★ the main travel fund: trip spending in a currency with no travel fund of its own is converted into it'));
-  const countries = [...new Set(funds.map(f => f.country))];
   countries.forEach(cc => {
     const cur = (funds.find(f => f.country === cc && f.is_leftover_target) || {}).id || '';
     box.appendChild(labeled(countryTitle(cc) + ' · leftover flows to',
@@ -3111,136 +3344,6 @@ async function renderSetFunds(box){
     });
     box.appendChild(labeled(countryTitle(cc) + ' · spending pots (budget lands here, spending counts it down)', wrap));
   });
-  const list = document.createElement('div'); list.style.marginTop = '12px';
-  const addFundRow = (f, into) => {
-    const d = document.createElement('div'); d.className = 'srow';
-    if (!f.is_active) d.style.opacity = '.45';
-    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + fundIcon(f.name) + '</div>'
-      + '<span class="lbl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>'
-      + (f.is_leftover_target ? '<span class="tag blue">leftover</span>' : '')
-      + (f.pays_trips || (CTX.hh && CTX.hh.travel_fund_id === f.id) ? '<span class="tag blue">travel</span>' : '')
-      + (!f.is_active ? '<span class="tag">archived</span>' : '')
-      + '<button class="edit" aria-label="Rename">✎</button>';
-    const arch = document.createElement('button');
-    arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
-    arch.textContent = f.is_active ? 'Archive' : 'Restore';
-    arch.onclick = async () => {
-      if (f.is_active) {
-        const bal = await sb.from('fund_balances').select('balance').eq('fund_id', f.id).maybeSingle();
-        const b0 = bal.data ? Number(bal.data.balance) : 0;
-        if (Math.abs(b0) >= 0.005) { toast(f.name + ' still holds ' + fmtMoney(b0, f.currency) + ' — move it to another fund first (+ → Transfer), then archive'); return; }
-      }
-      const u = await sb.from('funds').update({ is_active: !f.is_active }).eq('id', f.id);
-      if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
-      await loadContext(); stale.funds = true;
-      renderSetFunds(box); toast(f.name + (f.is_active ? ' archived' : ' restored') + ' 🐻');
-    };
-    d.querySelector('.edit').onclick = () => editInline(d, f.name, async v => {
-      // keep the icon the fund has today, whatever the new name would suggest
-      const patch = { name: v }; if (!f.icon) patch.icon = fundIcon(f.name);
-      const u = await sb.from('funds').update(patch).eq('id', f.id);
-      if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
-      await loadContext(); stale.funds = true;
-      renderSetFunds(box); toast('renamed 🐻');
-    });
-    d.appendChild(arch);
-    d.appendChild(detailToggle(d, line => {
-      const save = async (patch, msg) => {
-        const u = await sb.from('funds').update(patch).eq('id', f.id);
-        if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
-        await loadContext(); stale.funds = true; renderSetFunds(box); toast(msg + ' 🐻');
-      };
-      line.appendChild(iconInput(f.icon || fundIcon(f.name), v => save({ icon: v }, f.name + ' · icon ' + v)));
-      const gs = [...new Set(funds.filter(x => x.country === f.country && x.group_name).map(x => x.group_name))];
-      const g = document.createElement('select'); g.className = 'descinput'; g.style.cssText = 'flex:1;min-width:120px;padding:6px 8px;font-size:12px'; g.setAttribute('aria-label', 'Group');
-      g.innerHTML = '<option value="">— no group —</option>' + gs.map(x => '<option' + (x === f.group_name ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '<option value="__newg__">+ new group…</option>';
-      g.onchange = () => {
-        if (g.value !== '__newg__') { save({ group_name: g.value }, f.name + ' → ' + (g.value || 'no group')); return; }
-        // a new group: typed inline, like everything else in Settings (no pop-ups)
-        const ni = document.createElement('input'); ni.className = 'descinput'; ni.placeholder = 'new group name'; ni.style.cssText = 'flex:1;min-width:120px;padding:6px 8px;font-size:12px';
-        const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'btn-mini'; ok.textContent = 'Save';
-        const go2 = () => { const v = ni.value.trim(); if (v) save({ group_name: v }, f.name + ' → ' + v); };
-        ok.onclick = go2; ni.onkeydown = ev => { if (ev.key === 'Enter') go2(); };
-        g.replaceWith(ni); ni.after(ok); ni.focus();
-      };
-      line.appendChild(g);
-      line.appendChild(upDown(async dir => { if (await moveRow('funds', funds, f, dir, (x, y) => x.country === y.country && (x.group_name || '') === (y.group_name || ''))) { await loadContext(); stale.funds = true; renderSetFunds(box); } }));
-      line.appendChild(capEl('order sets the list everywhere — and the first spending pot of a currency is its default'));
-    }));
-    into.appendChild(d);
-  };
-  countries.forEach(cc => {
-    const ch = document.createElement('p');
-    ch.className = 'lbl'; ch.style.cssText = 'margin-top:14px';
-    ch.textContent = cc;
-    list.appendChild(ch);
-    const cfunds = funds.filter(f => f.country === cc);
-    const groups = {};
-    cfunds.forEach(f => { const g = f.group_name || 'Other'; (groups[g] = groups[g] || []).push(f); });
-    Object.keys(groups).sort((a, b) =>
-      Math.min(...groups[a].map(x => x.sort_order)) - Math.min(...groups[b].map(x => x.sort_order))
-    ).forEach(g => {
-      const gh = document.createElement('p');
-      gh.className = 'cap';
-      gh.style.cssText = 'letter-spacing:.05em;text-transform:uppercase;margin:8px 0 0';
-      gh.textContent = g;
-      list.appendChild(gh);
-      groups[g].forEach(f => addFundRow(f, list));
-    });
-  });
-  box.appendChild(list);
-  const af = document.createElement('div'); af.style.cssText = 'margin-top:12px';
-  af.innerHTML = '<input class="descinput" placeholder="new fund name" style="width:100%">'
-    + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">'
-    + '<select class="descinput" style="flex:1;min-width:0" id="afCountry"></select>'
-    + '<select class="descinput" style="flex:1;min-width:0" id="afGroup"></select>'
-    + '<button class="btn-mini" type="button" id="afAdd">Add</button></div>'
-    + '<div id="afNew" style="display:none;gap:8px;margin-top:8px">'
-    + '<input class="descinput" id="afCC" placeholder="country label — e.g. TH" style="flex:1;min-width:0">'
-    + '<input class="descinput" id="afCur" placeholder="currency — e.g. THB" style="flex:1;min-width:0"></div>'
-    + '<input class="descinput" id="afNewGroup" placeholder="new group name" style="display:none;margin-top:8px;width:100%">';
-  box.appendChild(af);
-  const cSel = af.querySelector('#afCountry');
-  const gSel = af.querySelector('#afGroup');
-  cSel.innerHTML = countries.map(c => '<option>' + esc(c) + '</option>').join('') + '<option value="__new__">+ new country…</option>';
-  const refreshGroups = () => {
-    const gs = cSel.value === '__new__' ? []
-      : [...new Set(funds.filter(f => f.country === cSel.value && f.group_name).map(f => f.group_name))];
-    gSel.innerHTML = '<option value="">— no group —</option>'
-      + gs.map(g => '<option>' + esc(g) + '</option>').join('')
-      + '<option value="__newg__">+ new group…</option>';
-    af.querySelector('#afNewGroup').style.display = 'none';
-  };
-  gSel.onchange = () => { af.querySelector('#afNewGroup').style.display = gSel.value === '__newg__' ? 'block' : 'none'; };
-  cSel.onchange = () => {
-    af.querySelector('#afNew').style.display = cSel.value === '__new__' ? 'flex' : 'none';
-    refreshGroups();
-  };
-  // typing a known country code fills its currency automatically (Phase 6)
-  af.querySelector('#afCC').addEventListener('input', e => {
-    const known = COUNTRY_CUR[e.target.value.trim().toUpperCase()];
-    if (known) af.querySelector('#afCur').value = known;
-  });
-  refreshGroups();
-  af.querySelector('#afAdd').onclick = async () => {
-    if (!guard(af.querySelector('#afAdd'))) return;
-    const v = af.firstChild.value.trim();
-    if (!v) { toast('type a name first'); return; }
-    let cc = cSel.value, cur;
-    if (cc === '__new__') {
-      cc = af.querySelector('#afCC').value.trim().toUpperCase();
-      cur = af.querySelector('#afCur').value.trim().toUpperCase();
-      if (!cc || !cur) { toast('give the new country a label and a currency'); return; }
-    } else {
-      cur = (funds.find(f => f.country === cc) || {}).currency || 'AUD';
-    }
-    let grp = gSel.value === '__newg__' ? af.querySelector('#afNewGroup').value.trim() : (gSel.value === '__new__' ? '' : gSel.value);
-    if (gSel.value === '__newg__' && !grp) { toast('give the new group a name'); return; }
-    const i = await sb.from('funds').insert({ household_id: CTX.hh.id, name: v, country: cc, currency: cur, group_name: grp || '', sort_order: funds.length });
-    if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
-    await loadContext(); stale.funds = true;
-    renderSetFunds(box); toast(v + ' added 🐻');
-  };
   box.appendChild(capEl('archiving hides a fund (and its balance) from lists without touching history — best for funds already at zero'));
 }
 
@@ -3252,31 +3355,60 @@ async function renderSetCards(box){
   const iu = await sb.rpc('cards_in_use');
   const inUse = new Set(iu.error ? [] : (iu.data || []).map(x => typeof x === 'string' ? x : Object.values(x)[0]));
   const KINDS = [['credit_card', 'credit card'], ['debit_card', 'debit card'], ['bank', 'bank account'], ['prepaid', 'prepaid / wallet'], ['cash', 'cash']];
-  const hasKind = cards.some(c => c.kind !== undefined);
+  const kindIcon = k => k === 'cash' ? '💵' : k === 'bank' ? '🏦' : '💳';
+  const ownerOf = c => (c.profile_id && (CTX.profiles.find(p => p.id === c.profile_id) || {}).display_name) || jointLabel() || 'Joint';
+  const capOf = c => esc(ownerOf(c)) + offeredCap(c) + ' · ' + esc((KINDS.find(k => k[0] === c.kind) || [])[1] || 'type?')
+    + (c.kind === 'credit_card' ? ' · closes ' + (c.closing_day ? 'day ' + c.closing_day : '—') : '') + (c.currency ? ' · ' + esc(curLabel(c.currency)) : '');
+  const setArchived = async (c, v) => {
+    const u = await sb.from('payment_methods').update({ is_archived: v }).eq('id', c.id);
+    if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+    await loadContext(); renderSetCards(box);
+    toast(c.name + (v ? ' archived' : ' restored') + ' 🐻');
+  };
   box.innerHTML = '';
-  if (hasKind) box.appendChild(capEl('type · statement closing day (credit cards) · currency — statements and reconciliation use these'));
-  cards.forEach(c => {
-    const owner = (c.profile_id && (CTX.profiles.find(p => p.id === c.profile_id) || {}).display_name) || jointLabel() || 'Joint';
-    const d = document.createElement('div'); d.className = 'srow';
-    d.style.flexWrap = 'wrap';
-    if (c.is_archived) d.style.opacity = '.45';
-    const kindLabel = (KINDS.find(k => k[0] === c.kind) || [])[1] || '';
-    d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + (c.kind === 'cash' ? '💵' : c.kind === 'bank' ? '🏦' : '💳') + '</div>'
-      + '<div style="flex:1;min-width:0"><div class="lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div>'
-      + '<div class="cap">' + esc(owner) + offeredCap(c)
-      + (hasKind ? ' · ' + esc(kindLabel || 'type?') + (c.kind === 'credit_card' ? ' · closes ' + (c.closing_day ? 'day ' + c.closing_day : '—') : '') + (c.currency ? ' · ' + esc(curLabel(c.currency)) : '') : '')
-      + '</div></div>'
-      + (c.is_archived ? '<span class="tag">archived</span>' : '');
-    if (hasKind && !c.is_archived) {
-      // inline settings row: type · closing day · currency
-      const cfg = document.createElement('div');
-      cfg.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:center;padding:4px 0 2px 42px;flex-wrap:wrap';
-      const kindSel = document.createElement('select'); kindSel.className = 'descinput'; kindSel.style.cssText = 'flex:1;min-width:110px;padding:6px 8px;font-size:12px';
+  // ＋ Add payment method: name, whose, type and currency (type and currency lock once it has history, so ask now)
+  const L = setList(box, 'Add payment method', af => {
+    const hc = homeCurrencies();
+    af.innerHTML = '<input class="descinput" placeholder="name — e.g. Amex — ' + esc((CTX.profiles[0] || {}).display_name || 'Sam') + '" style="width:100%">'
+      + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"><div class="seg grow" id="acSeg" style="flex:1 1 160px;min-width:0"></div></div>'
+      + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">'
+      + '<select class="descinput" id="acKind" style="flex:1;min-width:0" aria-label="Type">' + KINDS.map(k => '<option value="' + k[0] + '">' + k[1] + '</option>').join('') + '</select>'
+      + '<select class="descinput" id="acCur" style="width:100px" aria-label="Currency">' + (hc.length === 1 ? '' : '<option value="">multi</option>') + hc.map(x => '<option value="' + x + '">' + esc(curLabel(x)) + '</option>').join('') + '</select>'
+      + '<button class="btn-mini" type="button" id="acAdd">Add</button></div>'
+      + '<p class="cap" style="margin-top:6px">offered for Daily · Trip · From a fund, closing day and owner are behind the row’s ⋯ once it’s added</p>';
+    buildSeg('acSeg', payerNames(), 0);
+    $('acAdd').onclick = async () => {
+      if (!guard($('acAdd'))) return;
+      const v = af.firstChild.value.trim();
+      if (!v) { toast('type a name first'); return; }
+      const owner = segSel('acSeg');
+      const pid = (CTX.profiles.find(p => p.display_name === owner) || {}).id || null;
+      const i = await sb.from('payment_methods').insert({
+        household_id: CTX.hh.id, name: v, profile_id: pid,
+        sort_order: cards.filter(c => c.profile_id === pid).length,
+        kind: $('acKind').value, currency: $('acCur').value || null,
+      });
+      if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
+      await loadContext(); renderSetCards(box); toast(v + ' added 🐻');
+    };
+  });
+  box.appendChild(capEl('type · statement closing day (credit cards) · currency — statements and reconciliation use these; the rest is behind ⋯'));
+  cards.filter(c => !c.is_archived).forEach(c => {
+    const d = setRow(kindIcon(c.kind), c.name, capOf(c));
+    d.querySelector('.edit').onclick = () => editInline(d, c.name, async v => {
+      const u = await sb.from('payment_methods').update({ name: v }).eq('id', c.id);
+      if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
+      await loadContext(); renderSetCards(box); toast('renamed 🐻 — past expenses keep the old name');
+    });
+    d.appendChild(rowBtn('Archive', () => setArchived(c, true)));
+    // the details, one ⋯ away (as funds and categories): type · closing day · currency · whose · order · where it's offered
+    d.appendChild(detailToggle(d, cfg => {
+      const kindSel = document.createElement('select'); kindSel.className = 'descinput'; kindSel.style.cssText = 'flex:1;min-width:110px;padding:6px 8px;font-size:12px'; kindSel.setAttribute('aria-label', 'Type');
       kindSel.innerHTML = KINDS.map(k => '<option value="' + k[0] + '"' + (k[0] === c.kind ? ' selected' : '') + '>' + k[1] + '</option>').join('');
       const dayIn = document.createElement('input'); dayIn.className = 'descinput'; dayIn.type = 'number'; dayIn.min = 1; dayIn.max = 31; dayIn.inputMode = 'numeric';
-      dayIn.placeholder = 'closing day'; dayIn.style.cssText = 'width:96px;padding:6px 8px;font-size:12px'; dayIn.value = c.closing_day || '';
+      dayIn.placeholder = 'closing day'; dayIn.style.cssText = 'width:96px;padding:6px 8px;font-size:12px'; dayIn.value = c.closing_day || ''; dayIn.setAttribute('aria-label', 'Statement closing day');
       dayIn.style.display = c.kind === 'credit_card' ? '' : 'none';
-      const curSel = document.createElement('select'); curSel.className = 'descinput'; curSel.style.cssText = 'width:84px;padding:6px 8px;font-size:12px';
+      const curSel = document.createElement('select'); curSel.className = 'descinput'; curSel.style.cssText = 'width:84px;padding:6px 8px;font-size:12px'; curSel.setAttribute('aria-label', 'Currency');
       const curs = [...new Set(homeCurrencies().concat(c.currency || []))];
       curSel.innerHTML = '<option value="">multi</option>' + curs.map(x => '<option value="' + x + '"' + (x === c.currency ? ' selected' : '') + '>' + esc(curLabel(x)) + '</option>').join('');
       const save = async patch => {
@@ -3284,92 +3416,47 @@ async function renderSetCards(box){
         if (u.error) { toast('couldn’t update: ' + u.error.message); return false; }
         Object.assign(c, patch); await loadContext();
         // the caption under the name reads the row — redraw so it tells the truth
-        const kl = (KINDS.find(k => k[0] === c.kind) || [])[1] || 'type?';
-        d.querySelector('.cap').innerHTML = esc(owner) + offeredCap(c) + ' · ' + esc(kl) + (c.kind === 'credit_card' ? ' · closes ' + (c.closing_day ? 'day ' + c.closing_day : '—') : '') + (c.currency ? ' · ' + esc(curLabel(c.currency)) : '');
-        d.querySelector('.rowicon').textContent = c.kind === 'cash' ? '💵' : c.kind === 'bank' ? '🏦' : '💳';
+        d.querySelector('.cap').innerHTML = capOf(c);
+        d.querySelector('.rowicon').textContent = kindIcon(c.kind);
         return true;
       };
       kindSel.onchange = async () => { if (await save({ kind: kindSel.value, closing_day: kindSel.value === 'credit_card' ? (parseInt(dayIn.value) || null) : null })) { dayIn.style.display = kindSel.value === 'credit_card' ? '' : 'none'; toast(c.name + ' · ' + (KINDS.find(k => k[0] === kindSel.value) || [])[1] + ' 🐻'); } };
       dayIn.onchange = async () => { const v = parseInt(dayIn.value); if (dayIn.value && !(v >= 1 && v <= 31)) { toast('closing day is 1–31'); return; } if (await save({ closing_day: dayIn.value ? v : null })) toast(c.name + (dayIn.value ? ' closes on day ' + v : ' · closing day cleared') + ' 🐻'); };
       curSel.onchange = async () => { if (await save({ currency: curSel.value || null })) toast(c.name + ' · ' + (curSel.value ? curLabel(curSel.value) : 'multi-currency') + ' 🐻'); };
-      // travel-only cards stay out of the everyday picker; flip it here when a card starts doing both (QA2 B-B3)
-      const trav = document.createElement('button'); trav.type = 'button'; trav.className = 'chip' + (c.travel_only ? ' sel' : ''); trav.style.cssText = 'font-size:11px;padding:4px 8px'; trav.textContent = '✈️ travel only';
-      trav.title = 'only offered on trip expenses';
-      trav.onclick = async () => { if (await save({ travel_only: !c.travel_only })) { trav.classList.toggle('sel', c.travel_only); toast(c.name + (c.travel_only ? ' · trips only' : ' · offered everywhere') + ' 🐻'); } };
       if (inUse.has(c.id)) {
-        [kindSel, curSel].forEach(el => { el.disabled = true; el.style.opacity = '.55'; el.title = 'this card already has purchases — its type and currency stay as they are'; });
+        [kindSel, curSel].forEach(el => { el.disabled = true; el.style.opacity = '.55'; el.title = 'this one already has purchases — its type and currency stay as they are'; });
       }
       cfg.appendChild(kindSel); cfg.appendChild(dayIn); cfg.appendChild(curSel);
       if (inUse.has(c.id)) {
         const n = document.createElement('p'); n.className = 'cap'; n.style.cssText = 'flex-basis:100%;margin:0';
-        n.textContent = 'type and currency are fixed now it has history — a different card? add it as a new card and archive this one';
+        n.textContent = 'type and currency are fixed now it has history — a different one? add it as a new payment method and archive this one';
         cfg.appendChild(n);
       }
-      // whose card it is (a shared card belongs to nobody) and where it sits in the lists
-      const ownSel = document.createElement('select'); ownSel.className = 'descinput'; ownSel.style.cssText = 'width:110px;padding:6px 8px;font-size:12px'; ownSel.setAttribute('aria-label', 'Whose card');
+      // whose it is (a shared one belongs to nobody) and where it sits in the lists
+      const ownSel = document.createElement('select'); ownSel.className = 'descinput'; ownSel.style.cssText = 'width:110px;padding:6px 8px;font-size:12px'; ownSel.setAttribute('aria-label', 'Whose');
       ownSel.innerHTML = CTX.profiles.map(p => '<option value="' + p.id + '"' + (p.id === c.profile_id ? ' selected' : '') + '>' + esc(p.display_name) + '</option>').join('')
         + '<option value=""' + (!c.profile_id ? ' selected' : '') + '>' + esc(jointLabel() || 'Shared') + '</option>';
-      ownSel.onchange = async () => { if (await save({ profile_id: ownSel.value || null })) { renderSetCards(box); toast(c.name + ' · ' + (ownSel.selectedOptions[0] || {}).textContent + '’s card 🐻'); } };
+      ownSel.onchange = async () => { if (await save({ profile_id: ownSel.value || null })) { renderSetCards(box); toast(c.name + ' · ' + (ownSel.selectedOptions[0] || {}).textContent + '’s 🐻'); } };
       cfg.appendChild(ownSel);
       cfg.appendChild(upDown(async dir => { if (await moveRow('payment_methods', cards, c, dir, (x, y) => (x.profile_id || null) === (y.profile_id || null) && !x.is_archived)) { await loadContext(); renderSetCards(box); } }));
-      if (c.show_daily !== undefined) {
-        // where this card is offered (Aizat, 15 Oct): Daily · Trip · From a fund
-        const cl = document.createElement('div'); cl.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap';
-        cl.innerHTML = '<span class="cap">offered for</span>';
-        [['show_daily', 'Daily'], ['show_trip', '✈️ Trip'], ['show_fund', '💰 From a fund']].forEach(([col, lbl]) => {
-          const b = document.createElement('button'); b.type = 'button'; b.className = 'chip' + (c[col] ? ' sel' : ''); b.style.cssText = 'font-size:11px;padding:4px 8px';
-          b.textContent = lbl; b.setAttribute('aria-pressed', c[col] ? 'true' : 'false');
-          b.onclick = async () => { if (await save({ [col]: !c[col] })) { b.classList.toggle('sel', c[col]); b.setAttribute('aria-pressed', c[col] ? 'true' : 'false'); toast(c.name + (c[col] ? ' · offered for ' : ' · no longer offered for ') + lbl.replace(/^\W+ /, '') + ' 🐻'); } };
-          cl.appendChild(b);
-        });
-        cfg.appendChild(cl);
-      } else cfg.appendChild(trav);
-      d._cfg = cfg;
-    }
-    const ebtn = document.createElement('button');
-    ebtn.className = 'edit'; ebtn.textContent = '✎'; ebtn.setAttribute('aria-label', 'Rename');
-    ebtn.onclick = () => editInline(d, c.name, async v => {
-      const u = await sb.from('payment_methods').update({ name: v }).eq('id', c.id);
-      if (u.error) { toast('couldn’t rename: ' + u.error.message); return; }
-      await loadContext(); renderSetCards(box); toast('renamed 🐻 — past expenses keep the old name');
-    });
-    d.appendChild(ebtn);
-    const arch = document.createElement('button');
-    arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
-    arch.textContent = c.is_archived ? 'Restore' : 'Archive';
-    arch.onclick = async () => {
-      const u = await sb.from('payment_methods').update({ is_archived: !c.is_archived }).eq('id', c.id);
-      if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
-      await loadContext(); renderSetCards(box);
-      toast(c.name + (c.is_archived ? ' restored' : ' archived') + ' 🐻');
-    };
-    d.appendChild(arch);
-    if (d._cfg) d.appendChild(d._cfg);
+      // where it is offered (Aizat, 15 Oct): Daily · Trip · From a fund
+      const cl = document.createElement('div'); cl.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+      cl.innerHTML = '<span class="cap">offered for</span>';
+      [['show_daily', 'Daily'], ['show_trip', '✈️ Trip'], ['show_fund', '💰 From a fund']].forEach(([col, lbl]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'chip' + (c[col] ? ' sel' : ''); b.style.cssText = 'font-size:11px;padding:4px 8px';
+        b.textContent = lbl; b.setAttribute('aria-pressed', c[col] ? 'true' : 'false');
+        b.onclick = async () => { if (await save({ [col]: !c[col] })) { b.classList.toggle('sel', c[col]); b.setAttribute('aria-pressed', c[col] ? 'true' : 'false'); toast(c.name + (c[col] ? ' · offered for ' : ' · no longer offered for ') + lbl.replace(/^\W+ /, '') + ' 🐻'); } };
+        cl.appendChild(b);
+      });
+      cfg.appendChild(cl);
+    }));
     box.appendChild(d);
   });
-  const af = document.createElement('div'); af.style.cssText = 'margin-top:12px';
-  af.innerHTML = '<input class="descinput" placeholder="new card name — e.g. Amex — ' + esc((CTX.profiles[0] || {}).display_name || 'Sam') + '" style="width:100%">'
-    + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"><div class="seg grow" id="acSeg" style="flex:1 1 160px;min-width:0"></div>'
-    + '<button class="chip" id="acTravel" type="button">travel only</button><button class="btn-mini" type="button" id="acAdd">Add</button></div>';
-  box.appendChild(af);
-  buildSeg('acSeg', payerNames(), 0);
-  $('acTravel').onclick = () => $('acTravel').classList.toggle('sel');
-  $('acAdd').onclick = async () => {
-    if (!guard($('acAdd'))) return;
-    const v = af.firstChild.value.trim();
-    if (!v) { toast('type a name first'); return; }
-    const owner = segSel('acSeg');
-    const pid = (CTX.profiles.find(p => p.display_name === owner) || {}).id || null;
-    const hc = homeCurrencies();
-    const i = await sb.from('payment_methods').insert({
-      household_id: CTX.hh.id, name: v, profile_id: pid,
-      travel_only: $('acTravel').classList.contains('sel'),
-      sort_order: cards.filter(c => c.profile_id === pid).length,
-      kind: 'credit_card', currency: hc.length === 1 ? hc[0] : null,   // most added cards are credit cards — change it in the row
-    });
-    if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
-    await loadContext(); renderSetCards(box); toast(v + ' added 🐻');
-  };
+  L.archived('Archived payment methods', cards.filter(c => c.is_archived), (c, into) => {
+    const d = setRow(kindIcon(c.kind), c.name, capOf(c), '', false);
+    d.appendChild(rowBtn('Restore', () => setArchived(c, false)));
+    into.appendChild(d);
+  });
 }
 
 // "· offered for Daily · Trip" under a card's name
@@ -3429,6 +3516,46 @@ async function renderSetCategories(box){
     box.innerHTML = '<p class="cap" style="padding:8px 0">your categories arrive with the next database update 🐻</p>';
     return;
   }
+  const setActive = async (c, v) => {
+    const u = await sb.from('categories').update({ is_active: v }).eq('id', c.id);
+    if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
+    await loadContext(); renderSetCategories(box);
+    toast(c.name + (v ? ' restored' : ' archived') + ' 🐻');
+  };
+  const L = setList(box, 'Add category', af => {
+    af.innerHTML = '<div style="display:flex;gap:8px"><input class="descinput" id="acatName" placeholder="new category name" style="flex:1;min-width:0"><input class="descinput" id="acatIcon" placeholder="🛍️" maxlength="4" style="width:64px;text-align:center"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center"><div class="seg" id="acatKind"></div>'
+      + '<select class="descinput" id="acatGroup" style="flex:1;min-width:0"></select>'
+      + '<button class="btn-mini" type="button" id="acatAdd">Add</button></div>'
+      + '<input class="descinput" id="acatNewGroup" placeholder="new group name" style="display:none;margin-top:8px;width:100%">';
+    const refreshGroups = () => {
+      const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
+      const gs = [...new Set(cats.filter(c => c.kind === kind).map(c => c.group_name).concat(allGroups.filter(g => g.kind === kind).map(g => g.name)))];
+      $('acatGroup').innerHTML = gs.map(g => '<option>' + esc(g) + '</option>').join('') + '<option value="__new__">+ new group…</option>';
+      const last = store.get('acat-group-' + kind); if (last && gs.includes(last)) $('acatGroup').value = last;
+      $('acatNewGroup').style.display = 'none';
+    };
+    buildSeg('acatKind', ['Daily', 'Travel'], 0, refreshGroups);
+    $('acatGroup').onchange = () => { $('acatNewGroup').style.display = $('acatGroup').value === '__new__' ? 'block' : 'none'; };
+    refreshGroups();
+    $('acatAdd').onclick = async () => {
+      if (!guard($('acatAdd'))) return;
+      const name = $('acatName').value.trim();
+      if (!name) { toast('type a name first'); return; }
+      const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
+      const grp = $('acatGroup').value === '__new__' ? $('acatNewGroup').value.trim() : $('acatGroup').value;
+      if (!grp) { toast('pick or name a group'); return; }
+      store.set('acat-group-' + kind, grp);
+      const same = cats.filter(c => c.kind === kind);
+      const i = await sb.from('categories').insert({
+        household_id: CTX.hh.id, kind, name, group_name: grp,
+        icon: $('acatIcon').value.trim() || '🛍️',
+        sort_order: same.length ? Math.max(...same.map(c => c.sort_order)) + 1 : 0,
+      });
+      if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
+      await loadContext(); renderSetCategories(box); toast(name + ' added 🐻');
+    };
+  });
   [['daily', 'Daily'], ['travel', 'Travel']].forEach(([kind, label]) => {
     const kh = document.createElement('p'); kh.className = 'lbl'; kh.style.marginTop = '14px'; kh.textContent = label;
     box.appendChild(kh);
@@ -3486,15 +3613,11 @@ async function renderSetCategories(box){
         };
       };
       box.appendChild(gh);
-      if (!groups[g].length) { const e = document.createElement('p'); e.className = 'cap'; e.style.padding = '4px 0 0 8px'; e.textContent = 'a budget line with no categories yet — add one below to have spending count against it'; box.appendChild(e); }
-      groups[g].forEach(c => {
-        const d = document.createElement('div'); d.className = 'srow';
-        if (!c.is_active) d.style.opacity = '.45';
+      const live = groups[g].filter(c => c.is_active);
+      if (!live.length) { const e = document.createElement('p'); e.className = 'cap'; e.style.padding = '4px 0 0 8px'; e.textContent = groups[g].length ? 'only archived categories here — they’re under Archived categories below' : 'a budget line with no categories yet — add one above to have spending count against it'; box.appendChild(e); }
+      live.forEach(c => {
         const locked = c.role === 'settle_up' || c.name === 'Payment';   // settle-up transfers are load-bearing (a role since v2 sprint 2)
-        d.innerHTML = '<div class="rowicon" style="width:32px;height:32px;font-size:15px">' + esc(c.icon) + '</div>'
-          + '<span class="lbl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</span>'
-          + (locked ? '<span class="tag">settle-up</span>' : (!c.is_active ? '<span class="tag">archived</span>' : ''))
-          + (locked ? '' : '<button class="edit" aria-label="Rename">✎</button>');
+        const d = setRow(c.icon, c.name, '', locked ? '<span class="tag">settle-up</span>' : '', !locked);
         if (!locked) {
           d.querySelector('.edit').onclick = () => editInline(d, c.name, async v => {
             const u = await sb.from('categories').update({ name: v }).eq('id', c.id);
@@ -3502,10 +3625,7 @@ async function renderSetCategories(box){
             await loadContext(); stale.budget = true; renderSetCategories(box);
             toast('renamed 🐻 — past expenses follow the new name');
           });
-          const mv = document.createElement('button');
-          mv.className = 'btn-tert'; mv.style.cssText = 'font-size:11px;padding:2px 6px';
-          mv.textContent = 'Move';
-          mv.onclick = () => {
+          const mv = rowBtn('Move', () => {
             const gs = [...new Set(cats.filter(x => x.kind === c.kind).map(x => x.group_name))];
             const sel = document.createElement('select'); sel.className = 'descinput'; sel.style.cssText = 'flex:1;min-width:0';
             sel.innerHTML = gs.map(x => '<option' + (x === c.group_name ? ' selected' : '') + '>' + esc(x) + '</option>').join('');
@@ -3517,18 +3637,9 @@ async function renderSetCategories(box){
               await loadContext(); renderSetCategories(box);
               toast(c.name + ' → ' + sel.value + ' 🐻');
             };
-          };
+          });
           d.appendChild(mv);
-          const arch = document.createElement('button');
-          arch.className = 'btn-tert'; arch.style.cssText = 'font-size:11px;padding:2px 6px';
-          arch.textContent = c.is_active ? 'Archive' : 'Restore';
-          arch.onclick = async () => {
-            const u = await sb.from('categories').update({ is_active: !c.is_active }).eq('id', c.id);
-            if (u.error) { toast('couldn’t update: ' + u.error.message); return; }
-            await loadContext(); renderSetCategories(box);
-            toast(c.name + (c.is_active ? ' archived' : ' restored') + ' 🐻');
-          };
-          d.appendChild(arch);
+          d.appendChild(rowBtn('Archive', () => setActive(c, false)));
           d.appendChild(detailToggle(d, line => {
             line.appendChild(iconInput(c.icon, async v => {
               const u = await sb.from('categories').update({ icon: v }).eq('id', c.id);
@@ -3543,40 +3654,11 @@ async function renderSetCategories(box){
       });
     });
   });
-  const af = document.createElement('div'); af.style.cssText = 'margin-top:14px';
-  af.innerHTML = '<div style="display:flex;gap:8px"><input class="descinput" id="acatName" placeholder="new category name" style="flex:1;min-width:0"><input class="descinput" id="acatIcon" placeholder="🛍️" maxlength="4" style="width:64px;text-align:center"></div>'
-    + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center"><div class="seg" id="acatKind"></div>'
-    + '<select class="descinput" id="acatGroup" style="flex:1;min-width:0"></select>'
-    + '<button class="btn-mini" type="button" id="acatAdd">Add</button></div>'
-    + '<input class="descinput" id="acatNewGroup" placeholder="new group name" style="display:none;margin-top:8px;width:100%">';
-  box.appendChild(af);
-  const refreshGroups = () => {
-    const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
-    const gs = [...new Set(cats.filter(c => c.kind === kind).map(c => c.group_name).concat(allGroups.filter(g => g.kind === kind).map(g => g.name)))];
-    $('acatGroup').innerHTML = gs.map(g => '<option>' + esc(g) + '</option>').join('') + '<option value="__new__">+ new group…</option>';
-    const last = store.get('acat-group-' + kind); if (last && gs.includes(last)) $('acatGroup').value = last;
-    $('acatNewGroup').style.display = 'none';
-  };
-  buildSeg('acatKind', ['Daily', 'Travel'], 0, refreshGroups);
-  $('acatGroup').onchange = () => { $('acatNewGroup').style.display = $('acatGroup').value === '__new__' ? 'block' : 'none'; };
-  refreshGroups();
-  $('acatAdd').onclick = async () => {
-    if (!guard($('acatAdd'))) return;
-    const name = $('acatName').value.trim();
-    if (!name) { toast('type a name first'); return; }
-    const kind = segSel('acatKind') === 'Travel' ? 'travel' : 'daily';
-    const grp = $('acatGroup').value === '__new__' ? $('acatNewGroup').value.trim() : $('acatGroup').value;
-    if (!grp) { toast('pick or name a group'); return; }
-    store.set('acat-group-' + kind, grp);
-    const same = cats.filter(c => c.kind === kind);
-    const i = await sb.from('categories').insert({
-      household_id: CTX.hh.id, kind, name, group_name: grp,
-      icon: $('acatIcon').value.trim() || '🛍️',
-      sort_order: same.length ? Math.max(...same.map(c => c.sort_order)) + 1 : 0,
-    });
-    if (i.error) { toast('couldn’t add: ' + i.error.message); return; }
-    await loadContext(); renderSetCategories(box); toast(name + ' added 🐻');
-  };
+  L.archived('Archived categories', cats.filter(c => !c.is_active && c.role !== 'settle_up'), (c, into) => {
+    const d = setRow(c.icon, c.name, esc((c.kind === 'travel' ? 'Travel' : 'Daily') + ' · ' + c.group_name), '', false);
+    d.appendChild(rowBtn('Restore', () => setActive(c, true)));
+    into.appendChild(d);
+  });
   box.appendChild(capEl('archiving hides a category from the picker without touching history · renaming a category or a group carries every past expense and budget line with it'));
 }
 
@@ -4182,7 +4264,7 @@ function formCurrency(){
   return SEG2CODE[segSel('segCurrency')] || null;
 }
 // card rules (Aizat, 15 Oct): each card says where it's offered — Daily, Trip, From a fund — and each person has a
-// default card per kind of expense (Settings → Payment cards / Default cards). Archived cards never load here.
+// default card per kind of expense (Settings → Payment methods / Default cards). Archived cards never load here.
 const cardContext = () => (mode === 'trip' || mode === 'edit') ? 'trip' : mode === 'fundexp' ? 'fund' : 'daily';
 function cardDefaultFor(pid){
   const d = (CTX.cardDefaults || []).find(x => (x.profile_id || null) === (pid || null) && x.context === cardContext());
@@ -4417,6 +4499,7 @@ function closePicker(){ dockShow('pad'); }
 // ── the dock state machine: exactly one occupant at a time ──
 // panes: 'pad' (numpad) · 'pick' (lists) · 'date' (calendar) · null (system keyboard)
 function dockShow(p){
+  if (p === null && DESK_LAYOUT) p = 'pad';
   ['pad', 'pick', 'date'].forEach(x => $('dock-' + x).classList.toggle('on', x === p));
 }
 // tapping the amount ALWAYS summons the numpad — even mid-typing, iOS won't
@@ -4661,7 +4744,7 @@ function payCardDefaults(first){
 }
 function openPayCardPicker(){
   const ccs = (CTX.cards || []).filter(c => c.kind === 'credit_card' && !c.is_archived);
-  if (!ccs.length) { toast('no credit cards yet — add one in Settings → Payment cards'); return; }
+  if (!ccs.length) { toast('no credit cards yet — add one in Settings → Payment methods'); return; }
   openPicker('Which card?', ccs.map(c => { const o = payCardOwed[c.id]; return { id: c.id, name: c.name, icon: '💳',
     cap: (c.currency ? curLabel(c.currency) : '') + (o && Number(o.owed) > 0 ? ' · owes ' + fmtMoney(o.owed, o.currency || c.currency || primaryCur()) : ''), sel: c.id === payCardId }; }),
     it => { payCardId = it.id; store.set('paycard', it.id); payCardDefaults(false); });
@@ -5503,7 +5586,7 @@ async function deleteExpense(){
 // from Settings. copy stays tiny: one idea per stop.
 // isNew: the tour version a stop was added or changed in. "What's new" (Settings) walks every isNew stop; the automatic
 // one walks only the stops newer than the version this login last saw. Bump TUT_VERSION with each new batch.
-const TUT_VERSION = '5';
+const TUT_VERSION = '6';
 const TUT_STEPS = [
   { scr:'scr-home', center:true, title:'The idea',
     text:'every month: plan the income, give spending a cap, move the rest into funds. what’s left over is truly free to spend.' },
@@ -5541,8 +5624,8 @@ const TUT_STEPS = [
     title:'Funds', text:'Available = what’s left to spend · on cards = charged, not paid yet · in the bank = what the bank shows. Paying a card moves the last two, never Available.' },
   { scr:'scr-funds', el: () => $('planCard'), isNew:2,
     title:'The monthly ritual', text:'income − budgets − fund top-ups = leftover. Apply it once a month — tap a line to skip it this month. Two phones can’t apply it twice.' },
-  { scr:'scr-settings', el: () => $('setRows').closest('.card'), isNew:2,
-    title:'Settings', text:'people, funds, income — and Payment cards (where each card shows: Daily · Trip · From a fund) and Default cards (whose card comes first).' },
+  { scr:'scr-settings', el: () => $('setRows').closest('.card'), isNew:6,
+    title:'Settings', text:'people, funds, categories — and Payment methods (cards, bank accounts and cash; where each is offered: Daily · Trip · From a fund) and Default cards (whose comes first). Every list starts with ＋ Add…; archived ones wait folded at the bottom.' },
   { scr:'scr-settings', el: () => [...document.querySelectorAll('#setRows .srow')].find(r => r.textContent.includes('Time zone')), isNew:3,
     title:'The finer settings', text:'Time zone sets which day “today” is. Every fund, card and category has a ⋯ for its icon, group, owner and order.' },
   { scr:'scr-settings', el: () => $('setDesk'), isNew:3,
