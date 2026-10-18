@@ -205,6 +205,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .seg button.sel{background:var(--primary);color:#fff}
 .seg.grow{display:flex}
 .seg.grow button{flex:1}
+#atxType button{padding:6px 2px;flex:1 1 auto;min-width:0}
 #segType button:first-child.sel{background:var(--good)}
 #segType button:last-child.sel{background:var(--bad)}
 .catgroup{grid-column:1/-1;margin:8px 0 -2px;font-weight:500}
@@ -228,6 +229,25 @@ select.descinput{appearance:none;-webkit-appearance:none}
 /* category + paid with: two rows on a tall phone, side by side on a short one so the form never scrolls (v2 S2) */
 #rowCatCard>.f-sec{min-width:0}
 @media (max-height: 740px){ #sh-form #rowCatCard{display:flex;gap:8px;margin-top:6px} #sh-form #rowCatCard>.f-sec{flex:1 1 0;margin-top:0} #sh-form #rowCatCard .arow{gap:6px} }
+/* Trip and From a fund carry one more row than Daily: on a phone, category | paid with and trip-or-fund | date sit
+   in pairs, and the From-a-fund caption steps aside, so neither scrolls at 393×852 or 375×667 (Bundle C, CX-09) */
+html:not(.embed-desk) #sh-form.tight #rowCatCard{display:flex;gap:8px}
+html:not(.embed-desk) #sh-form.tight #rowCatCard>.f-sec{flex:1 1 0;margin-top:0}
+html:not(.embed-desk) #sh-form.tight #rowCatCard .arow,html:not(.embed-desk) #sh-form.tight .pair2 .arow{gap:6px}
+html:not(.embed-desk) #sh-form.tight #formBody{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:8px;align-content:start}
+html:not(.embed-desk) #sh-form.tight #formBody>*{grid-column:1/-1}
+html:not(.embed-desk) #sh-form.tight #formBody>.pair2{grid-column:auto}
+html:not(.embed-desk) #sh-form.tight #fundHint{display:none!important}
+/* the edit sheet's actions sit in a fixed row above the dock, never below the fold (Bundle C, CX-05) */
+#editActions{display:flex;gap:8px;flex:0 0 auto;margin-top:4px;border-top:1px solid var(--field);padding-top:4px}
+#editActions .btn-tert{flex:1;height:40px;font-size:14px}
+/* refunding: the form shows only what a refund needs — what came back (keypad), its day (dock calendar), where to */
+#sh-form.refunding #rowCatCard,#sh-form.refunding #rowFundFrom,#sh-form.refunding #rowTrip,#sh-form.refunding #rowPayer,
+#sh-form.refunding #rowDetails,#sh-form.refunding #lockNote,#sh-form.refunding #editActions,#sh-form.refunding #segCurrency,
+#sh-form.refunding .descwrap,#sh-form.refunding #rowType{display:none!important}
+#sh-form.refunding .amount-line,#sh-form.refunding #keypad button{opacity:1!important}
+#sh-form.refunding #amtDisp{color:var(--good)!important}
+#saveBtn.word{font-size:15px;font-weight:600}
 /* takeover suggestions — matches replace the form while typing */
 .take .trow{display:flex;align-items:center;gap:10px;width:100%;padding:12px 4px;background:none;border:none;border-bottom:1px solid var(--field);font-family:inherit;color:var(--ink);cursor:pointer;text-align:left}
 .take .trow:active{background:var(--accent-soft)}
@@ -249,7 +269,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
 .sheet.full .grab{display:none}   /* a full-screen page has nothing to drag — and its 18px clipped the dock */
 #sh-form{flex-direction:column;height:100%;min-height:0}
 #sh-form>.f-sec,#sh-form>.sheet-head,#sh-form>.descwrap{flex:0 0 auto}
-#formBody{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+#formBody{flex:1 1 auto;min-height:0;overflow-y:auto;display:block}
 .sheet.full .take{flex:1 1 auto;min-height:0;overflow-y:auto}
 #dock{flex:0 0 auto;height:var(--dockH,300px);position:relative;margin:8px -20px 0;padding:0 20px max(14px, calc(6px + env(safe-area-inset-bottom)));border-top:1px solid var(--field)}
 .dockpane{position:absolute;inset:0;padding:6px 20px max(14px, calc(6px + env(safe-area-inset-bottom)));display:none;flex-direction:column;background:#fff}
@@ -389,17 +409,28 @@ input[type="date"].descinput{min-width:0}
       <h1 class="h1">BearHaus</h1>
       <p class="cap" style="margin-top:4px">one login for the whole household</p>
     </div>
+    <div id="joinBanner" style="display:none;background:var(--accent-soft);border-radius:14px;padding:12px 14px">
+      <p class="h2" id="joinTitle" style="font-size:16px">You’re invited</p>
+      <p class="cap" id="joinWho" style="margin-top:2px"></p>
+      <ol id="joinSteps" class="cap" style="display:none;margin:8px 0 0 18px;padding:0;line-height:20px"></ol>
+      <div id="joinCodeRow" style="display:none;align-items:center;gap:8px;margin-top:8px">
+        <span class="num" id="joinCode" style="font-weight:700;letter-spacing:.05em;color:var(--primary)"></span>
+        <button class="btn-mini" type="button" id="joinCopy">copy code</button>
+      </div>
+      <button class="btn-tert" type="button" id="joinHere" style="display:none;padding-left:0;margin-top:6px;font-size:12px">or carry on in this browser</button>
+    </div>
     <form id="loginForm">
       <input class="field" id="email" type="email" placeholder="email" autocomplete="username" required>
       <div style="position:relative">
         <input class="field" id="password" type="password" placeholder="password" autocomplete="current-password" required style="width:100%;padding-right:64px">
         <button type="button" id="pwEye" class="btn-tert" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:12px" onclick="togglePw()">show</button>
       </div>
-      <input class="field" id="inviteCode" placeholder="invite code" autocomplete="off" style="display:none">
+      <p class="cap" id="pwHint" style="display:none;margin-top:-4px">12 or more characters — a short sentence works well</p>
+      <input class="field" id="inviteCode" placeholder="invite code (JOIN-… or your beta code)" autocomplete="off" autocapitalize="characters" style="display:none">
       <button class="btn btn-primary" id="loginBtn" type="submit">Sign in</button>
       <p id="loginError"></p>
     </form>
-    <button class="btn-tert" id="modeToggle" type="button">joining the beta? create your account</button>
+    <button class="btn-tert" id="modeToggle" type="button">new here? create your account</button>
     <button class="btn-tert" id="forgotBtn" type="button" style="font-size:12px" onclick="forgotPw()">forgot password?</button>
   </div>
 </div>
@@ -593,10 +624,10 @@ input[type="date"].descinput{min-width:0}
       </div>
       <div class="card" style="padding:16px">
         <input class="descinput" id="atxSearch" placeholder="search descriptions" autocomplete="off">
-        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-          <div class="seg" id="atxType"></div>
-          <select class="descinput" id="atxMonth" style="flex:1 1 132px;min-width:0"></select>
-        </div>
+        <!-- the kinds on their own row, the month under them at full width: side by side the month was pushed
+             off a phone's screen (Bundle C, CX-09) -->
+        <div class="seg grow" id="atxType" style="margin-top:8px"></div>
+        <select class="descinput" id="atxMonth" style="margin-top:8px;width:100%" aria-label="month"></select>
         <select class="descinput" id="atxWhat" style="margin-top:8px;width:100%;display:none"></select>
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
           <button type="button" class="chip" id="atxOpenOnly" onclick="this.classList.toggle('sel');loadAllTx(true)">🔓 unreconciled only</button>
@@ -644,7 +675,7 @@ input[type="date"].descinput{min-width:0}
 
   <div id="sh-form" style="display:none">
     <div class="sheet-head"><span class="h2" id="formTitle">Add</span><button class="btn-tert" onclick="closeSheet()">Close</button></div>
-    <div id="lockNote" style="display:none;background:var(--accent-soft);color:var(--primary);border-radius:12px;padding:8px 12px;margin:0 0 8px"><p class="cap" style="color:var(--primary)" id="lockNoteText">🔒 this row is locked — it's been checked off against a statement. Description, category and comments can still change.</p><button type="button" class="btn-tert" id="lockUnlockBtn" style="padding:4px 0;margin-top:2px" onclick="unlockEditing()">🔓 unlock to edit everything</button></div>
+    <div id="lockNote" style="display:none;background:var(--accent-soft);color:var(--primary);border-radius:12px;padding:8px 12px;margin:0 0 8px"><p class="cap" style="color:var(--primary)" id="lockNoteText">🔒 this row is locked — it's been checked off against a statement. Description, category and comments can still change.</p><button type="button" class="btn-tert" id="lockUnlockBtn" style="padding:4px 0;margin-top:2px" onclick="unlockEditing()">🔓 unlock to edit everything</button><button type="button" class="btn-tert" id="lockFindBtn" style="display:none;padding:4px 0;margin-top:2px" onclick="findRefundPurchase()">find the purchase →</button></div>
     <div class="f-sec" id="rowMode" style="margin-top:0"><div class="seg grow" id="segMode"></div></div>
     <div class="f-sec" id="rowScope"><div class="seg grow" id="segScope"></div></div>
     <div class="f-sec descwrap">
@@ -669,22 +700,24 @@ input[type="date"].descinput{min-width:0}
       <div class="f-sec" id="rowDetails" style="display:none">
         <div id="cardWrap"><button type="button" class="arow" id="cardRow" onclick="openCardPicker()"></button><select id="cardSel" style="display:none"></select></div>
         <div style="margin-top:8px"><input class="descinput" id="commentsInput" placeholder="note (optional)" style="width:100%"></div>
-        <div id="refundWrap" style="margin-top:8px;display:flex;gap:8px;align-items:center"><button type="button" class="chip" id="refundChip" onclick="toggleRefund()">↩ refund / credit</button><span class="cap" id="refundCap">money coming back — counts against the category as a minus</span></div>
+        <!-- refunds are made against their purchase (E35); this chip shows only on a refund entered the old way, as its own line -->
+        <div id="refundWrap" style="margin-top:8px;display:none;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="chip" id="refundChip" onclick="toggleRefund()">↩ old-style refund</button><span class="cap" id="refundCap">link it to its purchase: <a href="#" onclick="findRefundPurchase();return false">find the purchase</a> → ↩ Refund, then delete this line</span></div>
+        <button type="button" class="btn-tert" id="refundFind" style="display:none;margin-top:6px;padding-left:0;font-size:12px" onclick="findRefundPurchase()">↩ money back on a purchase? find the purchase →</button>
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn-tert" id="detailsBtn" onclick="toggleDetails()">+ details</button></div>
-      <button class="btn-tert" id="refundBtn" style="display:none;width:100%;margin-top:10px;flex:0 0 auto" onclick="openRefundPanel()">↩ Refund…</button>
+      <!-- ↩ Refund uses the form itself: the keypad types what came back, the date row picks its day (dock calendar),
+           ✓ reads Refund (Bundle C, CX-05) -->
       <div id="refundPanel" class="settlebox" style="display:none;margin-top:8px;flex:0 0 auto">
-        <p class="lbl" id="rfTitle">Refund</p>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><p class="lbl" id="rfTitle">Refund</p><button type="button" class="btn-tert" style="padding:0;font-size:12px;flex:0 0 auto" onclick="closeRefundPanel()">‹ back</button></div>
         <p class="cap" id="rfCap" style="margin-top:2px"></p>
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <input class="descinput num" id="rfAmount" type="number" step="0.01" min="0" inputmode="decimal" style="flex:1;min-width:110px" aria-label="amount coming back">
-          <input class="descinput" id="rfDate" type="date" style="flex:1;min-width:140px" aria-label="date it came back">
-        </div>
-        <div id="rfVia" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"></div>
+        <p class="cap" style="margin-top:8px">where it came back</p>
+        <div class="seg grow" id="segVia" style="margin-top:4px"></div>
         <input class="descinput" id="rfNote" placeholder="note (optional)" style="width:100%;margin-top:8px">
-        <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-soft" type="button" style="flex:1" onclick="closeRefundPanel()">Cancel</button><button class="btn btn-primary" type="button" id="rfSave" style="flex:2" onclick="saveRefund()">Refund</button></div>
       </div>
-      <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad);width:100%;margin-top:10px;flex:0 0 auto" onclick="deleteExpense()">Delete</button>
+    </div>
+    <div id="editActions" style="display:none">
+      <button class="btn-tert" id="refundBtn" style="display:none" onclick="openRefundPanel()">↩ Refund…</button>
+      <button class="btn-tert" id="deleteBtn" style="display:none;color:var(--bad)" onclick="deleteExpense()">Delete</button>
     </div>
     <div id="askStrip" role="alert" aria-live="assertive"><p id="askText"></p><div class="askbtns"><button type="button" class="btn btn-soft" id="askBack" onclick="askChange()">Change</button><button type="button" class="btn btn-primary" id="askGo" onclick="askSaveAnyway()">Save anyway</button></div></div>
     <div id="dock">
@@ -796,6 +829,24 @@ function primaryCur(){ return homeCurrencies()[0]; }
 
 // ── auth flow ────────────────────────────────
 let authMode = 'signin', recoverMode = false;
+const PW_MIN = 12;   // production's minimum (Supabase → Authentication → Passwords); the local stack's config matches
+// iOS keeps Safari and a Home Screen app apart: separate storage, separate sign-ins. An email link always opens Safari
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && !/Android/.test(navigator.userAgent));
+const STANDALONE = navigator.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+const APP_URL = location.origin + location.pathname.replace(/index\.html$/, '');
+// an invite link (…/app/?join=JOIN-…) carries its code. Kept on this device (a DEVICE_KEY) until a login uses it;
+// the sign-up also stores it in the account itself, so it survives the confirm-email link opening in Safari (Bundle C)
+const JOIN_FROM_URL = (() => {
+  if (EMBED) return '';
+  try {
+    const c = (new URLSearchParams(location.search).get('join') || '').trim();
+    if (!c) return '';
+    history.replaceState(null, '', location.pathname + location.hash);   // the hash may carry a fresh login: keep it
+    if (!/^[A-Za-z0-9-]{4,40}$/.test(c)) return '';
+    localStorage.setItem('bh-invite', c);
+    return c;
+  } catch (e) { return ''; }
+})();
 function togglePw(){
   const pw = $('password');
   pw.type = pw.type === 'password' ? 'text' : 'password';
@@ -806,7 +857,7 @@ async function forgotPw(){
   const email = $('email').value.trim();
   if (!email) { $('loginError').style.color = 'var(--bad)'; $('loginError').textContent = 'type your email above first, then tap forgot password'; return; }
   if (!guard($('forgotBtn'))) return;
-  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: 'https://aizattaha.github.io/bearhaus-finance/app/' });
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: APP_URL });
   $('loginError').style.color = error ? 'var(--bad)' : 'var(--good)';
   $('loginError').textContent = error ? ('couldn’t send: ' + error.message) : 'reset link sent — check your email, then come back here';
 }
@@ -815,32 +866,69 @@ if (sb) sb.auth.onAuthStateChange(evt => {
   if (evt !== 'PASSWORD_RECOVERY') return;
   recoverMode = true;
   $('login').style.display = 'flex'; $('app').style.display = 'none'; $('onboard').style.display = 'none';
+  $('joinBanner').style.display = 'none'; $('loginForm').style.display = '';
   $('email').style.display = 'none'; $('email').required = false;
   $('inviteCode').style.display = 'none';
   $('modeToggle').style.display = 'none'; $('forgotBtn').style.display = 'none';
-  $('password').value = ''; $('password').placeholder = 'new password (6+ characters)';
+  $('password').value = ''; $('password').placeholder = 'new password (12+ characters)'; $('password').autocomplete = 'new-password';
+  $('pwHint').style.display = 'block';
   $('loginBtn').textContent = 'Set new password';
   $('loginError').style.color = 'var(--good)';
   $('loginError').textContent = 'welcome back — choose a new password';
 });
-$('modeToggle').onclick = () => {
-  authMode = authMode === 'signin' ? 'signup' : 'signin';
-  $('inviteCode').style.display = authMode === 'signup' ? 'block' : 'none';
-  $('loginBtn').textContent = authMode === 'signup' ? 'Create account' : 'Sign in';
-  $('modeToggle').textContent = authMode === 'signup'
-    ? 'already have an account? sign in'
-    : 'joining the beta? create your account';
+function setAuthMode(m){
+  authMode = m;
+  const up = m === 'signup';
+  $('loginForm').style.display = ''; $('modeToggle').style.display = ''; $('forgotBtn').style.display = '';
+  $('inviteCode').style.display = up ? 'block' : 'none';
+  $('pwHint').style.display = up ? 'block' : 'none';
+  $('password').placeholder = up ? 'choose a password (12+ characters)' : 'password';
+  $('password').autocomplete = up ? 'new-password' : 'current-password';
+  $('loginBtn').textContent = up ? 'Create account' : 'Sign in';
+  $('modeToggle').textContent = up ? 'already have an account? sign in' : 'new here? create your account';
   $('loginError').textContent = '';
-};
+}
+$('modeToggle').onclick = () => setAuthMode(authMode === 'signin' ? 'signup' : 'signin');
+// opened from an invite link: who it's for, and — in Safari on an iPhone — "add to Home Screen first", because
+// a login made in Safari doesn't carry over to the Home Screen app (and the code would be typed twice)
+async function showJoinBanner(code){
+  $('joinBanner').style.display = 'block';
+  $('joinCode').textContent = code; $('joinCodeRow').style.display = 'flex';
+  $('joinCopy').onclick = async () => { try { await navigator.clipboard.writeText(code); toast('code copied'); } catch (e) { toast('your code: ' + code); } };
+  $('inviteCode').value = code;
+  if (IOS && !STANDALONE) {
+    $('joinSteps').innerHTML = '<li>Tap <b>Share</b> (the square with an arrow, at the bottom of Safari), then <b>Add to Home Screen</b>, then <b>Add</b>.</li>'
+      + '<li>Open <b>BearHaus</b> from your Home Screen.</li><li>Tap “new here? create your account” and paste this code:</li>';
+    $('joinSteps').style.display = 'block'; $('joinHere').style.display = 'inline-block';
+    $('loginForm').style.display = 'none'; $('modeToggle').style.display = 'none'; $('forgotBtn').style.display = 'none';
+    $('joinHere').onclick = () => { $('joinSteps').style.display = 'none'; $('joinHere').style.display = 'none'; setAuthMode('signup'); };
+  } else setAuthMode('signup');
+  if (!sb) return;
+  const r = await sb.rpc('invite_info', { p_code: code });
+  if (r.error) return;
+  const i = r.data;
+  if (i && i.kind === 'member') {
+    $('joinTitle').textContent = 'Join ' + i.household;
+    $('joinWho').textContent = (i.person ? 'as ' + i.person + ' · ' : '') + (i.role === 'viewer' ? 'you’ll see everything, but not change it' : 'you’ll see and add everything, same as the person who invited you');
+  } else if (i && i.kind === 'beta') {
+    $('joinTitle').textContent = 'Create your BearHaus account';
+  } else {
+    $('joinTitle').textContent = 'This invite has been used or has expired';
+    $('joinWho').textContent = 'ask for a new one — or, if you already made your account, sign in';
+    $('joinCodeRow').style.display = 'none'; $('joinSteps').style.display = 'none'; $('joinHere').style.display = 'none';
+    $('inviteCode').value = ''; setAuthMode('signin');
+  }
+}
 $('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   if (!sb) { $('loginError').style.color = 'var(--bad)'; $('loginError').textContent = 'couldn’t load the app — check your connection, then close and reopen'; return; }
   const btn = $('loginBtn'), errEl = $('loginError');
   const fail = m => { errEl.style.color = 'var(--bad)'; errEl.textContent = m; };
-  const done = () => { btn.disabled = false; btn.textContent = authMode === 'signup' ? 'Create account' : 'Sign in'; };
+  const done = () => { btn.disabled = false; btn.textContent = recoverMode ? 'Set new password' : authMode === 'signup' ? 'Create account' : 'Sign in'; };
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
   errEl.textContent = '';
   const email = $('email').value.trim(), password = $('password').value;
+  if ((recoverMode || authMode === 'signup') && password.length < PW_MIN) { done(); fail('the password needs at least ' + PW_MIN + ' characters — a short sentence works well'); return; }
 
   if (recoverMode) {
     const { error } = await sb.auth.updateUser({ password });
@@ -857,20 +945,30 @@ $('loginForm').addEventListener('submit', async e => {
     const chk = await sb.rpc('check_invite', { p_code: code });
     if (chk.error) { done(); fail('couldn’t check the invite code: ' + chk.error.message); return; }
     if (!chk.data) { done(); fail('that invite code isn’t valid — or it’s already been used'); return; }
-    // the code travels with the sign-up: the server checks it too, once the sign-up hook is on (v2 sprint 2)
-    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { invite: code } } });
+    // the code travels with the sign-up: in the account (the server's sign-up check reads it, and the setup screen
+    // finds it again after the confirm link) and in the link back from the confirm email
+    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { invite: code }, emailRedirectTo: APP_URL + '?join=' + encodeURIComponent(code) } });
     done();
     if (error) { fail(/already registered/i.test(error.message) ? 'that email already has an account — sign in, or use “forgot password?”' : 'couldn’t create the account: ' + error.message); return; }
     localStorage.setItem('bh-invite', code);
     if (data.session) { tryBoot(data.session); return; }   // the auth listener may have started it already
+    setAuthMode('signin');   // the next step here is signing in, once the email is confirmed
     errEl.style.color = 'var(--good)';
-    errEl.textContent = 'account created — confirm it via the email we just sent, then sign in here';
+    errEl.textContent = 'nearly there — we’ve emailed ' + email + '. Tap the link in that email'
+      + (IOS && STANDALONE ? '. It opens in Safari: that’s fine — join there, then come back here and sign in.' : ', then sign in here.');
     return;
   }
 
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   done();
   if (error) {
+    if (/not confirmed/i.test(error.message)) {
+      fail('confirm your email first — tap the link in the email we sent you (check spam too). ');
+      const again = document.createElement('button'); again.type = 'button'; again.className = 'btn-tert'; again.style.fontSize = '12px'; again.textContent = 'send it again';
+      again.onclick = async () => { if (!guard(again)) return; const r = await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: APP_URL } }); toast(r.error ? 'couldn’t send: ' + r.error.message : 'sent — check your email'); };
+      errEl.appendChild(again);
+      return;
+    }
     fail(error.message === 'Invalid login credentials'
       ? 'email or password didn’t match — try again'
       : 'couldn’t sign in: ' + error.message);
@@ -918,11 +1016,15 @@ function obRenderCountries(showAll){
     box.appendChild(b);
   }
 }
-function showOnboard(){
+async function showOnboard(){
   $('login').style.display = 'none';
   $('app').style.display = 'none';
   $('onboard').style.display = 'flex';
-  $('obCode').value = localStorage.getItem('bh-invite') || '';
+  // the invite code: this device's (typed at sign-up, or from an invite link), else the one the account was made
+  // with — after the confirm email opened Safari instead of the Home Screen app, the device copy isn't here (Bundle C)
+  let code = localStorage.getItem('bh-invite') || '';
+  if (!code && sb) { try { const { data } = await sb.auth.getSession(); code = String(((data.session && data.session.user && data.session.user.user_metadata) || {}).invite || ''); } catch (e) {} }
+  $('obCode').value = code.trim();
   // a login whose household access was removed lands here — say so instead of a blank setup form (QA2 A-B3)
   const lost = store.get('lost');
   $('obLost').style.display = lost ? 'block' : 'none';
@@ -935,12 +1037,15 @@ let obCodeT = null, obJoinInfo = null;
 function obCodeChanged(){
   clearTimeout(obCodeT);
   const code = $('obCode').value.trim();
-  obJoinInfo = null; $('obJoinCard').style.display = 'none'; $('obCreate').style.display = 'contents'; $('obCodeNote').textContent = '';
-  if (!store.get('lost')) { $('obTitle').textContent = 'Set up your household'; $('obSub').textContent = 'a minute of setup, then you’re in'; }
+  // the new-household form shows only for a beta code: a partner with a JOIN code (or no code yet) can't start a
+  // second household by mistake (the server refuses one for a login invited to join — Bundle C)
+  obJoinInfo = null; $('obJoinCard').style.display = 'none'; $('obCreate').style.display = 'none'; $('obCodeNote').textContent = '';
+  if (!store.get('lost')) { $('obTitle').textContent = code ? 'Checking your code…' : 'Join or start a household'; $('obSub').textContent = code ? '' : 'paste the code from your invite message'; }
   if (!code) return;
   obCodeT = setTimeout(async () => {
     const r = await sb.rpc('invite_info', { p_code: code });
-    if (r.error || $('obCode').value.trim() !== code) return;
+    if ($('obCode').value.trim() !== code) return;
+    if (r.error) { $('obCodeNote').textContent = 'couldn’t check the code — check your connection, then type it again'; return; }
     if (r.data && r.data.kind === 'member') {
       obJoinInfo = r.data;
       $('obJoinTitle').textContent = 'Join ' + r.data.household;
@@ -951,10 +1056,13 @@ function obCodeChanged(){
       $('obTitle').textContent = 'Join a household'; $('obSub').textContent = 'no setup — you’ll be in as soon as you join';
     } else if (r.data && r.data.kind === 'beta') {
       $('obCodeNote').textContent = 'beta code ✓ — set up your household below';
+      $('obCreate').style.display = 'contents';
+      if (!store.get('lost')) { $('obTitle').textContent = 'Set up your household'; $('obSub').textContent = 'a minute of setup, then you’re in'; }
     } else {
-      $('obCodeNote').textContent = 'that code isn’t recognised (or it’s been used)';
+      $('obCodeNote').textContent = 'that code isn’t recognised, or it’s been used or expired — ask the person who invited you for a new one';
+      if (!store.get('lost')) { $('obTitle').textContent = 'Join or start a household'; $('obSub').textContent = 'paste the code from your invite message'; }
     }
-  }, 500);
+  }, code === (localStorage.getItem('bh-invite') || '') ? 0 : 500);
 }
 let obJoining = false;
 async function joinHousehold(){
@@ -965,10 +1073,19 @@ async function joinHousehold(){
   obJoining = false; $('obJoinGo').textContent = 'Join';
   if (error) { $('obJoinErr').textContent = error.message; return; }
   localStorage.removeItem('bh-invite');
+  const hh = (obJoinInfo || {}).household || 'the household';
+  // joined in Safari on an iPhone (the confirm email opens there): the Home Screen app has its own sign-in
+  if (IOS && !STANDALONE) {
+    $('obJoinTitle').textContent = 'You’re in ' + hh + ' 🐻';
+    $('obJoinCap').innerHTML = 'Now open <b>BearHaus from your Home Screen</b> and sign in there with the same email and password. Safari and the Home Screen app keep separate sign-ins — you can close this page.';
+    $('obJoinGo').textContent = 'or use BearHaus here in Safari';
+    $('obJoinGo').className = 'btn-tert'; $('obJoinGo').onclick = () => enterApp();
+    $('obCode').closest('div').style.display = 'none'; $('obTitle').textContent = 'Joined'; $('obSub').textContent = '';
+    return;
+  }
   $('onboard').style.display = 'none';
-  toast('welcome to ' + ((obJoinInfo || {}).household || 'the household') + ' 🐻');
-  enterApp();
-  setTimeout(startTutorial, 700);
+  toast('welcome to ' + hh + ' 🐻');
+  enterApp();   // a new login that didn't create the household gets the short joiner tour (enterApp)
 }
 function obAddPerson(){
   const inp = document.createElement('input');
@@ -1041,7 +1158,10 @@ async function enterApp(){
     if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household';
     applyRole();
     checkPlanNudge(CTX.plan);
-    if (!EMBED && store.get('tut-done') && store.get('tut-v') !== TUT_VERSION && !tutEls)
+    // someone who joined (not the owner), first time on this device: the short joiner tour, once
+    if (!EMBED && !store.get('tut-done') && CTX.role !== 'owner' && !tutEls)
+      setTimeout(() => { if (!tutEls && !$('sheet').classList.contains('open')) startTutorial('join'); }, 700);
+    else if (!EMBED && store.get('tut-done') && store.get('tut-v') !== TUT_VERSION && !tutEls)
       setTimeout(() => { if (!tutEls && !$('sheet').classList.contains('open')) startTutorial('unseen'); }, 1200);
     // the first paint guessed the home currency — repaint with the real one
     const c = store.get('home2');
@@ -3140,14 +3260,23 @@ async function renderSetPeople(box){
 function showInviteCode(who, code, box){
   const d = document.createElement('div');
   d.style.cssText = 'background:var(--accent-soft);border-radius:14px;padding:12px 14px;margin:8px 0';
-  const msg = 'Join ' + (CTX.hh ? CTX.hh.name : 'our household') + ' on BearHaus: open ' + location.origin + location.pathname + ' , tap "create your account" and enter the code ' + code;
+  // the link carries the code; "add to Home Screen first" because on an iPhone a login made in Safari doesn't
+  // carry over to the Home Screen app (Bundle C)
+  const link = APP_URL + '?join=' + encodeURIComponent(code);
+  const msg = 'Join ' + (CTX.hh ? CTX.hh.name : 'our household') + ' on BearHaus 🐻\n\n'
+    + '1. On your phone, open this link (in Safari on an iPhone): ' + link + '\n'
+    + '2. Add it to your Home Screen first: Share → Add to Home Screen. Then open BearHaus from your Home Screen.\n'
+    + '3. Tap "new here? create your account" and use this code: ' + code + '\n'
+    + '4. Confirm your email (the link may open Safari — just tap Join there), then sign in from the Home Screen app.\n\n'
+    + 'The code works once and for 14 days.';
   d.innerHTML = '<p class="cap" style="color:var(--primary)">invite for ' + esc(who) + ' · valid 14 days</p>'
     + '<p class="disp num" style="font-size:22px;letter-spacing:.06em;margin:4px 0;color:var(--primary)">' + esc(code) + '</p>'
-    + '<p class="cap">they sign up on the login screen with this code — no household setup, they land straight in yours</p>'
-    + '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn-mini" type="button" id="invShare">share</button><button class="btn-mini" type="button" id="invCopy">copy code</button><button class="btn-tert" type="button" id="invRevoke" style="color:var(--bad)">cancel invite</button></div>';
+    + '<p class="cap">share sends a link that carries this code, with “add to Home Screen first” — they land straight in your household, no setup</p>'
+    + '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn-mini" type="button" id="invShare">share</button><button class="btn-mini" type="button" id="invCopy">copy code</button><button class="btn-mini" type="button" id="invLink">copy link</button><button class="btn-tert" type="button" id="invRevoke" style="color:var(--bad)">cancel invite</button></div>';
   box.insertBefore(d, box.firstChild);
   d.querySelector('#invShare').onclick = async () => { if (navigator.share) { try { await navigator.share({ text: msg }); } catch (e) {} } else { try { await navigator.clipboard.writeText(msg); toast('invite message copied'); } catch (e) { toast('copy this: ' + code); } } };
   d.querySelector('#invCopy').onclick = async () => { try { await navigator.clipboard.writeText(code); toast('code copied'); } catch (e) { toast('copy this: ' + code); } };
+  d.querySelector('#invLink').onclick = async () => { try { await navigator.clipboard.writeText(link); toast('link copied'); } catch (e) { toast('copy this: ' + link); } };
   d.querySelector('#invRevoke').onclick = async () => { const r = await sb.rpc('revoke_member_invite', { p_code: code }); if (r.error) { toast('couldn’t cancel: ' + r.error.message); return; } renderSetPeople(box); toast('invite cancelled'); };
 }
 
@@ -4377,7 +4506,8 @@ function backdropTap(){
 function closeSheet(){
   embedSay({ type: 'close' });
   hideAsk();
-  if ($('refundBtn')) { $('refundBtn').style.display = 'none'; $('refundPanel').style.display = 'none'; $('dock').style.display = ''; }
+  if (rfMode) closeRefundPanel(true);
+  if ($('refundBtn')) { $('refundBtn').style.display = 'none'; $('refundPanel').style.display = 'none'; syncEditActions(); }
   $('backdrop').classList.remove('open');
   $('sheet').classList.remove('open');
   $('sheet').classList.remove('full');
@@ -4390,7 +4520,7 @@ function closeSheet(){
 // OS keyboard takes its space; blur → the keypad returns. nothing is covered.
 function hideTake(){
   $('takeBox').style.display = 'none';
-  $('formBody').style.display = 'block';
+  $('formBody').style.display = '';   // the stylesheet decides: a column, or pairs in Trip / From a fund (#sh-form.tight)
 }
 function updateTake(){
   // income: suggest the household's named sources (from the monthly plan), even before typing
@@ -4626,6 +4756,11 @@ function openCatPicker(){
 
 // the joint pot is a household setting — its label is data, and it can be turned off
 function jointLabel(){ return (CTX.hh && CTX.hh.joint_label) || null; }
+// the profile this login is linked to (app_bootstrap's me.profile_id), as a payer name
+function myPayerName(){
+  const id = CTX.me && CTX.me.profile_id, p = id && (CTX.profiles || []).find(x => x.id === id);
+  return p ? p.display_name : null;
+}
 function payerNames(){
   const names = CTX.profiles.map(p => p.display_name);
   return jointLabel() ? names.concat(jointLabel()) : names;
@@ -4828,7 +4963,10 @@ function openForm(m){
   editingExp = null; editExtraFund = null; $('deleteBtn').style.display = 'none'; $('lockNote').style.display = 'none';
   saveId = null;
   $('descInput').value = keep ? keep.desc : ''; $('commentsInput').value = keep ? keep.comments : ''; setRefund(!!(keep && keep.refund));
-  $('refundWrap').style.display = (m === 'daily' || m === 'trip' || m === 'fundexp') ? 'flex' : 'none';
+  // money back is refunded against its purchase (E35): no standalone refund from +, a way to the purchase instead
+  $('refundWrap').style.display = 'none'; setRefund(false);
+  $('refundFind').style.display = (m === 'daily' || m === 'trip' || m === 'fundexp') ? 'inline-block' : 'none';
+  $('sh-form').classList.remove('refunding'); syncEditActions();
   $('dateInput').value = isoDate(new Date()); updateDateVal();
   $('rowDetails').style.display = 'none';
   hideTake();
@@ -4839,6 +4977,10 @@ function openForm(m){
   buildSeg('segMode', TABS.map(x => x[0]), Math.max(TABS.findIndex(x => tabOf(x[1]) === tabOf(m)), 0),
     lbl => { const target = TABS.find(x => x[0] === lbl)[1]; if (tabOf(target) !== tabOf(mode)) openForm(target); });
   const isExp = tabOf(m) === 'expense';
+  // Trip / From a fund: rows in pairs on a phone so the form never scrolls (CSS: #sh-form.tight)
+  const tight = m === 'trip' || m === 'fundexp';
+  $('sh-form').classList.toggle('tight', tight);
+  ['rowTrip', 'rowFundFrom', 'rowDate'].forEach(id => $(id).classList.toggle('pair2', tight));
   const hasCC = (CTX.cards || []).some(c => c.kind === 'credit_card' && !c.is_archived);
   const isXferTab = tabOf(m) === 'transfer';
   $('rowScope').style.display = (isExp || isXferTab) ? 'block' : 'none';
@@ -4854,7 +4996,9 @@ function openForm(m){
       lbl => { const target = SCOPES.find(x => x[0] === lbl)[1]; if (target !== mode) { scopeSwitch = true; openForm(target); } });
   }
   const names = payerNames();
-  const lastPayer = store.get('payer') || names[0];
+  // the last payer picked on this device, else the person this login is (Settings → People → that's me, or the
+  // person a JOIN code named) — never simply the first profile, which filed a partner's first entries as the owner's
+  const lastPayer = [store.get('payer'), myPayerName()].find(n => n && names.includes(n)) || names[0];
   const lastCur = store.get('cur') || 'A$';
 
   const fundish = m === 'fund' || m === 'transfer' || m === 'income' || m === 'paycard';   // no category; the currency follows the fund
@@ -4956,7 +5100,7 @@ function toggleDetails(){
 }
 
 // calculator dock — C ÷ × −, + spans two rows, big ✓ saves (it IS the Save button), ⌫ bottom
-function armSaveKey(){ const k = $('saveBtn'); if (k) k.innerHTML = '✓'; }
+function armSaveKey(){ const k = $('saveBtn'); if (k) { k.innerHTML = rfMode ? 'Refund' : '✓'; k.classList.toggle('word', !!rfMode); k.setAttribute('aria-label', rfMode ? 'Refund' : 'Save'); } }
 (function(){
   const pad = $('keypad');
   // grid order matters: 4 columns, + and ✓ span two rows each in the right column
@@ -4979,11 +5123,12 @@ const MONEY_LOCKED_MSG = 'the amount, date and fund are shared with the other si
 const sentLocked = () => mode === 'edit' && !!(editingExp && editingExp.settlement_tx_id);
 const SENT_LOCKED_MSG = 'this purchase was sent to a travel fund — undo that send on the trip first to change its amount, card or currency';
 function keyTap(k){
-  if (k !== '✓' && moneyLocked()) { showAsk(MONEY_LOCKED_MSG, 'info'); return; }
-  if (k !== '✓' && sentLocked()) { showAsk(SENT_LOCKED_MSG, 'info'); return; }
+  if (k !== '✓' && !rfMode && moneyLocked()) { showAsk(MONEY_LOCKED_MSG, 'info'); return; }
+  if (k !== '✓' && !rfMode && sentLocked()) { showAsk(SENT_LOCKED_MSG, 'info'); return; }
   if (k === '✓') {
     if (pendOp !== null) { calcEval(); renderAmt(); return; }   // ✓ acts as “=” first…
-    saveEntry(); return;                                        // …then saves
+    if (rfMode) { saveRefund(); return; }                       // …then refunds (the refund panel is open)
+    saveEntry(); return;                                        // …or saves
   }
   if (k === 'C') { amt = ''; pendOp = null; pendVal = null; renderAmt(); return; }
   if (k === '⌫') {
@@ -5292,6 +5437,7 @@ function payerFromSplits(exp){
 }
 function openEditExpense(exp){
   mode = 'edit'; editingExp = exp; saving = false; overdrawOk = false; curMismatchOk = false; bigOk = false; hideAsk(); saveId = null;
+  $('sh-form').classList.remove('tight', 'refunding'); ['rowTrip', 'rowFundFrom', 'rowDate'].forEach(id => $(id).classList.remove('pair2')); rfMode = null; $('refundFind').style.display = 'none';
   $('sh-form').classList.remove('money-locked');
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
@@ -5346,6 +5492,7 @@ function openEditExpense(exp){
 // ── edit / delete a daily expense ────────────
 function openEditDaily(exp){
   mode = 'editDaily'; editingExp = exp; saving = false; overdrawOk = false; curMismatchOk = false; bigOk = false; hideAsk(); saveId = null;
+  $('sh-form').classList.remove('tight', 'refunding'); ['rowTrip', 'rowFundFrom', 'rowDate'].forEach(id => $(id).classList.remove('pair2')); rfMode = null; $('refundFind').style.display = 'none';
   $('sh-form').classList.remove('money-locked');
   const n = Number(exp.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
@@ -5404,6 +5551,7 @@ function openEditDaily(exp){
 // ── edit / delete a fund transaction ─────────
 function openEditFund(tx){
   mode = 'editFund'; editingExp = tx; saving = false; overdrawOk = false; curMismatchOk = false; bigOk = false; hideAsk(); saveId = null;
+  $('sh-form').classList.remove('tight', 'refunding'); ['rowTrip', 'rowFundFrom', 'rowDate'].forEach(id => $(id).classList.remove('pair2')); rfMode = null; $('refundFind').style.display = 'none';
   const n = Number(tx.amount);
   amt = (n % 1 === 0) ? String(n) : n.toFixed(2);
   pendOp = null; pendVal = null; renderAmt();
@@ -5482,10 +5630,15 @@ function applyLockState(exp){
     canDelete = false;
     lines.push('↩ ' + fmtMoney(refundedPart(exp), exp.currency) + ' of this has come back as refunds — the amount can’t go below that. To delete it, or change its currency' + (mode === 'edit' ? ' or trip' : '') + ', delete its refunds first.');
   }
+  // a refund entered the old way, as its own line (E35 retires them): say so first, with the way to the purchase
+  const oldRefund = !!(exp && exp.is_refund && !exp.refund_of) && (mode === 'edit' || mode === 'editDaily');
+  if (oldRefund) lines.push('↩ old-style refund — link it to its purchase: find the purchase, tap ↩ Refund there, then delete this line.');
+  $('lockFindBtn').style.display = oldRefund ? '' : 'none';
   $('lockNote').style.display = lines.length ? 'block' : 'none';
   $('lockUnlockBtn').style.display = locked ? '' : 'none';
   $('lockNoteText').textContent = lines.join(' ');
   if (!canDelete) $('deleteBtn').style.display = 'none';
+  syncEditActions();
   if (sent) {   // name the fund and the day it was sent
     sb.from('fund_transactions').select('date, funds(name)').eq('id', exp.settlement_tx_id).maybeSingle().then(r => {
       if (!r.data || editingExp !== exp) return;
@@ -5509,6 +5662,21 @@ async function unlockEditing(){
 // all of it or a part; back on the card it was paid with, or as a transfer / cash into the fund it counted against
 // (the card still owes the full charge until it is paid). The server works out where it counts (refund_purchases).
 let rfVia = 'card', rfId = null;   // rfId: the refund's id for this panel — a retap after a lost reply saves once (A5)
+// rfMode: the refund panel is open — the purchase's own amount and date are kept here while the keypad and the date
+// row type the refund's, and put back when the panel closes (nothing about the purchase is saved by a refund)
+let rfMode = null;
+// the edit sheet's fixed action row shows when either of its buttons does
+function syncEditActions(){
+  const any = ['refundBtn', 'deleteBtn'].some(id => $(id).style.display !== 'none');
+  $('editActions').style.display = any ? 'flex' : 'none';
+}
+// "money back on a purchase?" — the + form and an old-style refund lead to the purchase list, where ↩ Refund lives
+function findRefundPurchase(){
+  const words = (mode === 'edit' || mode === 'editDaily') && editingExp ? (editingExp.description || '') : $('descInput').value.trim();
+  closeSheet();
+  openAllTx();
+  setTimeout(() => { if ($('atxSearch')) { $('atxSearch').value = words; loadAllTx(true); } toast('open the purchase, then tap ↩ Refund'); }, 50);
+}
 function setupRefundUI(exp){
   const linked = !!(exp && exp.refund_of);
   $('refundPanel').style.display = 'none';
@@ -5518,7 +5686,8 @@ function setupRefundUI(exp){
   const left = exp ? Number(exp.amount) - refundedPart(exp) : 0;
   const can = exp && !exp.is_refund && !exp.refund_of && exp.category !== 'Payment' && left > 0.005 && (mode === 'edit' || mode === 'editDaily');
   $('refundBtn').style.display = can ? 'block' : 'none';
-  $('refundBtn').textContent = refundedPart(exp) > 0 ? '↩ Refund more… (' + fmtMoney(refundedPart(exp), exp.currency) + ' back so far)' : '↩ Refund…';
+  $('refundBtn').textContent = refundedPart(exp) > 0 ? '↩ Refund more (' + fmtMoney(refundedPart(exp), exp.currency) + ' back)' : '↩ Refund';
+  syncEditActions();
 }
 function openRefundPanel(){
   const exp = editingExp; if (!exp) return;
@@ -5528,31 +5697,47 @@ function openRefundPanel(){
   const cardName = card ? card.name : (exp.paid_with || 'the card');
   rfVia = onCard ? 'card' : 'cash';
   rfId = crypto.randomUUID ? crypto.randomUUID() : null;
+  rfMode = { amt, pendOp, pendVal, date: $('dateInput').value, left, curLbl: $('fundCurLabel').style.display, title: $('formTitle').textContent };
+  $('formTitle').textContent = '↩ Refund';
+  hideAsk(); blurInputs();
   $('rfTitle').textContent = 'Refund “' + (exp.description || 'this purchase') + '”';
-  $('rfCap').textContent = 'all of it or a part — up to ' + fmtMoney(left, exp.currency) + '. The purchase keeps its full amount (it still matches the statement); only what was used counts, in its own month.';
-  $('rfAmount').value = left.toFixed(2);
-  $('rfDate').value = isoDate(new Date()); $('rfDate').min = exp.date;
+  $('rfCap').textContent = 'type what came back — up to ' + fmtMoney(left, exp.currency) + '. The purchase keeps its full amount (it still matches the statement); only what was used counts, in its own month.';
   $('rfNote').value = '';
-  const chip = (v, label) => '<button type="button" class="chip' + (rfVia === v ? ' sel' : '') + '" data-via="' + v + '">' + esc(label) + '</button>';
-  $('rfVia').innerHTML = (onCard ? chip('card', 'back on ' + cardName) : '') + chip('cash', 'bank transfer or cash');
-  $('rfVia').querySelectorAll('[data-via]').forEach(b => b.onclick = () => { rfVia = b.dataset.via; $('rfVia').querySelectorAll('[data-via]').forEach(x => x.classList.toggle('sel', x === b)); });
-  $('refundBtn').style.display = 'none';
+  amt = calcStr(left); pendOp = null; pendVal = null; renderAmt();
+  $('dateInput').value = isoDate(new Date()); updateDateVal();
+  const lab = $('rowDate').querySelector('.rlab'); if (lab) lab.textContent = 'date it came back';
+  $('fundCurLabel').textContent = curLabel(exp.currency); $('fundCurLabel').style.display = 'inline';
+  const vias = (onCard ? [['back on ' + cardName, 'card']] : []).concat([['bank transfer or cash', 'cash']]);
+  buildSeg('segVia', vias.map(v => v[0]), vias.findIndex(v => v[1] === rfVia), lbl => { rfVia = vias.find(v => v[0] === lbl)[1]; });
+  $('sh-form').classList.add('refunding');
   $('refundPanel').style.display = 'block';
-  dockShow('none'); $('dock').style.display = 'none';   // the keypad types the purchase's own amount — out of the way while refunding
-  $('rfAmount').focus();
-  $('refundPanel').scrollIntoView({ block: 'nearest' });
+  armSaveKey(); dockShow('pad');
 }
-function closeRefundPanel(){ $('refundPanel').style.display = 'none'; setupRefundUI(editingExp); $('dock').style.display = ''; dockShow('pad'); }
+// back to the purchase: its own amount and date return; `quiet` = the sheet is closing anyway
+function closeRefundPanel(quiet){
+  if (!rfMode) return;
+  amt = rfMode.amt; pendOp = rfMode.pendOp; pendVal = rfMode.pendVal; renderAmt();
+  $('dateInput').value = rfMode.date; updateDateVal();
+  $('fundCurLabel').style.display = rfMode.curLbl; $('formTitle').textContent = rfMode.title;
+  const lab = $('rowDate').querySelector('.rlab'); if (lab) lab.textContent = 'date';
+  rfMode = null;
+  $('sh-form').classList.remove('refunding');
+  $('refundPanel').style.display = 'none';
+  armSaveKey();
+  if (!quiet) { hideAsk(); setupRefundUI(editingExp); dockShow('pad'); }
+}
 async function saveRefund(){
-  const exp = editingExp; if (!exp || saving) return;
-  const v = Math.round(parseFloat($('rfAmount').value) * 100) / 100;
-  if (!(v > 0)) { toast('type how much came back'); return; }
-  if (!guard($('rfSave'))) return;
-  saving = true;
-  const { error } = await sb.rpc('refund_purchases', { p_items: [{ id: exp.id, amount: v }], p_date: $('rfDate').value || isoDate(new Date()),
+  const exp = editingExp; if (!exp || saving || !rfMode) return;
+  hideAsk();
+  const v = Math.round(parseFloat(amt || '0') * 100) / 100, date = $('dateInput').value || isoDate(new Date());
+  if (!(v > 0)) { showAsk('type how much came back', 'err'); return; }
+  if (v > rfMode.left + 0.005) { showAsk('at most ' + fmtMoney(rfMode.left, exp.currency) + ' of this purchase can still come back', 'err'); return; }
+  if (date < exp.date) { showAsk('a refund can’t be dated before its purchase (' + fmtDayMonYr(exp.date) + ')', 'err'); return; }
+  saving = true; $('saveBtn').innerHTML = '<span class="spin"></span>';
+  const { error } = await sb.rpc('refund_purchases', { p_items: [{ id: exp.id, amount: v }], p_date: date,
                                                       p_via: rfVia, p_note: $('rfNote').value.trim() || null, p_id: rfId });
   saving = false;
-  if (error) { toast('couldn’t refund: ' + error.message); return; }
+  if (error) { armSaveKey(); showAsk('couldn’t refund: ' + error.message, 'err'); return; }
   const msg = fmtMoney(v, exp.currency) + ' refunded' + (rfVia === 'card' ? ' on the card' : ' — into its fund');
   embedSay({ type: 'saved', msg });
   closeSheet(); toast(msg + ' 🐻');
@@ -5635,6 +5820,19 @@ const TUT_STEPS = [
   { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
     title:'That’s it', text:'add your first expense — the app does the rest 🐻' },
 ];
+// someone who joined a household (not its owner) gets five stops, not the full tour: adding, the budget, the funds.
+// Setting things up — cards, funds, the Desk — is the owner's job; the full tour stays in Settings → App tutorial
+const JOIN_STEPS = [
+  { scr:'scr-home', center:true, title:'Welcome 🐻', text:'you’re in. Five quick stops — skip any time; the full tour is in Settings → App tutorial.' },
+  { scr:'scr-home', el: () => document.querySelector('.fab'), round:true,
+    title:'Add anything', text:'tap + the moment you buy something. Daily counts against this month’s budget; Trip is for holidays.' },
+  { scr:'scr-home', pre: () => openSheet(), el: () => $('descInput').closest('.f-sec') || $('descInput'),
+    title:'The 5-second expense', text:'describe it, tap a category, type the amount, ✓. It’s filed as paid by you, on your usual card — tap either to change it.' },
+  { scr:'scr-budget', el: () => $('budTotalMain').closest('.total-card'),
+    title:'Budget', text:'the month’s plan and what the household has spent against it — both of you, together.' },
+  { scr:'scr-funds', el: () => $('fundTotals'),
+    title:'Funds', text:'Available = what each fund has left to spend. Setting up funds and paying the cards is the owner’s job — here you can just look.' },
+];
 let tutIdx = -1, tutEls = null, tutTimer = null;
 let tutSteps = TUT_STEPS;
 // newsOnly: "What's new" — the stops added or changed since the last tour, framed by a hello and a goodbye
@@ -5642,8 +5840,8 @@ function startTutorial(news){
   if (tutEls) endTutorial(true);
   // news: 'all' = every stop added since July (Settings → What's new) · 'unseen' = only what this login hasn't seen
   const seen = Number(store.get('tut-v') || 1);
-  const picked = news ? TUT_STEPS.filter(x => x.isNew && (news === 'all' || x.isNew > seen)) : [];
-  tutSteps = news
+  const picked = news && news !== 'join' ? TUT_STEPS.filter(x => x.isNew && (news === 'all' || x.isNew > seen)) : [];
+  tutSteps = news === 'join' ? JOIN_STEPS : news
     ? [{ scr:'scr-home', center:true, title:'What’s new ✨', text:'a short walk through what changed. Skip any time.' }]
         .concat(picked, [{ scr:'scr-home', center:true, title:'That’s everything new', text:'the full tour is in Settings → App tutorial whenever you want it 🐻' }])
     : TUT_STEPS;
@@ -5757,6 +5955,7 @@ if (sb) {
     if (booted && session && session.user && store.uid && session.user.id !== store.uid) { location.reload(); return; }
     tryBoot(session);
   });
+  if (JOIN_FROM_URL && !hasStoredLogin()) showJoinBanner(JOIN_FROM_URL);   // opened from an invite link
   (async () => {
     for (let i = 0; i < 4 && !booted; i++) {
       const { data } = await sb.auth.getSession();
