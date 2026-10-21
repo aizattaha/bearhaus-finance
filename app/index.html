@@ -315,6 +315,44 @@ html.embed-sheet .sheet{transform:translate(-50%,0)!important;transition:none}
 /* inside the Desk's Settings page: only the Settings screen (the Desk has its own menu and sign-out) */
 html.embed-settings .tabbar, html.embed-settings .fab, html.embed-settings #scr-settings > div:first-child > .btn-tert, html.embed-settings #scr-settings > .btn-tert{display:none!important}
 html.embed-settings #app{max-width:600px}
+/* a trip line's "what the card charged" box (E43): on the phone under the line, on the Desk in its own column */
+.chargedrow{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin-top:4px}
+.chargedrow .cap{white-space:nowrap}
+input.charged{width:118px;padding:5px 8px;font-size:13px;text-align:right}
+.deskonly{display:none!important}
+html.embed-desk .deskonly{display:inline-flex!important}
+/* the Desk's Trips page (?embed=travel&layout=desk, E43): the trip list left, the open trip right — the lines a table,
+   Send beside them; the phone's own screens, cards and buttons, laid out wide */
+html.embed-travel .tabbar, html.embed-travel .fab, html.embed-travel #scr-trip .scr-head .btn-tert{display:none!important}
+html.embed-desk.embed-travel #app{max-width:1360px;padding:0 8px}
+html.embed-desk.embed-travel .screens{display:grid;grid-template-columns:minmax(220px,280px) minmax(0,1fr);gap:20px;align-items:start}
+html.embed-desk.embed-travel .screen{display:none!important}
+html.embed-desk.embed-travel #scr-travel{display:flex!important;grid-column:1;grid-row:1;padding:18px 0 40px;gap:10px}
+html.embed-desk.embed-travel.trip-open #scr-trip{display:grid!important;grid-column:2;grid-row:1;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start;padding:18px 0 40px}
+html.embed-desk.embed-travel #scr-trip > .scr-head, html.embed-desk.embed-travel #tripCurChips{grid-column:1 / -1}
+html.embed-desk.embed-travel #tripGroups{padding:6px 10px 10px;overflow-x:auto}
+html.embed-desk.embed-travel #tripSettle{grid-row:3}   /* Send above the lines… */
+html.embed-desk.embed-travel #tripGroups{grid-row:4}
+html.embed-desk.embed-travel #scr-travel > .scr-head > div{visibility:hidden}   /* the Desk's page says "Trips" already; the ＋ stays */
+@media (min-width: 1360px){   /* …or beside them on a very wide screen */
+  html.embed-desk.embed-travel.trip-open #scr-trip{grid-template-columns:minmax(0,1fr) 330px}
+  html.embed-desk.embed-travel #tripGroups{grid-column:1;grid-row:3}
+  html.embed-desk.embed-travel #tripSettle{grid-column:2;grid-row:3;position:sticky;top:12px}
+}
+html.embed-desk.embed-travel #tripCards{gap:10px!important}
+html.embed-desk.embed-travel #tripCards .card{padding:14px 16px}
+html.embed-desk.embed-travel #tripCards .card.on{box-shadow:0 0 0 2px var(--primary)}
+html.embed-desk.embed-travel .sheet:not(.full){max-width:560px!important}
+.ttab{width:100%;border-collapse:collapse;font-size:13px}
+.ttab th{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;text-align:left;padding:8px 8px;border-bottom:1px solid var(--muted)}
+.ttab td{padding:8px;border-bottom:1px solid var(--field);vertical-align:middle}
+.ttab td.num{white-space:nowrap}
+.ttab tr[data-id]{cursor:pointer}.ttab tr[data-id]:hover td{background:var(--field)}
+.ttab .amt,.ttab th.amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ttab .ell{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ttab .dsc{display:block;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ttab tr.refunded .dsc{text-decoration:line-through;color:var(--ink-soft)}
+.tag.warn{background:#FFF4DE;color:#8a5a00}
 #setPaneCard{display:none}
 /* the Desk layout (&layout=desk, E38): same rows and buttons, laid out for a big screen */
 html.embed-desk.embed-settings #app{max-width:1180px;padding:0 8px}
@@ -609,6 +647,7 @@ input[type="date"].descinput{min-width:0}
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
           <button class="btn-tert" style="padding-right:0;white-space:nowrap" onclick="openAllTx({ type: 'Trips', what: curTripId })">All transactions ›</button>
           <span class="tick" id="tripDetTick" style="display:none" title="sent to the travel fund">✓</span>
+          <button class="btn btn-primary deskonly" style="height:38px;padding:0 16px;font-size:13px" onclick="embedSay({ type: 'add', trip: curTripId })">＋ add to this trip</button>
         </div>
       </div>
       <div id="tripCurChips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
@@ -788,17 +827,17 @@ input[type="date"].descinput{min-width:0}
 // sit exactly as on the phone, and any change to them lands on both.
 const EMBED = (() => {
   const q = new URLSearchParams(location.search), kind = q.get('embed');
-  if (!['add', 'settings', 'edit'].includes(kind) || window.parent === window) return null;
+  if (!['add', 'settings', 'edit', 'travel'].includes(kind) || window.parent === window) return null;
   try { if (window.parent.location.origin !== location.origin) return null; } catch (e) { return null; }
   return { kind, mode: q.get('mode') || 'daily', date: q.get('date'), card: q.get('card'), id: q.get('id'), rowKind: q.get('row'), archived: new Set(),
-           desk: q.get('layout') === 'desk' };
+           trip: q.get('trip'), desk: q.get('layout') === 'desk' };
 })();
 // &layout=desk (Aizat, 18 Oct — DECISIONS E38): the same screen, the same code and saves, laid out for a big screen —
 // Settings as a section list with the open section beside it, the add form with its keypad / pickers / calendar
 // in a column on the right. Only the CSS (html.embed-desk) and the Settings section switch differ.
 const DESK_LAYOUT = !!(EMBED && EMBED.desk);
 // ?embed=edit&row=daily|travel|fund&id=… : the Desk opens one transaction in this app's own edit sheet
-if (EMBED) document.documentElement.classList.add('embed-' + EMBED.kind, EMBED.kind === 'settings' ? 'embed-page' : 'embed-sheet');
+if (EMBED) document.documentElement.classList.add('embed-' + EMBED.kind, EMBED.kind === 'settings' || EMBED.kind === 'travel' ? 'embed-page' : 'embed-sheet');
 if (DESK_LAYOUT) document.documentElement.classList.add('embed-desk');
 function embedSay(msg){ if (EMBED) try { window.parent.postMessage(Object.assign({ bh: EMBED.kind }, msg), location.origin); } catch (e) {} }
 let toastTimer = null;
@@ -1159,7 +1198,7 @@ async function enterApp(){
   $('app').style.display = 'flex';
   store.remove('lost');
   if (EMBED) {
-    loadContext().then(() => { if (EMBED.kind === 'add') return openEmbedForm(); if (EMBED.kind === 'edit') return openEmbedEdit(); if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household'; go('scr-settings'); embedSay({ type: 'ready' }); })
+    loadContext().then(() => { if (EMBED.kind === 'add') return openEmbedForm(); if (EMBED.kind === 'edit') return openEmbedEdit(); if (EMBED.kind === 'travel') return openEmbedTravel(); if (CTX.hh) $('hhLabel').textContent = '🐻 ' + CTX.hh.name + ' household'; go('scr-settings'); embedSay({ type: 'ready' }); })
       .catch(e => { embedSay({ type: 'error', msg: String((e && e.message) || e) }); });
     return;
   }
@@ -2773,7 +2812,7 @@ async function loadAllTx(reset){
     }
     if (src.includes('t') && !atx.tDone) {
       qt = sb.from('travel_expenses')
-        .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount' + rc() + ', travel_expense_splits(profile_id, amount)')
+        .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount, settled_amount' + rc() + ', travel_expense_splits(profile_id, amount)')
         .eq('household_id', CTX.hh.id)
         .order('date', {ascending:false}).order('created_at', {ascending:false})
         .range(atx.tOff, atx.tOff + ATX_PAGE - 1);
@@ -4058,7 +4097,7 @@ async function loadTripRows(id){
   const out = [];
   for (let from = 0;; from += 1000) {
     const { data, error } = await sb.from('travel_expenses')
-      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount' + rc() + ', travel_expense_splits(profile_id, amount)')
+      .select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount, settled_amount' + rc() + ', travel_expense_splits(profile_id, amount)')
       .eq('trip_id', id).order('date', {ascending: false}).order('id').range(from, from + 999);
     if (error) throw error;
     out.push(...(data || []));
@@ -4080,12 +4119,19 @@ async function loadTravel(keepDetail){
 function renderTravel(){
   const box = $('tripCards'); box.innerHTML = '';
   if (!CTX.trips.length) { box.innerHTML = '<p class="cap">no trips yet — tap + to create one 🐻</p>'; return; }
-  CTX.trips.forEach(t => {
+  let list = CTX.trips;
+  if (DESK_LAYOUT) {   // the Desk: on now, coming up, past — each under its heading, the open trip marked
+    const today = todayIso(), when = t => t.start_date > today ? 1 : (t.end_date && t.end_date < today ? 2 : 0);
+    list = CTX.trips.slice().sort((a, b) => when(a) - when(b) || (when(a) === 1 ? (a.start_date < b.start_date ? -1 : 1) : ((b.start_date || '') < (a.start_date || '') ? -1 : 1)));
+    list.forEach((t, i) => { if (!i || when(t) !== when(list[i - 1])) t._head = ['On now', 'Coming up', 'Past'][when(t)]; else t._head = null; });
+  }
+  list.forEach(t => {
+    if (DESK_LAYOUT && t._head) { const h = document.createElement('p'); h.className = 'cap pgroup'; h.style.padding = '4px 2px 0'; h.textContent = t._head; box.appendChild(h); }
     const ts = ((travelState && travelState.sum) || []).find(x => x.trip_id === t.id) || { n: 0, all_sent: false, totals: {}, fronted: [] };
     const settled = ts.all_sent && ts.n > 0;   // settled = everything has gone to the fund
     const flags = (t.countries || []).map(flagOf).join('') || '✈️';
     const card = document.createElement('div');
-    card.className = 'card' + (settled ? ' settled' : '');
+    card.className = 'card' + (settled ? ' settled' : '') + (DESK_LAYOUT && t.id === curTripId ? ' on' : '');
     let body;
     if (!ts.n) body = '<p class="cap" style="margin-top:8px">no expenses yet 🐻</p>';
     else if (settled) body = '<p class="h2" style="margin-top:10px">Settled</p>';
@@ -4102,13 +4148,14 @@ function renderTravel(){
     card.innerHTML = '<button class="tripbtn"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
       + '<div style="min-width:0"><p class="h2">' + flags + ' ' + esc(t.name) + '</p>'
       + '<p class="cap">' + tripDates(t) + '</p></div>' + right + '</div>'
-      + body + '<p class="cap" style="margin-top:8px;color:var(--primary);font-weight:500">tap to open ›</p></button>';
+      + body + (DESK_LAYOUT ? '' : '<p class="cap" style="margin-top:8px;color:var(--primary);font-weight:500">tap to open ›</p>') + '</button>';
     card.querySelector('.tripbtn').onclick = () => openTripDetail(t.id);
     box.appendChild(card);
   });
 }
 function openTripDetail(id){
   curTripId = id; tripCurFilter = 'All';
+  if (DESK_LAYOUT) { document.documentElement.classList.add('trip-open'); renderTravel(); }
   if (tripRows.id !== id) tripRows = { id: null, exps: [] };
   if (tripPlan.id !== id) tripPlan = { id: null, p: null };
   renderTripDetail();
@@ -4141,6 +4188,32 @@ function renderTripDetail(){
   const groups = {};
   shown.forEach(e => { const g = catGroup[e.category] || '🗂️ Other'; (groups[g] = groups[g] || []).push(e); });
   const gbox = $('tripGroups'); gbox.innerHTML = '';
+  const whoOf = e => (e.payer_profile_id && (CTX.profiles.find(p => p.id === e.payer_profile_id) || {}).display_name) || jointLabel() || 'Joint';
+  if (DESK_LAYOUT && shown.length) {
+    // the Desk: every line in one table — what was spent, what the card charged, and where it stands
+    const status = e => e.pot_swap_id ? '<span class="tag">⇄ pot swap</span>'
+      : e.sent_to_fund && e.settlement_tx_id ? '<span class="tag blue" title="sent to a travel fund — undo the send (right) to change its amount, card or trip">sent 🔒</span>'
+      : e.sent_to_fund ? '<span class="tag">settled</span>'
+      : (chargedLine(e) && e.settled_amount == null) ? '<span class="tag warn">waiting</span>' : '<span class="tag">to send</span>';
+    gbox.innerHTML = '<table class="ttab"><thead><tr><th style="width:84px">Date</th><th>Description</th><th style="width:130px">Category</th><th style="width:80px">Paid by</th><th style="width:150px">Card</th>'
+      + '<th class="amt" style="width:110px">Spent</th><th class="amt" style="width:132px">Card charged</th><th style="width:86px">Status</th></tr></thead><tbody>'
+      + shown.map(e => { const l = chargedLine(e), c = (CTX.cards || []).find(x => x.id === e.payment_method_id);
+          return '<tr data-id="' + e.id + '"' + (fullyRefunded(e) ? ' class="refunded"' : '') + ' tabindex="0" title="click to edit">'
+            + '<td class="num">' + new Date(e.date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + '</td>'
+            + '<td><span class="dsc">' + esc(e.description) + refundTag(e) + '</span></td><td class="ell">' + esc(e.category) + '</td><td class="ell">' + esc(whoOf(e)) + '</td>'
+            + '<td class="ell">' + esc(c ? c.name : (e.paid_with || '—')) + '</td>'
+            + '<td class="amt">' + (e.is_refund ? '+' : '−') + fmtMoney(e.amount, e.currency) + '</td>'
+            + '<td class="amt">' + (!l ? '<span class="cap">—</span>' : !e.sent_to_fund ? chargedInput(e, l) : (e.settled_amount != null ? fmtMoney(e.settled_amount, l.card_currency) : '')) + '</td>'
+            + '<td>' + status(e) + '</td></tr>'; }).join('')
+      + '</tbody></table>';
+    gbox.querySelectorAll('tr[data-id]').forEach(tr => {
+      const open = () => embedSay({ type: 'edit', row: 'travel', id: tr.dataset.id });
+      tr.onclick = open; tr.onkeydown = ev => { if (ev.key === 'Enter' && ev.target === tr) open(); };
+    });
+    wireCharged(gbox);
+    renderTripSettle(exps, allSent);
+    return;
+  }
   Object.keys(TRAVEL_GROUPED).concat('🗂️ Other').filter((g, i, a) => a.indexOf(g) === i).forEach(g => {
     const list = groups[g]; if (!list || !list.length) return;
     const tot = {};
@@ -4149,11 +4222,13 @@ function renderTripDetail(){
     d.innerHTML = '<summary><span class="arr">›</span> ' + esc(g)
       + ' <span class="gamt">' + Object.entries(tot).map(([c, v]) => fmtMoney(v, c)).join('<br>') + '</span></summary>';
     list.forEach(e => {
-      const who = (e.payer_profile_id && (CTX.profiles.find(p => p.id === e.payer_profile_id) || {}).display_name) || jointLabel() || 'Joint';
+      const who = whoOf(e), l = chargedLine(e);
       const row = document.createElement('div'); row.className = 'trow';
       row.innerHTML = '<div class="td"><span>' + esc(e.description) + '</span>'
         + '<span class="cap">' + esc(who) + ' · ' + new Date(e.date + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric', month:'short'})
-        + (e.sent_to_fund ? ' · sent ✓' : '') + refundTag(e) + '</span></div>'
+        + (e.sent_to_fund ? ' · sent ✓' : '') + refundTag(e)
+        + (l && e.sent_to_fund && e.settled_amount != null ? ' · ' + fmtMoney(e.settled_amount, l.card_currency) + ' on the card' : '') + '</span>'
+        + (l && !e.sent_to_fund ? '<span class="chargedrow"><span class="cap"' + (e.settled_amount == null ? ' style="color:#8a5a00"' : '') + '>' + (e.settled_amount == null ? 'waiting · ' : '') + 'card charged</span>' + chargedInput(e, l) + '</span>' : '') + '</div>'
         + '<span class="amt">' + (e.is_refund ? '+' : '−') + fmtMoney(e.amount, e.currency) + '</span>'
         + '<button class="edit" aria-label="Edit">✎</button>';
       row.style.cursor = 'pointer';
@@ -4166,6 +4241,7 @@ function renderTripDetail(){
     });
     gbox.appendChild(d);
   });
+  wireCharged(gbox);
   if (!shown.length) gbox.innerHTML = '<p class="cap" style="padding:8px 0">' + (loading ? 'loading…' : 'no expenses' + (tripCurFilter !== 'All' ? ' in this currency' : ' yet 🐻')) + '</p>';
   renderTripSettle(exps, allSent);
 }
@@ -4175,10 +4251,37 @@ function renderTripDetail(){
 // only shows the split, sends it in one go (send_trip) and can take a send back (undo_trip_send).
 let tripPlan = { id: null, p: null };
 async function loadTripPlan(id){
-  const { data, error } = await sb.rpc('trip_send_plan', { p_trip: id });
-  if (error) throw error;
-  tripPlan = { id, p: data };
-  return data;
+  // the plan, and the same rule line by line (bh_trip_lines: which fund, at what value — a card line in another
+  // currency has no value until what the card charged is typed): that decides which lines get the "charged" box
+  const [pl, ln] = await Promise.all([sb.rpc('trip_send_plan', { p_trip: id }), sb.rpc('bh_trip_lines', { p_hh: CTX.hh.id, p_trip: id })]);
+  if (pl.error) throw pl.error;
+  const lines = {}; (ln.error ? [] : (ln.data || [])).forEach(l => lines[l.expense_id] = l);
+  tripPlan = { id, p: pl.data, lines };
+  return pl.data;
+}
+// a card line in another currency than its card: what the card charged (CX-10 — typed right here, on the phone or the
+// Desk's Trips page, as on the statement); set_settled_amount moves a send with it, and the trip's plan follows
+const chargedLine = e => { const l = tripPlan.id === curTripId && tripPlan.lines ? tripPlan.lines[e.id] : null;
+  return l && l.mode === 'card' && l.card_currency && l.card_currency !== e.currency ? l : null; };
+function chargedInput(e, l){
+  const v = e.settled_amount != null ? Number(e.settled_amount).toFixed(2) : '';
+  return '<input class="descinput num charged" type="number" step="0.01" min="0" inputmode="decimal" data-id="' + e.id + '" value="' + v + '"'
+    + ' placeholder="' + esc(curLabel(l.card_currency)) + ' charged" aria-label="what the card charged in ' + esc(curLabel(l.card_currency)) + '">';
+}
+function wireCharged(box){
+  box.querySelectorAll('input.charged').forEach(inp => {
+    ['click', 'keydown', 'pointerdown'].forEach(ev => inp.addEventListener(ev, x => x.stopPropagation()));
+    inp.onchange = async () => {
+      const v = inp.value.trim() === '' ? null : Math.round(parseFloat(inp.value) * 100) / 100;
+      if (v !== null && !(v > 0)) { toast('type what the card charged — more than 0'); return; }
+      inp.disabled = true;
+      const { error } = await sb.rpc('set_settled_amount', { p_id: inp.dataset.id, p_amount: v });
+      inp.disabled = false;
+      if (error) { toast('couldn’t save: ' + error.message); return; }
+      toast(v === null ? 'cleared — it waits again' : 'saved — ready to send 🐻');
+      loadTravel(true);
+    };
+  });
 }
 const fmtSigned = (v, cur) => (Number(v) < 0 ? '+' : '') + fmtMoney(Math.abs(Number(v)), cur);
 function renderTripSettle(exps, allSent){
@@ -4220,7 +4323,7 @@ function renderTripSettle(exps, allSent){
   if (waiting.length || noFund.length) {
     html += '<div class="settlebox" style="margin-top:12px">';
     waiting.forEach(w => { html += '<div class="cap">' + lines(w.n) + ' on <b>' + esc(w.card) + '</b> (' + fmtMoney(w.foreign, w.currency) + ') ' + (w.n === 1 ? 'waits' : 'wait') + ' for what the card charged in '
-      + esc(curLabel(w.card_currency)) + ' — type it on the Desk when you check the statement</div>'; });
+      + esc(curLabel(w.card_currency)) + ' — type it on ' + (w.n === 1 ? 'its line' : 'each line') + ' ' + (DESK_LAYOUT ? 'in the table' : 'above') + ', from the statement</div>'; });
     noFund.forEach(n => { html += '<div class="cap">' + lines(n.n) + (n.n === 1 ? ' needs' : ' need') + ' a travel fund in ' + esc(curLabel(n.currency)) + ' — Settings → Funds</div>'; });
     html += '</div>';
   }
@@ -4555,7 +4658,7 @@ let pendOp = null, pendVal = null;   // calculator: pendVal ⟨pendOp⟩ amt, ev
 async function openEmbedEdit(){
   const id = EMBED.id, k = EMBED.rowKind;
   const r = k === 'travel'
-    ? await sb.from('travel_expenses').select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount' + rc() + ', travel_expense_splits(profile_id, amount)').eq('id', id).maybeSingle()
+    ? await sb.from('travel_expenses').select('id, trip_id, date, description, category, amount, currency, payer_profile_id, paid_with, comments, sent_to_fund, settlement_tx_id, sent_amount, settled_amount' + rc() + ', travel_expense_splits(profile_id, amount)').eq('id', id).maybeSingle()
     : k === 'fund'
       ? await sb.from('fund_transactions').select('id, date, type, amount, remarks, origin, income_source, fund_id' + rc(true) + ', funds(name, currency)').eq('id', id).maybeSingle()
       : await sb.from('daily_expenses').select('id, date, description, category, amount, currency, paid_with, comments, payer_profile_id' + rc() + ', daily_expense_splits(profile_id, amount)').eq('id', id).maybeSingle();
@@ -4567,6 +4670,23 @@ async function openEmbedEdit(){
   embedSay({ type: 'ready' });
 }
 // the Desk's panel opens straight into the form, with the statement's card and date when it passes them
+// ?embed=travel (Aizat, 21 Oct — E43): the Desk's Trips page is this Travel screen. In the desk layout the trip list
+// sits on the left and the open trip on the right (lines as a table, Send beside them); adding and editing go back to
+// the Desk's own add panel ("add" / "edit" messages), so they look like every other add on the Desk.
+async function openEmbedTravel(){
+  go('scr-travel');
+  await loadTravel();
+  const t = (EMBED.trip && tripById(EMBED.trip)) || (DESK_LAYOUT ? deskDefaultTrip() : null);
+  if (t) openTripDetail(t.id);
+  embedSay({ type: 'ready' });
+}
+// the trip to open first on the Desk: one going on today, else the next one, else the latest
+function deskDefaultTrip(){
+  const today = todayIso(), ts = CTX.trips || [];
+  return ts.find(t => t.start_date <= today && (!t.end_date || t.end_date >= today))
+    || ts.filter(t => t.start_date > today).sort((a, b) => a.start_date < b.start_date ? -1 : 1)[0]
+    || ts.slice().sort((a, b) => (b.start_date || '') < (a.start_date || '') ? -1 : 1)[0] || null;
+}
 async function openEmbedForm(){
   // a closed (archived) card's statement line: it isn't among the cards the app offers — bring it in, and save it
   // through the Desk's reconciliation function, the one way an archived card takes a new row (card rules, sprint 2)
@@ -4576,6 +4696,7 @@ async function openEmbedForm(){
   }
   openSheet();
   if (['fundexp', 'trip', 'income', 'transfer', 'fund', 'paycard'].includes(EMBED.mode)) openForm(EMBED.mode);
+  if (EMBED.mode === 'trip' && EMBED.trip && tripById(EMBED.trip)) { selectedTripId = EMBED.trip; renderTripRow(); refreshTripCurrencies(); tripDateDefault(); }   // the Desk's open trip
   if (EMBED.date) { $('dateInput').value = EMBED.date; updateDateVal(); }
   const card = EMBED.card && (CTX.cards || []).find(c => c.id === EMBED.card);
   if (card) {
@@ -5881,7 +6002,7 @@ async function deleteExpense(){
 // from Settings. copy stays tiny: one idea per stop.
 // isNew: the tour version a stop was added or changed in. "What's new" (Settings) walks every isNew stop; the automatic
 // one walks only the stops newer than the version this login last saw. Bump TUT_VERSION with each new batch.
-const TUT_VERSION = '7';
+const TUT_VERSION = '8';
 const TUT_STEPS = [
   { scr:'scr-home', center:true, title:'The idea',
     text:'every month: plan the income, give spending a cap, move the rest into funds. what’s left over is truly free to spend.' },
@@ -5911,8 +6032,8 @@ const TUT_STEPS = [
     title:'Budget', text:'plan the month, then watch spent vs planned.' },
   { scr:'scr-budget', el: () => $('budChart').closest('.card'),
     title:'Six months back', text:'bars are spending · the dashed line is your plan.' },
-  { scr:'scr-travel', el: () => document.querySelector('#scr-travel .iconbtn'), round:true, isNew:4,
-    title:'Travel', text:'each trip keeps its own spending and currencies. When it’s over, Send splits it over your travel funds: card lines go to the fund in the card’s currency, at what the card charged (typed on the Desk from the statement); cash goes by the currency you spent. Sent too soon? Undo, and send again.' },
+  { scr:'scr-travel', el: () => document.querySelector('#scr-travel .iconbtn'), round:true, isNew:8,
+    title:'Travel', text:'each trip keeps its own spending and currencies. When it’s over, Send splits it over your travel funds: card lines go to the fund in the card’s currency, at what the card charged (type it on the line itself, from the statement); cash goes by the currency you spent. Sent too soon? Undo, and send again.' },
   { scr:'scr-home', center:true, isNew:7, title:'Refunds',
     text:'money back on a purchase? open the purchase and tap ↩ Refund, just above the keypad — type what came back, pick the day, back on the card or as a transfer. The purchase keeps its full amount (it still matches the statement); only what was used counts, in its own month. + no longer makes a refund on its own line.' },
   { scr:'scr-home', el: () => $('setupCard').style.display !== 'none' ? $('setupCard') : null, isNew:7, title:'Your setup list',

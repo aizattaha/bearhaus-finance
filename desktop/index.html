@@ -41,6 +41,7 @@ button,input,select{font-family:inherit}
 .descinput:focus{border-color:var(--accent)}
 select.descinput{appearance:none;-webkit-appearance:none;padding-right:28px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2355657D'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
 .tag{font-size:11px;font-weight:500;border-radius:999px;padding:2px 8px;background:var(--muted);color:var(--ink-soft);white-space:nowrap}
+button.tag{border:none;font-family:inherit;cursor:pointer}button.tag:hover{text-decoration:underline}
 .tag.good{background:var(--good-soft);color:var(--good)}.tag.bad{background:#FDECEC;color:var(--bad)}.tag.warn{background:var(--warn-soft);color:var(--warn)}.tag.blue{background:var(--accent-soft);color:var(--primary)}
 
 /* shell */
@@ -155,6 +156,7 @@ tr.fdrow td{background:var(--field);padding:10px 14px 14px;border-radius:0 0 12p
 /* Settings: the phone's own Settings screen in its desk layout (sections left, the open one right — E38) */
 .setframe{position:relative;width:100%;max-width:1200px;height:calc(100vh - 150px);margin:14px auto 0;border-radius:24px;overflow:hidden;box-shadow:var(--shadow-soft);background:var(--field)}
 .setframe iframe{width:100%;height:100%;border:0;display:block}
+.setframe.tripframe{max-width:1400px}
 .bulkcard{width:100%;max-width:640px;box-shadow:var(--shadow-lift)}
 .bkgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
 .bkf{display:flex;flex-direction:column;gap:4px}
@@ -192,6 +194,7 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
     <button class="nv active" data-scr="dashboard" onclick="go('dashboard')">📊 Dashboard</button>
     <button class="nv" data-scr="statements" onclick="go('statements')">📄 Statements</button>
     <button class="nv" data-scr="nocard" onclick="go('nocard')">🗂️ Transactions</button>
+    <button class="nv" data-scr="trips" onclick="go('trips')">✈️ Trips</button>
     <button class="nv" data-scr="swap" onclick="go('swap')">⇄ Pot swap</button>
     <button class="nv" data-scr="pots" onclick="go('pots')">🍯 Pots</button>
     <button class="nv" data-scr="activity" onclick="go('activity')">🕓 Activity</button>
@@ -219,6 +222,15 @@ input[type=radio]{accent-color:var(--primary);width:15px;height:15px;cursor:poin
         </div>
       </div>
       <div id="dashBody" style="display:flex;flex-direction:column;gap:14px;margin-top:14px"><p class="cap">loading…</p></div>
+    </section>
+
+    <!-- TRIPS: the phone's own Travel screen, laid out wide (E43) -->
+    <section class="screen" id="scr-trips">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><p class="cap">Travel</p><h1 class="h1">Trips</h1></div>
+        <p class="cap" style="max-width:560px">the phone’s own Trips, laid out for a big screen — every line with what the card charged and where it stands, Send beside it. Click a line to edit it.</p>
+      </div>
+      <div class="setframe tripframe"><div class="addwait" id="tripWait"><span class="spin"></span><p class="cap" style="margin-top:10px">opening Trips…</p></div><iframe id="tripFrame" title="Trips" src="about:blank"></iframe></div>
     </section>
 
     <!-- SETTINGS: the phone's own Settings screen -->
@@ -589,6 +601,7 @@ function go(scr){
   }
   if (scr === 'dashboard' && !(prev === 'scr-settings')) loadDashboard();
   if (scr === 'settings') openSettingsFrame();
+  if (scr === 'trips') openTripsFrame();
   document.querySelectorAll('nav .nv').forEach(b => b.classList.toggle('active', b.dataset.scr === scr));
   if (scr === 'nocard' && !nc.init) { nc.init = true; loadNoCard(true); }
   if (scr === 'pots') loadPots();
@@ -1416,14 +1429,14 @@ function ncBuildFilters(){
   }
 }
 async function ncLoadPage(){
-  if (nc.busy) return; nc.busy = true;
+  const seq = nc.seq = (nc.seq || 0) + 1;   // the newest request wins: a filter changed mid-load replaces the older answer
   const cf = $('ncCardF').value, cash = CTX.cards.find(c => c.kind === 'cash');
   const q = $('ncSearch').value.trim().replace(/[%_\\]/g, ch => '\\' + ch);
   const { data, error } = await sb.rpc('ledger_page', {
     p_month: $('ncMonth').value || null, p_kinds: NC_KINDS[$('ncKindF').value] || null,
     p_card: cf === 'cash' ? (cash ? cash.id : '00000000-0000-0000-0000-000000000000') : (cf || null),
     p_fund: $('ncFundF').value || null, p_cat: $('ncCatF').value || null, p_search: q || null, p_limit: NC_PAGE, p_offset: nc.off });
-  nc.busy = false;
+  if (seq !== nc.seq) return;
   if (error) { toast('couldn’t load: ' + error.message); return; }
   let evs = (data && data.events) || [];
   nc.total = data ? data.total : 0; nc.sums = (data && data.sums) || []; nc.off += evs.length; nc.done = !evs.length || nc.off >= nc.total;
@@ -1436,7 +1449,7 @@ async function ncLoadPage(){
       l.r = { kind: l.row, key: (l.row === 'travel' ? 't:' : 'd:') + l.id, id: l.id, date: l.date, description: l.description, category: l.category,
               amount: l.amount, currency: l.currency, payer_profile_id: l.payer_profile_id, payment_method_id: l.payment_method_id, comments: l.comments,
               reconciled_at: l.reconciled_at, reconciled_by: l.reconciled_by, is_refund: l.is_refund, fund_id: l.named_fund_id, refund_of: l.refund_of,
-              refunded: l.refunded, pot_swap_id: l.pot_swap_id, trips: l.trip_name ? { name: l.trip_name } : null };
+              refunded: l.refunded, pot_swap_id: l.pot_swap_id, trip_id: l.trip_id, trips: l.trip_name ? { name: l.trip_name } : null };
       nc.rows.push(l.r); });
     nc.events.push(ev);
   });
@@ -1488,7 +1501,7 @@ function renderNoCard(){
     if (pr) { const r = pr, c = cardById(r.payment_method_id); return '<tr class="' + (nc.sel.has(r.key) ? 'sel' : '') + (r.reconciled_at ? ' recd' : '') + (!r.refund_of && Number(r.refunded || 0) >= Number(r.amount) - 0.005 && Number(r.refunded || 0) > 0 ? ' refunded' : '') + '" data-key="' + r.key + '">'
       + '<td><input type="checkbox" class="rowck"' + (nc.sel.has(r.key) ? ' checked' : '') + '></td>'
       + '<td class="num">' + fmtD(r.date) + '</td>'
-      + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <span class="tag blue">✈️ ' + esc(r.trips.name) + '</span>' : '') + fundTag(r) + (r.pot_swap_id ? ' <span class="tag">⇄ swapped</span>' : '') + '</span></td>'
+      + '<td><span class="dsc">' + esc(r.description) + (r.kind === 'travel' && r.trips ? ' <button class="tag blue tripln" data-trip="' + esc(r.trip_id || '') + '" title="open this trip">✈️ ' + esc(r.trips.name) + ' ›</button>' : '') + fundTag(r) + (r.pot_swap_id ? ' <span class="tag">⇄ swapped</span>' : '') + '</span></td>'
       + '<td class="ell">' + esc(r.category) + '</td><td class="ell c-who">' + esc(who(r.payer_profile_id)) + '</td>'
       + '<td class="ell" title="' + esc(c ? c.name : '') + '">' + (c ? esc(c.name) : '<span class="tag warn">no card</span>') + (r.reconciled_at ? ' <span title="reconciled">🔒</span>' : '') + '</td>'
       + '<td class="c-src"><span class="tag">' + esc(NC_KIND_LBL[ev.kind] || ev.kind) + '</span></td>'
@@ -1520,10 +1533,12 @@ function renderNoCard(){
   body.querySelectorAll('tr.fev').forEach(tr => {
     const ev = nc.events.find(x => x.key === tr.dataset.ev); if (!ev) return;
     tr.style.cursor = 'pointer';
+    if (ev.kind === 'trip_send' && ev.legs[0].trip_id) { tr.title = 'click to open its trip'; tr.onclick = () => openDeskTrip(ev.legs[0].trip_id); return; }
     if (ev.legs.length === 1) { const l = ev.legs[0]; tr.title = 'click to open it'; tr.onclick = () => openEditTx({ kind: 'fund', id: l.id }); return; }
     tr.title = 'click to see its rows';
     tr.onclick = () => { if (nc.open.has(ev.key)) nc.open.delete(ev.key); else nc.open.add(ev.key); renderNoCard(); };
   });
+  body.querySelectorAll('button.tripln').forEach(b => b.onclick = ev => { ev.stopPropagation(); if (b.dataset.trip) openDeskTrip(b.dataset.trip); });
   body.querySelectorAll('tr.fleg').forEach(tr => { tr.style.cursor = 'pointer'; tr.title = 'click to open this row'; tr.onclick = () => openEditTx({ kind: 'fund', id: tr.dataset.leg }); });
   $('ncMore').style.display = nc.done ? 'none' : 'inline';
   const sums = nc.sums.map(x => [x.spent != null && Math.abs(x.spent) > 0.005 ? 'spent ' + fmtMoney(x.spent, x.currency) : '', x.income ? 'income ' + fmtMoney(x.income, x.currency) : ''].filter(Boolean).join(' · ')).filter(Boolean);
@@ -1893,9 +1908,10 @@ const fundOptsFor = (cur, selId, blankLabel) => '<option value="">' + esc(blankL
 // the period; an archived card's line saves through desk_add_expense, inside the form. The form answers with
 // "ready", "saved" (then the Desk refreshes) or "close".
 const ax = { src: null };
-function openAddTx(src){
+function openAddTx(src, extra){
   ax.src = src;
-  const q = new URLSearchParams({ embed: 'add', mode: 'daily', layout: 'desk' });
+  const q = new URLSearchParams({ embed: 'add', mode: (extra && extra.mode) || 'daily', layout: 'desk' });
+  if (extra && extra.trip) q.set('trip', extra.trip);
   if (src === 'st' && st.card) {
     q.set('card', st.card.id);
     if (st.period) q.set('date', st.period.end < todayIso() ? st.period.end : todayIso());
@@ -1925,12 +1941,32 @@ window.addEventListener('message', e => {
   if (e.data.type === 'error') { toast('couldn’t open the add form: ' + e.data.msg); closeAddTx(); return; }
   if (e.data.type === 'saved') {
     toast(e.data.msg || 'saved'); closeAddTx();
-    if (ax.src === 'st') loadStatement(); else if (ax.src === 'nc') loadNoCard(true);
+    if (ax.src === 'st') loadStatement(); else if (ax.src === 'nc') loadNoCard(true); else if (ax.src === 'trips') refreshTripsFrame();
     return;
   }
   if (e.data.type === 'close' && $('addtx').classList.contains('show')) closeAddTx();
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('addtx').classList.contains('show')) closeAddTx(); });
+
+// ── trips: the phone's own Travel screen (app/?embed=travel&layout=desk, E43) ──
+// The frame asks the Desk to add ("add", for its open trip) or edit ("edit") so those open in the Desk's own add panel;
+// after a save the frame reloads its trips. A trip named here (from the ledger) opens straight away.
+function openTripsFrame(tripId){
+  const f = $('tripFrame');
+  if (!tripId && f.src && !/about:blank/.test(f.src)) return;
+  $('tripWait').style.display = 'flex';
+  f.src = new URL('../app/?embed=travel&layout=desk' + (tripId ? '&trip=' + encodeURIComponent(tripId) : ''), location.href).href;
+}
+function openDeskTrip(tripId){ go('trips'); openTripsFrame(tripId); }
+function refreshTripsFrame(){ try { const w = $('tripFrame').contentWindow; if (w && w.loadTravel) w.loadTravel(true); } catch (e) {} }
+window.addEventListener('message', e => {
+  const f = $('tripFrame');
+  if (e.origin !== location.origin || !f || e.source !== f.contentWindow || !e.data || e.data.bh !== 'travel') return;
+  if (e.data.type === 'ready') $('tripWait').style.display = 'none';
+  if (e.data.type === 'error') $('tripWait').innerHTML = '<p class="cap">couldn’t open Trips: ' + esc(e.data.msg || '') + '</p>';
+  if (e.data.type === 'add') openAddTx('trips', { mode: 'trip', trip: e.data.trip || '' });
+  if (e.data.type === 'edit' && e.data.id) { openEditTx({ kind: e.data.row === 'travel' ? 'travel' : 'daily', id: e.data.id }); ax.src = 'trips'; }
+});
 
 // ── settings: the phone's own Settings screen (app/?embed=settings) ──
 function openSettingsFrame(){
@@ -2441,8 +2477,8 @@ window.addEventListener('resize', () => { clearTimeout(dashResizeT); dashResizeT
 // (no card picked, no statement) shows its card in the middle instead.
 // the tour runs once per login per version: 2 Dashboard and Settings joined; 3 Settings and the add form laid out for
 // the Desk, pot swap's "same fund" (18 Oct); 4 the Spending card drills into a month, a group, a category (18 Oct);
-// 5 Transactions shows the whole ledger (18 Oct)
-const DESK_TOUR_V = '6';
+// 5 Transactions shows the whole ledger (18 Oct); 6 Bundle C; 7 Trips joined the Desk (21 Oct)
+const DESK_TOUR_V = '7';
 const DESK_TOUR = [
   { center: true, title: 'The Desk', text: 'the big-screen side of BearHaus: check statements, record card payments, tidy many rows at once and see every fund. Same login, same numbers as the phone.' },
   { scr: 'dashboard', el: () => document.querySelector('nav .nv[data-scr="dashboard"]'), title: 'Dashboard', text: 'where the Desk opens: net worth per country and in total, spending against the plan month by month, and how each fund is growing or shrinking. The line at the top says whether last night’s money check and backup ran — green is fine, red needs you.' },
@@ -2459,6 +2495,7 @@ const DESK_TOUR = [
   { scr: 'statements', el: () => $('stPay').style.display !== 'none' ? $('stPay') : null, title: 'Record the payment', text: 'what you paid, from which fund, and the date (the due date when catching up). A future date shows as scheduled until that day. Paying lowers In the bank and Owed on cards — never Available. Then Next statement ›.' },
   { scr: 'nocard', el: () => document.querySelector('nav .nv[data-scr="nocard"]'), title: 'Transactions', text: 'every money event in one list — purchases, incomes, transfers, pot swaps, card payments, trip sends and each month’s plan. A transfer, swap, card payment or plan is one line: click it for its sides. Filter by month, kind, card, fund or category; tick purchases to change many at once.' },
   { scr: 'nocard', el: () => $('ncRefund'), title: 'Refund against the purchase', text: 'tick what was refunded → Refund selected: all of it or a part, back on the card or as a transfer. The purchase keeps its full amount for the statement; only what was used counts, in its own month.' },
+  { scr: 'trips', el: () => document.querySelector('nav .nv[data-scr="trips"]'), title: 'Trips', text: 'the phone’s Trips on the big screen: every trip on the left, the open one on the right — each line with what the card charged (type it right there for a card in another currency) and whether it’s sent, waiting or ready, with Send beside it. ＋ add to this trip opens the add form already on that trip.' },
   { scr: 'swap', el: () => document.querySelector('nav .nv[data-scr="swap"]'), title: 'Pot swap', text: 'spent in one currency but the money came from another? record the swap and its rate here. A country where nothing needs to move? pick “same fund” and that side is skipped.' },
   { scr: 'pots', el: () => document.querySelector('nav .nv[data-scr="pots"]'), title: 'Pots 🍯', text: 'every fund in one place — Available, owed on cards, in the bank, cleared, pending — and every card’s balance, with how far it has been checked against statements. Until a card’s first statement is closed, it and its funds say “not yet checked”.' },
   { scr: 'activity', el: () => document.querySelector('nav .nv[data-scr="activity"]'), title: 'Activity', text: 'who changed what, and when — every save, edit and delete, from the phone or here.' },
