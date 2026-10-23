@@ -238,7 +238,7 @@ select.descinput{appearance:none;-webkit-appearance:none}
 @media (max-height: 740px){ #sh-form #rowCatCard{display:flex;gap:8px;margin-top:6px} #sh-form #rowCatCard>.f-sec{flex:1 1 0;margin-top:0} #sh-form #rowCatCard .arow{gap:6px} }
 /* Trip and From a fund carry one more row than Daily: on a phone, category | paid with and trip-or-fund | date sit
    in pairs, and the From-a-fund caption steps aside, so neither scrolls at 393×852 or 375×667 (Bundle C, CX-09) */
-html:not(.embed-desk) #sh-form.tight #rowCatCard{display:flex;gap:8px}
+html:not(.embed-desk) #sh-form.tight #rowCatCard{display:flex;gap:8px;margin-top:10px}   /* the pair keeps the row gap its cards give up */
 html:not(.embed-desk) #sh-form.tight #rowCatCard>.f-sec{flex:1 1 0;margin-top:0}
 html:not(.embed-desk) #sh-form.tight #rowCatCard .arow,html:not(.embed-desk) #sh-form.tight .pair2 .arow{gap:6px}
 html:not(.embed-desk) #sh-form.tight #formBody{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:8px;align-content:start}
@@ -426,6 +426,7 @@ input[type="date"].descinput{min-width:0}
   .sheet.full{padding-top:calc(6px + env(safe-area-inset-top))}
   .sheet.full .sheet-head{margin-bottom:4px}
   #sh-form .f-sec{margin-top:6px}
+  html:not(.embed-desk) #sh-form.tight #rowCatCard{margin-top:6px}
   #descInput{font-size:15px;padding:8px 12px}
   .sheet.full .seg button{padding:4px 8px;font-size:12px}
   .arow{padding:5px 10px;border-radius:12px}
