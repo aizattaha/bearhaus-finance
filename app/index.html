@@ -2921,14 +2921,19 @@ function renderAllTx(type){
       final.push(x);
     });
   }
-  if ((type === 'All' || type === 'Income') && atxAux) {
+  // the plan's income lines obey the same filters as every other row: the month, the type (All and Income), the
+  // search (on the source's name and its "monthly plan" label); never reconciled, so "unreconciled only" and the
+  // old-refunds list leave them out
+  const qText = $('atxSearch').value.trim().toLowerCase();
+  const planIncOk = r => !qText || (r.source_name + ' monthly plan').toLowerCase().includes(qText);
+  if ((type === 'All' || type === 'Income') && atxAux && !atxOldRef && !$('atxOpenOnly').classList.contains('sel')) {
     const dated = final.filter(x => x.r && x.r.date);
     const oldest = dated.length ? dated[dated.length - 1].r.date : null;
     const allLoaded = src.every(isDone);
     Object.entries(atxAux.applied).forEach(([M, aDate]) => {
       const visible = mFilter ? M === mFilter : (oldest ? aDate >= oldest : allLoaded);
       if (!visible) return;
-      atxAux.inc.filter(r => r.month.slice(0, 7) === M).forEach(r => {
+      atxAux.inc.filter(r => r.month.slice(0, 7) === M && planIncOk(r)).forEach(r => {
         final.push({ kind: 'pi', month: M, r: { date: aDate }, src: r });
       });
     });
@@ -2939,6 +2944,7 @@ function renderAllTx(type){
       return rk || (a[1] - b[1]);
     }).map(x => x[0]);
   }
+  if (!rows.length && final.length) box.innerHTML = '';   // only plan lines matched: no "nothing matches" above them
   // Scheduled: anything dated after today hasn't happened yet — it sits in one collapsed
   // block at the top (newest-first order keeps it there anyway) and never counts in balances
   const today = todayIso();

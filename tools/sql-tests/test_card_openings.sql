@@ -9,6 +9,9 @@ insert into auth.users (id, email) values ('eeeeeeee-0000-4000-8000-000000000001
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'eeeeeeee-0000-4000-8000-000000000001', true);
 select public.create_household_setup('CI-OPEN', 'Opening household', array['Lee'], null, array['AU', 'SG']) as hh \gset
+-- the household's own today (Melbourne), never the server's UTC date: on a month's last evening UTC they differ
+select public.bh_today(:'hh') as today \gset
+select set_config('ci.today', :'today', true) \gset x_
 select set_config('ci.hh', :'hh', true);
 select pot_start from public.households where id = :'hh' \gset
 select set_config('ci.start', :'pot_start', true);
@@ -56,7 +59,7 @@ begin
 end $$;
 
 -- paying the first statement in full brings everything back to zero, never below
-select public.record_card_payment(:'amex', current_date, jsonb_build_array(jsonb_build_object('fund_id', :'pot', 'amount', 80)));
+select public.record_card_payment(:'amex', :'today'::date, jsonb_build_array(jsonb_build_object('fund_id', :'pot', 'amount', 80)));
 do $$
 declare v numeric;
 begin

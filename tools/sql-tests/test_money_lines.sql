@@ -137,6 +137,14 @@ begin
   assert (s->>'income')::numeric = 4000, 'AUD income 3000 + 1000, got ' || (s->>'income');
   j := public.ledger_page(p_card => 'none');
   assert jsonb_array_length(j->'events') = 0, 'every purchase here has a card';
+  -- a search keeps a month's plan out unless the plan matches it (31 Oct: plan lines obey every filter)
+  j := public.ledger_page(p_search => 'weekly');
+  assert jsonb_array_length(j->'events') > 0 and not exists (select 1 from jsonb_array_elements(j->'events') e where e->>'kind' = 'plan'),
+         'searching a purchase shows no plan line';
+  j := public.ledger_page(p_search => 'plan —');
+  assert jsonb_array_length(j->'events') = 1 and j->'events'->0->>'kind' = 'plan', 'searching the plan finds its one line';
+  j := public.ledger_page(p_kinds => array['purchase'], p_month => public.bh_today(hh));
+  assert not exists (select 1 from jsonb_array_elements(j->'events') e where e->>'kind' = 'plan'), 'the kind filter keeps plans out';
   j := public.ledger_page(p_search => 'old money');
   assert jsonb_array_length(j->'events') = 1 and j->'events'->0->>'kind' = 'money_out', 'old fund rows show (before the start date)';
   assert not exists (select 1 from public.money_lines where household_id = current_setting('ci.hh2')::uuid), 'another household''s rows are hidden';

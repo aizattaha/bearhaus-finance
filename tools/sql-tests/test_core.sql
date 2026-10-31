@@ -15,6 +15,9 @@ insert into auth.users (id, email) values ('aaaaaaaa-0000-4000-8000-000000000001
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000001', true);
 select public.create_household_setup('CI-TEST', 'CI household', array['Owen', 'Mia'], 'Joint', array['AU', 'SG']) as hh \gset
+-- the household's own today (Melbourne), never the server's UTC date: on a month's last evening UTC they differ
+select public.bh_today(:'hh') as today \gset
+select set_config('ci.today', :'today', true) \gset x_
 select set_config('ci.hh', :'hh', true);
 
 do $$
@@ -43,13 +46,13 @@ select id as owen from public.profiles where household_id = :'hh' and display_na
 select set_config('ci.owen', :'owen', true);
 
 insert into public.daily_expenses (household_id, date, description, category, amount, currency, paid_with, payment_method_id)
-values (:'hh', current_date, 'groceries', 'Groceries', 50, 'AUD', 'Visa — Owen', :'visa') returning id as e1 \gset
+values (:'hh', :'today'::date, 'groceries', 'Groceries', 50, 'AUD', 'Visa — Owen', :'visa') returning id as e1 \gset
 select set_config('ci.e1', :'e1', true);
 insert into public.daily_expenses (household_id, date, description, category, amount, currency, paid_with, payment_method_id, payer_profile_id)
-values (:'hh', current_date, 'cash coffee', 'Dining out', 4.5, 'AUD', 'Cash', :'cash', :'owen') returning id as e2 \gset
+values (:'hh', :'today'::date, 'cash coffee', 'Dining out', 4.5, 'AUD', 'Cash', :'cash', :'owen') returning id as e2 \gset
 select set_config('ci.e2', :'e2', true);
 insert into public.daily_expenses (household_id, date, description, category, amount, currency, paid_with, payment_method_id, is_refund)
-values (:'hh', current_date, 'returned shoes', 'Clothing', 20, 'AUD', 'Visa — Owen', :'visa', true) returning id as e3 \gset
+values (:'hh', :'today'::date, 'returned shoes', 'Clothing', 20, 'AUD', 'Visa — Owen', :'visa', true) returning id as e3 \gset
 select set_config('ci.e3', :'e3', true);
 
 do $$
@@ -102,7 +105,7 @@ end $$;
 
 -- ── reconciliation locks ─────────────────────────────────────────────────
 insert into public.statements (household_id, payment_method_id, period_start, period_end, statement_total)
-values (:'hh', :'visa', date_trunc('month', current_date)::date, (date_trunc('month', current_date) + interval '1 month - 1 day')::date, 30) returning id as st \gset
+values (:'hh', :'visa', date_trunc('month', :'today'::date)::date, (date_trunc('month', :'today'::date) + interval '1 month - 1 day')::date, 30) returning id as st \gset
 select set_config('ci.st', :'st', true);
 select public.reconcile_rows('expense', array[:'e1', :'e3']::uuid[], :'st');
 do $$
@@ -125,7 +128,7 @@ begin
 end $$;
 
 -- ── card payment: Available unchanged, owed and cash move ────────────────
-select public.record_card_payment(:'visa', current_date, jsonb_build_array(jsonb_build_object('fund_id', :'pot', 'amount', 30)), :'st') as grp \gset
+select public.record_card_payment(:'visa', :'today'::date, jsonb_build_array(jsonb_build_object('fund_id', :'pot', 'amount', 30)), :'st') as grp \gset
 select set_config('ci.grp', :'grp', true);
 do $$
 declare v numeric; s text; ok boolean := false;
@@ -136,7 +139,7 @@ begin
   assert v = 0, 'owed on cards cleared by the payment, got ' || v;
   select status into s from public.statement_balances where statement_id = current_setting('ci.st')::uuid;
   assert s = 'paid', 'statement paid, got ' || s;
-  begin perform public.record_card_payment(current_setting('ci.cash')::uuid, current_date, jsonb_build_array(jsonb_build_object('fund_id', current_setting('ci.pot')::uuid, 'amount', 1))); exception when others then ok := true; end;
+  begin perform public.record_card_payment(current_setting('ci.cash')::uuid, current_setting('ci.today')::date, jsonb_build_array(jsonb_build_object('fund_id', current_setting('ci.pot')::uuid, 'amount', 1))); exception when others then ok := true; end;
   assert ok, 'paying a non-card is refused';
 end $$;
 select public.delete_card_payment(:'grp');
@@ -156,8 +159,8 @@ select public.unreconcile_rows('expense', array[:'e1', :'e3']::uuid[]);
 select id as sav from public.funds where household_id = :'hh' and currency = 'AUD' and is_leftover_target \gset
 select set_config('ci.sav', :'sav', true);
 insert into public.fund_transactions (household_id, fund_id, type, date, amount, remarks, origin, transfer_group_id)
-values (:'hh', :'pot', 'expense', current_date, 10, 'Transfer → Savings', 'manual', 'bbbbbbbb-0000-4000-8000-000000000001'),
-       (:'hh', :'sav', 'income',  current_date, 10, 'Transfer ← Float',   'manual', 'bbbbbbbb-0000-4000-8000-000000000001');
+values (:'hh', :'pot', 'expense', :'today'::date, 10, 'Transfer → Savings', 'manual', 'bbbbbbbb-0000-4000-8000-000000000001'),
+       (:'hh', :'sav', 'income',  current_setting('ci.today')::date, 10, 'Transfer ← Float',   'manual', 'bbbbbbbb-0000-4000-8000-000000000001');
 do $$
 declare n int; k text;
 begin
@@ -189,7 +192,7 @@ begin
   perform public.join_household(current_setting('ci.code'));
   select count(*) into n from public.households; assert n = 1, 'after joining, the household is visible';
   insert into public.daily_expenses (household_id, date, description, category, amount, currency, paid_with, payment_method_id)
-  values (current_setting('ci.hh')::uuid, current_date, 'member adds', 'Supermarket', 3, 'AUD', 'Visa — Owen', current_setting('ci.visa')::uuid);
+  values (current_setting('ci.hh')::uuid, current_setting('ci.today')::date, 'member adds', 'Supermarket', 3, 'AUD', 'Visa — Owen', current_setting('ci.visa')::uuid);
   select count(*) into n from public.audit_log where household_id = current_setting('ci.hh')::uuid and by_user = 'aaaaaaaa-0000-4000-8000-000000000002' and table_name = 'expenses';
   assert n = 1, 'the audit log names the member';
 end $$;
@@ -202,7 +205,7 @@ begin
   select count(*) into n from public.expenses; assert n > 0, 'a viewer reads';
   begin
     insert into public.daily_expenses (household_id, date, description, category, amount, currency, paid_with, payment_method_id)
-    values (current_setting('ci.hh')::uuid, current_date, 'viewer adds', 'Supermarket', 3, 'AUD', 'Visa — Owen', current_setting('ci.visa')::uuid);
+    values (current_setting('ci.hh')::uuid, current_setting('ci.today')::date, 'viewer adds', 'Supermarket', 3, 'AUD', 'Visa — Owen', current_setting('ci.visa')::uuid);
   exception when others then ok := true; end;
   assert ok, 'a viewer cannot write';
   -- QA round 2 (C-B1, C-B2): a viewer sees no invite codes and cannot purge the bin
